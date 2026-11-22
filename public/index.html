@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b3c49" />
+  <title>المرافق — تطبيق برامج السفر والسياحة</title>
+  <link rel="manifest" href="/manifest.json" />
+  <style>
+    :root {
+      --bg: #edf2f7;
+      --card: #ffffff;
+      --soft: #f8fafc;
+      --ink: #0f172a;
+      --muted: #475569;
+      --primary: #0b3c49;
+      --primary-light: #145c70;
+      --accent: #d97706;
+      --accent-bg: #fef3c7;
+      --ok: #15803d;
+      --ok-bg: #dcfce7;
+      --err: #b91c1c;
+      --err-bg: #fee2e2;
+      --border: #cbd5e1;
+      --radius: 16px;
+      --nav-h: 68px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+      min-height: 100vh;
+      padding-bottom: calc(var(--nav-h) + 28px);
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      color: #fff;
+      padding: 15px 18px;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 14px rgba(11, 60, 73, 0.18);
+    }
+
+    header h1 { font-size: 1.22rem; font-weight: 800; }
+    header p { font-size: 0.78rem; opacity: 0.9; }
+
+    .header-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .pill {
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    main { max-width: 820px; margin: 16px auto 0; padding: 0 14px; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .card-head h2 { font-size: 1.06rem; color: var(--primary); font-weight: 800; }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .badge-ok { background: var(--ok-bg); color: var(--ok); }
+    .badge-warn { background: var(--accent-bg); color: #92400e; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .field { margin-bottom: 11px; }
+    label { display: block; font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; color: var(--ink); }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      background: #fff;
+      color: var(--ink);
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 3px rgba(20, 92, 112, 0.14);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 11px 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.94rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-soft { background: var(--soft); color: var(--primary); border: 1px solid var(--border); }
+    .btn-danger { background: var(--err-bg); color: var(--err); }
+    .btn-sm { width: auto; padding: 7px 12px; font-size: 0.82rem; border-radius: 8px; }
+
+    .alert {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      display: none;
+    }
+    .alert.show { display: block; }
+    .alert-err { background: var(--err-bg); color: var(--err); }
+    .alert-ok { background: var(--ok-bg); color: var(--ok); }
+    .alert-warn { background: var(--accent-bg); color: #92400e; }
+
+    .stats-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    @media (max-width: 580px) { .stats-3 { grid-template-columns: 1fr; } }
+
+    .stat-box {
+      background: var(--soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .stat-box span { display: block; font-size: 0.76rem; color: var(--muted); }
+    .stat-box strong { font-size: 0.96rem; color: var(--ink); }
+
+    .route-list { position: relative; padding-right: 18px; }
+    .route-list::before {
+      content: "";
+      position: absolute;
+      right: 6px;
+      top: 6px;
+      bottom: 6px;
+      width: 3px;
+      background: var(--primary-light);
+      border-radius: 3px;
+    }
+
+    .route-step {
+      position: relative;
+      background: var(--soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .route-step::before {
+      content: "";
+      position: absolute;
+      right: -17px;
+      top: 16px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+
+    .step-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+    .step-type {
+      font-size: 0.76rem;
+      font-weight: 800;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .step-title { font-weight: 800; font-size: 0.98rem; color: var(--primary); }
+    .step-meta { font-size: 0.84rem; color: var(--muted); margin-top: 2px; }
+
+    .checkin-banner {
+      background: var(--accent-bg);
+      border: 1px dashed var(--accent);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .info-box {
+      background: var(--soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .info-box h4 { font-size: 0.95rem; color: var(--primary); margin-bottom: 6px; }
+    .info-box ul { padding-right: 18px; font-size: 0.9rem; color: var(--ink); }
+    .info-box li { margin-bottom: 4px; }
+
+    .chat-window {
+      height: 330px;
+      overflow-y: auto;
+      background: var(--soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .bubble {
+      max-width: 86%;
+      padding: 10px 13px;
+      border-radius: 12px;
+      font-size: 0.91rem;
+      white-space: pre-line;
+    }
+    .bubble-ai { align-self: flex-start; background: #fff; border: 1px solid var(--border); }
+    .bubble-user { align-self: flex-end; background: var(--primary); color: #fff; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .chip {
+      background: var(--soft);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 11px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .chip:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: var(--nav-h);
+      background: #fff;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      z-index: 40;
+      box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.06);
+    }
+    .nav-item {
+      background: none;
+      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .nav-item.active { color: var(--primary); background: rgba(11, 60, 73, 0.06); }
+    .nav-ico { font-size: 1.15rem; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>المرافق</h1>
+      <p id="subHeader">منصة متابعة الرحلات السياحية وبرامج السفر</p>
+    </div>
+    <div class="header-btns">
+      <button type="button" id="enableNotifBtn" class="pill">تفعيل الإشعارات</button>
+      <button type="button" id="toggleAdminBtn" class="pill">قسم الإدارة</button>
+      <button type="button" id="logoutCustomerBtn" class="pill hidden">خروج الزبون</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="customerLoginSection" class="card">
+      <div class="card-head">
+        <h2>حجز الزبون — عرض برنامج الرحلة</h2>
+        <span class="badge badge-ok">دخول برقم PNR</span>
+      </div>
+      <form id="customerLoginForm">
+        <div class="form-grid">
+          <div class="field">
+            <label for="pnrInput">رقم الحجز (PNR)</label>
+            <input id="pnrInput" type="text" placeholder="مثال: MRF842" required />
+          </div>
+          <div class="field">
+            <label for="familyInput">اسم العائلة</label>
+            <input id="familyInput" type="text" placeholder="مثال: المنصور" required />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">دخول وعرض البرنامج</button>
+      </form>
+      <div style="margin-top: 8px;">
+        <button type="button" id="demoCustomerBtn" class="btn btn-soft">معاينة حجز تجريبي جاهز (MRF842 / المنصور)</button>
+      </div>
+      <div id="customerLoginAlert" class="alert alert-err"></div>
+    </section>
+
+    <div id="customerApp" class="hidden">
+      <section id="panel-program" class="tab-panel">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="custTripTitle">برنامج الرحلة</h2>
+            <span id="custPnrBadge" class="badge badge-ok">PNR</span>
+          </div>
+          <p id="custGreeting" style="font-size: 0.92rem; color: var(--muted); margin-bottom: 10px;"></p>
+
+          <div class="stats-3">
+            <div class="stat-box"><span>الدولة / المدينة</span><strong id="custDest">—</strong></div>
+            <div class="stat-box"><span>السعر الإجمالي</span><strong id="custPrice">—</strong></div>
+            <div class="stat-box"><span>موعد الانطلاق</span><strong id="custDep">—</strong></div>
+          </div>
+
+          <div class="checkin-banner">
+            <div>
+              <strong style="color: #92400e;">تذكير الـ Check-in قبل 24 ساعة</strong>
+              <p id="checkinStatusText" style="font-size: 0.85rem; margin-top: 2px;">جاري حساب الوقت...</p>
+            </div>
+            <button type="button" id="testNotifBtn" class="btn btn-accent btn-sm">اختبار إشعار الهاتف</button>
+          </div>
+          <div id="checkinInlineAlert" class="alert alert-warn"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>خط سير الرحلة بالترتيب</h2>
+            <span class="badge badge-warn">طيران • توصيل • فندق</span>
+          </div>
+          <div id="customerRouteList" class="route-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>شروط الحجز والأحكام</h2></div>
+          <p id="custTerms" style="white-space: pre-line; font-size: 0.92rem;"></p>
+        </div>
+      </section>
+
+      <section id="panel-country" class="tab-panel hidden">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="countryGuideTitle">دليل الدولة التلقائي</h2>
+            <span id="countryBadge" class="badge badge-ok">تلقائي حسب الوجهة</span>
+          </div>
+
+          <div class="info-box">
+            <h4>🌤️ حالة الطقس المباشرة الآن</h4>
+            <div id="liveWeatherBox" style="font-size: 0.92rem;">جاري جلب حالة الطقس...</div>
+          </div>
+
+          <div class="info-box">
+            <h4>🔌 نوع فيوز الكهرباء والجهد</h4>
+            <p id="plugInfoText" style="font-size: 0.92rem;">—</p>
+          </div>
+
+          <div class="info-box">
+            <h4>🍽️ أشهر المطاعم الحلال</h4>
+            <ul id="halalList"></ul>
+          </div>
+
+          <div class="info-box">
+            <h4>🗺️ أبرز المناطق السياحية</h4>
+            <ul id="sightsList"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-ai" class="tab-panel hidden">
+        <div class="card">
+          <div class="card-head">
+            <h2>مساعد السفر الذكي (AI)</h2>
+            <span class="badge badge-ok">يجيب عن أي استفسار</span>
+          </div>
+          <div class="chips" id="quickAiChips">
+            <button type="button" class="chip" data-q="ما هو نوع فيوز الكهرباء والطقس في وجهتي؟">فيوز الكهرباء والطقس</button>
+            <button type="button" class="chip" data-q="رشح لي مطاعم حلال ومناطق سياحية">مطاعم حلال ومناطق سياحية</button>
+            <button type="button" class="chip" data-q="لخص لي مسار رحلتي وموعد الـ Check-in">ملخص مسار رحلتي</button>
+          </div>
+          <div id="aiChatWindow" class="chat-window"></div>
+          <form id="aiAskForm" style="display: flex; gap: 8px;">
+            <input id="aiQuestionInput" type="text" placeholder="اسأل المساعد الذكي عن أي شيء يخص رحلتك..." required />
+            <button type="submit" class="btn btn-primary btn-sm">إرسال</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="panel-ticket" class="tab-panel hidden">
+        <div class="card">
+          <div class="card-head">
+            <h2>بطاقة تعريف المسافر والحجز</h2>
+            <span id="ticketPnrTag" class="badge badge-ok">PNR</span>
+          </div>
+          <div class="info-box">
+            <p><strong>اسم المسافر:</strong> <span id="tkName">—</span></p>
+            <p><strong>اسم العائلة:</strong> <span id="tkFamily">—</span></p>
+            <p><strong>رقم الهاتف:</strong> <span id="tkPhone">—</span></p>
+            <p><strong>الوجهة:</strong> <span id="tkDest">—</span></p>
+            <p><strong>قيمة البرنامج:</strong> <span id="tkPrice">—</span></p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section id="adminAuthCard" class="card hidden">
+      <div class="card-head">
+        <h2>دخول قسم الإدارة</h2>
+        <button type="button" id="closeAdminAuthBtn" class="btn btn-soft btn-sm">إغلاق</button>
+      </div>
+      <form id="adminAuthForm">
+        <div class="field">
+          <label for="adminPinInput">الرمز السري للإدارة (الافتراضي: 1234)</label>
+          <input id="adminPinInput" type="password" placeholder="1234" required />
+        </div>
+        <button type="submit" class="btn btn-primary">دخول لوحة بناء البرامج</button>
+      </form>
+      <div id="adminAuthAlert" class="alert alert-err"></div>
+    </section>
+
+    <section id="adminPanelCard" class="card hidden">
+      <div class="card-head">
+        <h2>قسم الإدارة — بناء برنامج رحلة جديد</h2>
+        <button type="button" id="exitAdminPanelBtn" class="btn btn-soft btn-sm">العودة للواجهة</button>
+      </div>
+
+      <form id="buildProgramForm">
+        <div class="form-grid">
+          <div class="field">
+            <label for="admCustomerName">اسم الزبون الكامل</label>
+            <input id="admCustomerName" type="text" placeholder="مثال: خالد العتيبي" required />
+          </div>
+          <div class="field">
+            <label for="admFamilyName">اسم العائلة (للدخول مع PNR)</label>
+            <input id="admFamilyName" type="text" placeholder="مثال: العتيبي" required />
+          </div>
+          <div class="field">
+            <label for="admPhone">رقم هاتف الزبون</label>
+            <input id="admPhone" type="tel" placeholder="+9665XXXXXXXX" />
+          </div>
+          <div class="field">
+            <label for="admPrice">سعر البرنامج الإجمالي</label>
+            <input id="admPrice" type="text" placeholder="مثال: 1,850 دولار" required />
+          </div>
+          <div class="field">
+            <label for="admCountry">الدولة الوجهة (للدليل التلقائي)</label>
+            <input id="admCountry" type="text" placeholder="مثال: تركيا، الإمارات، ماليزيا، جورجيا، بريطانيا" required />
+          </div>
+          <div class="field">
+            <label for="admCity">المدينة بالإنجليزية أو العربية (للطقس الحي)</label>
+            <input id="admCity" type="text" placeholder="مثال: Istanbul أو Dubai أو London" required />
+          </div>
+          <div class="field">
+            <label for="admTripTitle">عنوان البرنامج</label>
+            <input id="admTripTitle" type="text" placeholder="مثال: رحلة طرابزون وإسطنبول" required />
+          </div>
+          <div class="field">
+            <label for="admDepartureAt">موعد أول رحلة طيران (لتذكير 24 ساعة)</label>
+            <input id="admDepartureAt" type="datetime-local" required />
+          </div>
+        </div>
+
+        <div class="info-box" style="margin-top: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
+            <h4>تخطيط مسار الرحلة بالترتيب (طيران / فندق / توصيل)</h4>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-soft btn-sm" onclick="addSegment('flight')">+ إضافة طيران</button>
+              <button type="button" class="btn btn-soft btn-sm" onclick="addSegment('hotel')">+ إضافة فندق</button>
+              <button type="button" class="btn btn-soft btn-sm" onclick="addSegment('transfer')">+ إضافة توصيل</button>
+            </div>
+          </div>
+          <div id="builderSegmentsContainer"></div>
+        </div>
+
+        <div class="field">
+          <label for="admTerms">شروط الحجز والأحكام</label>
+          <textarea id="admTerms" rows="3" placeholder="اكتب شروط الدفع، الإلغاء، والأمتعة...">• الأسعار شاملة الضرائب والخدمات المذكورة في المسار.
+• يرجى التواجد في المطار قبل موعد الإقلاع بـ 3 ساعات.</textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">حفظ البرنامج وتوليد رقم PNR تلقائياً</button>
+      </form>
+
+      <div id="adminSaveResult" class="alert alert-ok"></div>
+
+      <div style="margin-top: 18px;">
+        <div class="card-head">
+          <h2>الحجوزات المحفوظة في النظام</h2>
+          <button type="button" id="refreshBookingsBtn" class="btn btn-soft btn-sm">تحديث القائمة</button>
+        </div>
+        <div id="adminBookingsList"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav id="customerBottomNav" class="bottom-nav hidden">
+    <button type="button" class="nav-item active" data-panel="program">
+      <span class="nav-ico">✈️</span>
+      <span>برنامجي</span>
+    </button>
+    <button type="button" class="nav-item" data-panel="country">
+      <span class="nav-ico">🌍</span>
+      <span>دليل الدولة</span>
+    </button>
+    <button type="button" class="nav-item" data-panel="ai">
+      <span class="nav-ico">🤖</span>
+      <span>المساعد AI</span>
+    </button>
+    <button type="button" class="nav-item" data-panel="ticket">
+      <span class="nav-ico">🎫</span>
+      <span>بطاقتي</span>
+    </button>
+  </nav>
+
+  <script>
+    let activeBooking = null;
+    let adminPinToken = '';
+    let latestWeatherText = 'جاري تحديث الطقس...';
+    let builderSegments = [];
+
+    const countryKnowledgeBase = {
+      'تركيا': {
+        plug: 'النوع الأوروبي الثنائي الدائري (Type C / Type F) — الجهد 220 فولت / 50 هرتز.',
+        halalFood: [
+          'جميع المطاعم التركية التقليدية تقدم لحوماً ودواجن حلال 100%.',
+          'مطاعم المشويات والكباب في السلطان أحمد وتقسيم وبشيكتاش.',
+          'مطاعم المأكولات البحرية على مضيق البوسفور وأورتاكوي.'
+        ],
+        sights: [
+          'منطقة السلطان أحمد التاريخية (آيا صوفيا، المسجد الأزرق، قصر توبكابي).',
+          'جولة بحرية في مضيق البوسفور وبرج غلطة وشارع الاستقلال.',
+          'مرتفعات أوزنجول وآيدر في الشمال التركي (طرابزون).'
+        ]
+      },
+      'الإمارات': {
+        plug: 'النوع البريطاني الثلاثي المستطيل (Type G) — الجهد 230 فولت / 50 هرتز.',
+        halalFood: [
+          'كافة المطاعم في دبي وأبوظبي تقدم طعاماً حلالاً معتمداً.',
+          'مطاعم المأكولات الخليجية والعربية في دبي مول ومارينا والممشى JBR.',
+          'مطاعم الأسماك الطازجة في جميرا ومرسى دبي.'
+        ],
+        sights: [
+          'برج خليفة ونافورة دبي الراقصة ودبي مول.',
+          'متحف المستقبل وبرواز دبي وحي الفهيدي التاريخي.',
+          'جامع الشيخ زايد الكبير وقصر الوطن في أبوظبي.'
+        ]
+      },
+      'ماليزيا': {
+        plug: 'النوع البريطاني الثلاثي المستطيل (Type G) — الجهد 240 فولت / 50 هرتز.',
+        halalFood: [
+          'تتوفر شهادة الحلال الرسمية (JAKIM) على واجهات معظم المطاعم في كوالالمبور.',
+          'مطاعم شارع العرب (بوكيت بينتانج) للمأكولات العربية والماليزية.',
+          'مطاعم المأكولات البحرية الحلال في جزيرة لنكاوي.'
+        ],
+        sights: [
+          'برجا بتروناس التوأم وحديقة KLCC في كوالالمبور.',
+          'مرتفعات جنتنج هايلاند والتلفريك.',
+          'جسر السماء المعلّق والشواطئ الاستوائية في جزيرة لنكاوي.'
+        ]
+      },
+      'جورجيا': {
+        plug: 'النوع الأوروبي الثنائي (Type C / Type F) — الجهد 220 فولت / 50 هرتز.',
+        halalFood: [
+          'مطاعم حلال مخصصة في شارع مرجانشفيلي والبلدة القديمة في تبليسي.',
+          'مطاعم المخبوزات الجورجية (خاتشابوري بالجبن) والأسماك الطازجة في باتومي.',
+          'يفضل التأكد من شارة Halal في المطاعم غير العربية.'
+        ],
+        sights: [
+          'البلدة القديمة في تبليسي، قلعة ناريكالا، وجسر السلام.',
+          'جبال القوقاز ومنتجع غوداوري الثلجي.',
+          'بوليفارد باتومي الساحلي وحديقة النباتات.'
+        ]
+      },
+      'بريطانيا': {
+        plug: 'النوع البريطاني الثلاثي المستطيل (Type G) — الجهد 230 فولت / 50 هرتز.',
+        halalFood: [
+          'مطاعم شارع إدجوير رود (Edgware Road) ونايتسبريدج في لندن.',
+          'سلاسل ومطاعم حلال معتمدة في وسط لندن ومانشستر وبرمنغهام.',
+          'تطبيقات البحث عن الحلال مثل Zabihah تساعدك في العثور على أقرب خيار.'
+        ],
+        sights: [
+          'ساعة بيغ بن، عين لندن، وقصر باكنغهام.',
+          'حديقة هايد بارك والمتحف البريطاني وشارع أكسفورد.',
+          'مدينة أدنبرة التاريخية في اسكتلندا.'
+        ]
+      }
+    };
+
+    function getCountryGuide(countryName) {
+      const clean = (countryName || '').trim();
+      for (const key of Object.keys(countryKnowledgeBase)) {
+        if (clean.includes(key) || key.includes(clean)) {
+          return countryKnowledgeBase[key];
+        }
+      }
+      return {
+        plug: 'يُنصح بحمل محوّل سفر عالمي (Universal Adapter) يدعم المقابس الأوروبية والبريطانية (220V-240V).',
+        halalFood: [
+          `ابحث عن المطاعم الحلال القريبة من مقر إقامتك في ${clean || 'وجهتك'} عبر خرائط جوجل بكلمة Halal Restaurant.`,
+          'المطاعم التركية والهندية والعربية والمأكولات البحرية تعد خيارات آمنة ومتوفرة في معظم المدن السياحية.'
+        ],
+        sights: [
+          `المركز التاريخي والأسواق التقليدية في ${clean || 'وجهتك'}.`,
+          'المتاحف الوطنية والحدائق العامة والواجهات البحرية أو النهرية.'
+        ]
+      };
+    }
+
+    const typeLabels = {
+      flight: '✈️ طيران',
+      hotel: '🏨 فندق',
+      transfer: '🚐 توصيل'
+    };
+
+    function renderBuilderSegments() {
+      const box = document.getElementById('builderSegmentsContainer');
+      if (!builderSegments.length) {
+        box.innerHTML = '<p style="font-size:0.86rem; color:var(--muted);">اضغط على الأزرار أعلاه لإضافة محطات الرحلة بالترتيب (طيران ➔ توصيل ➔ فندق...).</p>';
+        return;
+      }
+      box.innerHTML = builderSegments.map((seg, i) => `
+        <div class="info-box" style="background:#fff; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <strong>${i + 1}. ${typeLabels[seg.type] || 'محطة'}</strong>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeSegment(${i})">حذف</button>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label>العنوان / الشركة / اسم الفندق</label>
+              <input type="text" value="${seg.title.replace(/"/g, '&quot;')}" oninput="builderSegments[${i}].title=this.value" placeholder="مثال: طيران الذهاب أو فندق هيلتون" required />
+            </div>
+            <div class="field">
+              <label>التاريخ والوقت / عدد الليالي</label>
+              <input type="text" value="${seg.dateTime.replace(/"/g, '&quot;')}" oninput="builderSegments[${i}].dateTime=this.value" placeholder="مثال: 15 مايو - 10:30 صباحاً" />
+            </div>
+            <div class="field">
+              <label>المكان / المسار</label>
+              <input type="text" value="${seg.location.replace(/"/g, '&quot;')}" oninput="builderSegments[${i}].location=this.value" placeholder="مثال: المطار ➔ الفندق" />
+            </div>
+            <div class="field">
+              <label>ملاحظات إضافية</label>
+              <input type="text" value="${seg.details.replace(/"/g, '&quot;')}" oninput="builderSegments[${i}].details=this.value" placeholder="مثال: شامل الإفطار أو الوزن 30 كجم" />
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.addSegment = (type) => {
+      builderSegments.push({ type, title: '', dateTime: '', location: '', details: '' });
+      renderBuilderSegments();
+    };
+
+    window.removeSegment = (idx) => {
+      builderSegments.splice(idx, 1);
+      renderBuilderSegments();
+    };
+
+    builderSegments = [
+      { type: 'flight', title: 'طيران الذهاب', dateTime: '', location: '', details: '' },
+      { type: 'transfer', title: 'توصيل من المطار إلى الفندق', dateTime: '', location: '', details: '' },
+      { type: 'hotel', title: 'الإقامة الفندقية', dateTime: '', location: '', details: '' },
+      { type: 'transfer', title: 'توصيل من الفندق إلى المطار', dateTime: '', location: '', details: '' },
+      { type: 'flight', title: 'طيران العودة', dateTime: '', location: '', details: '' }
+    ];
+    renderBuilderSegments();
+
+    function showAlert(el, msg) {
+      el.textContent = msg;
+      el.classList.add('show');
+    }
+    function hideAlert(el) {
+      el.textContent = '';
+      el.classList.remove('show');
+    }
+
+    async function triggerDeviceNotification(title, body) {
+      const inline = document.getElementById('checkinInlineAlert');
+      showAlert(inline, `🔔 ${title}: ${body}`);
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification(title, { body });
+        } else if (Notification.permission !== 'denied') {
+          const p = await Notification.requestPermission();
+          if (p === 'granted') new Notification(title, { body });
+        }
+      }
+    }
+
+    document.getElementById('enableNotifBtn').addEventListener('click', async () => {
+      if (!('Notification' in window)) {
+        alert('إشعارات النظام غير مدعومة في هذا المتصفح، ستظهر التنبيهات داخل التطبيق.');
+        return;
+      }
+      const res = await Notification.requestPermission();
+      document.getElementById('enableNotifBtn').textContent = res === 'granted' ? 'الإشعارات مفعّلة ✓' : 'تفعيل الإشعارات';
+    });
+
+    function check24HourReminder() {
+      if (!activeBooking) return;
+      const depMs = new Date(activeBooking.departure_at).getTime();
+      const statusEl = document.getElementById('checkinStatusText');
+      if (isNaN(depMs)) {
+        statusEl.textContent = 'يرجى التأكد من موعد الرحلة في خط السير.';
+        return;
+      }
+      const hoursLeft = (depMs - Date.now()) / (1000 * 3600);
+      const notifyKey = `murafiq_24h_${activeBooking.pnr}_${activeBooking.departure_at}`;
+
+      if (hoursLeft <= 24 && hoursLeft > 0) {
+        statusEl.textContent = `متبقي ${hoursLeft.toFixed(1)} ساعة على الإقلاع — نافذة الـ Check-in مفتوحة الآن!`;
+        if (!sessionStorage.getItem(notifyKey)) {
+          sessionStorage.setItem(notifyKey, '1');
+          triggerDeviceNotification(
+            'تذكير Check-in (قبل 24 ساعة)',
+            `حجز ${activeBooking.pnr}: متبقي أقل من 24 ساعة على موعد سفركم إلى ${activeBooking.country}.`
+          );
+        }
+      } else if (hoursLeft <= 0) {
+        statusEl.textContent = 'موعد الإقلاع حان أو بدأ — نتمنى لكم رحلة سعيدة!';
+      } else {
+        statusEl.textContent = `متبقي ${Math.floor(hoursLeft)} ساعة على موعد الطيران؛ سيصلك إشعار تلقائي قبل 24 ساعة.`;
+      }
+    }
+
+    document.getElementById('testNotifBtn').addEventListener('click', () => {
+      if (!activeBooking) return;
+      triggerDeviceNotification(
+        'تذكير Check-in قبل 24 ساعة',
+        `عائلة ${activeBooking.family_name} (${activeBooking.pnr})، حان وقت تأكيد مقاعد الطيران وإصدار بطاقة الصعود.`
+      );
+    });
+
+    async function loadWeatherForCity(city) {
+      const box = document.getElementById('liveWeatherBox');
+      box.textContent = `جاري جلب الطقس المباشر لـ ${city}...`;
+      try {
+        const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ar&format=json`).then((r) => r.json());
+        const place = geo.results && geo.results[0];
+        if (!place) throw new Error('not found');
+
+        const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=3`).then((r) => r.json());
+        const cur = w.current;
+        const max0 = Math.round(w.daily.temperature_2m_max[0]);
+        const min0 = Math.round(w.daily.temperature_2m_min[0]);
+        latestWeatherText = `${place.name}: درجة الحرارة الآن ${Math.round(cur.temperature_2m)}°C (العظمى ${max0}° / الصغرى ${min0}°)، الرطوبة ${cur.relative_humidity_2m}%.`;
+        box.innerHTML = `<strong>${latestWeatherText}</strong>`;
+      } catch {
+        latestWeatherText = `الطقس في ${city}: يرجى التحقق من الاتصال بالإنترنت لتحديث الدرجات اللحظية.`;
+        box.textContent = latestWeatherText;
+      }
+    }
+
+    function appendAiBubble(text, who = 'ai') {
+      const win = document.getElementById('aiChatWindow');
+      const div = document.createElement('div');
+      div.className = `bubble ${who === 'user' ? 'bubble-user' : 'bubble-ai'}`;
+      div.textContent = text;
+      win.appendChild(div);
+      win.scrollTop = win.scrollHeight;
+    }
+
+    function openCustomerDashboard(booking) {
+      activeBooking = booking;
+      document.getElementById('customerLoginSection').classList.add('hidden');
+      document.getElementById('adminAuthCard').classList.add('hidden');
+      document.getElementById('adminPanelCard').classList.add('hidden');
+      document.getElementById('customerApp').classList.remove('hidden');
+      document.getElementById('customerBottomNav').classList.remove('hidden');
+      document.getElementById('logoutCustomerBtn').classList.remove('hidden');
+
+      document.getElementById('subHeader').textContent = `${booking.trip_title} • PNR: ${booking.pnr}`;
+      document.getElementById('custTripTitle').textContent = booking.trip_title;
+      document.getElementById('custPnrBadge').textContent = `PNR: ${booking.pnr}`;
+      document.getElementById('custGreeting').textContent = `أهلاً بك يا ${booking.customer_name} (عائلة ${booking.family_name})`;
+      document.getElementById('custDest').textContent = `${booking.country} — ${booking.city}`;
+      document.getElementById('custPrice').textContent = booking.price;
+      document.getElementById('custDep').textContent = (booking.departure_at || '').replace('T', ' ');
+      document.getElementById('custTerms').textContent = booking.terms;
+
+      const routeEl = document.getElementById('customerRouteList');
+      const segs = booking.segments || [];
+      routeEl.innerHTML = segs.map((s) => `
+        <div class="route-step">
+          <div class="step-top">
+            <span class="step-title">${s.title || 'محطة في البرنامج'}</span>
+            <span class="step-type">${typeLabels[s.type] || 'محطة'}</span>
+          </div>
+          ${s.dateTime ? `<div class="step-meta">🕒 ${s.dateTime}</div>` : ''}
+          ${s.location ? `<div class="step-meta">📍 ${s.location}</div>` : ''}
+          ${s.details ? `<div class="step-meta">ℹ️ ${s.details}</div>` : ''}
+        </div>
+      `).join('');
+
+      const guide = getCountryGuide(booking.country);
+      document.getElementById('countryGuideTitle').textContent = `دليل ${booking.country} السياحي والخدمي`;
+      document.getElementById('plugInfoText').textContent = guide.plug;
+      document.getElementById('halalList').innerHTML = guide.halalFood.map((x) => `<li>${x}</li>`).join('');
+      document.getElementById('sightsList').innerHTML = guide.sights.map((x) => `<li>${x}</li>`).join('');
+
+      document.getElementById('ticketPnrTag').textContent = booking.pnr;
+      document.getElementById('tkName').textContent = booking.customer_name;
+      document.getElementById('tkFamily').textContent = booking.family_name;
+      document.getElementById('tkPhone').textContent = booking.phone || 'غير مسجل';
+      document.getElementById('tkDest').textContent = `${booking.country} (${booking.city})`;
+      document.getElementById('tkPrice').textContent = booking.price;
+
+      document.getElementById('aiChatWindow').innerHTML = '';
+      appendAiBubble(`مرحباً يا ${booking.customer_name}! أنا مساعدك الذكي في رحلتك إلى ${booking.country}. اسألني عن أي شيء: مسار الطيران والفندق، الطقس، نوع فيوز الكهرباء، المطاعم الحلال، أو الأماكن السياحية.`);
+
+      check24HourReminder();
+      loadWeatherForCity(booking.city || booking.country);
+    }
+
+    async function performCustomerLogin(pnr, familyName) {
+      const alertEl = document.getElementById('customerLoginAlert');
+      hideAlert(alertEl);
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pnr, familyName })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert(alertEl, data.error || 'بيانات الدخول غير صحيحة.');
+          return;
+        }
+        openCustomerDashboard(data.booking);
+      } catch {
+        showAlert(alertEl, 'تعذر الاتصال بالخادم.');
+      }
+    }
+
+    document.getElementById('customerLoginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      performCustomerLogin(
+        document.getElementById('pnrInput').value.trim(),
+        document.getElementById('familyInput').value.trim()
+      );
+    });
+
+    document.getElementById('demoCustomerBtn').addEventListener('click', () => {
+      document.getElementById('pnrInput').value = 'MRF842';
+      document.getElementById('familyInput').value = 'المنصور';
+      performCustomerLogin('MRF842', 'المنصور');
+    });
+
+    document.getElementById('logoutCustomerBtn').addEventListener('click', () => {
+      activeBooking = null;
+      document.getElementById('customerApp').classList.add('hidden');
+      document.getElementById('customerBottomNav').classList.add('hidden');
+      document.getElementById('logoutCustomerBtn').classList.add('hidden');
+      document.getElementById('customerLoginSection').classList.remove('hidden');
+      document.getElementById('subHeader').textContent = 'منصة متابعة الرحلات السياحية وبرامج السفر';
+    });
+
+    document.getElementById('customerBottomNav').addEventListener('click', (e) => {
+      const btn = e.target.closest('.nav-item');
+      if (!btn) return;
+      const target = btn.dataset.panel;
+      document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hidden', p.id !== `panel-${target}`));
+    });
+
+    async function sendAiQuestion(question) {
+      if (!question.trim()) return;
+      appendAiBubble(question, 'user');
+      try {
+        const res = await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            booking: activeBooking,
+            countryGuide: activeBooking ? getCountryGuide(activeBooking.country) : {},
+            weatherSummary: latestWeatherText
+          })
+        });
+        const data = await res.json();
+        appendAiBubble(data.reply || data.error || 'عذراً، حاول مرة أخرى.');
+      } catch {
+        appendAiBubble('تعذر الاتصال بالمساعد الذكي حالياً.');
+      }
+    }
+
+    document.getElementById('aiAskForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('aiQuestionInput');
+      const q = inp.value;
+      inp.value = '';
+      sendAiQuestion(q);
+    });
+
+    document.getElementById('quickAiChips').addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (chip) sendAiQuestion(chip.dataset.q);
+    });
+
+    document.getElementById('toggleAdminBtn').addEventListener('click', () => {
+      hideAlert(document.getElementById('adminAuthAlert'));
+      document.getElementById('adminAuthCard').classList.remove('hidden');
+      document.getElementById('adminPanelCard').classList.add('hidden');
+    });
+
+    document.getElementById('closeAdminAuthBtn').addEventListener('click', () => {
+      document.getElementById('adminAuthCard').classList.add('hidden');
+    });
+
+    document.getElementById('exitAdminPanelBtn').addEventListener('click', () => {
+      document.getElementById('adminPanelCard').classList.add('hidden');
+    });
+
+    async function loadAdminBookingsList() {
+      const container = document.getElementById('adminBookingsList');
+      container.innerHTML = 'جاري تحميل الحجوزات...';
+      try {
+        const res = await fetch('/api/admin/bookings', {
+          headers: { 'x-admin-pin': adminPinToken }
+        });
+        const data = await res.json();
+        const list = data.bookings || [];
+        if (!list.length) {
+          container.innerHTML = '<p style="font-size:0.88rem; color:var(--muted);">لا توجد حجوزات مسجلة بعد.</p>';
+          return;
+        }
+        container.innerHTML = list.map((b) => `
+          <div class="info-box" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div>
+              <strong>${b.trip_title}</strong> — <span class="badge badge-ok">PNR: ${b.pnr}</span>
+              <div style="font-size:0.84rem; color:var(--muted);">
+                الزبون: ${b.customer_name} (عائلة ${b.family_name}) • الوجهة: ${b.country} • السعر: ${b.price}
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn btn-soft btn-sm" onclick="previewAsCustomer('${b.pnr}', '${b.family_name.replace(/'/g, "\'")}')">معاينة كزبون</button>
+              <button type="button" class="btn btn-danger btn-sm" onclick="deleteBooking('${b.pnr}')">حذف</button>
+            </div>
+          </div>
+        `).join('');
+      } catch {
+        container.innerHTML = 'تعذر تحميل الحجوزات.';
+      }
+    }
+
+    window.previewAsCustomer = (pnr, familyName) => {
+      performCustomerLogin(pnr, familyName);
+    };
+
+    window.deleteBooking = async (pnr) => {
+      if (!confirm(`هل تريد حذف الحجز ${pnr}؟`)) return;
+      await fetch(`/api/admin/bookings/${encodeURIComponent(pnr)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-pin': adminPinToken }
+      });
+      loadAdminBookingsList();
+    };
+
+    document.getElementById('adminAuthForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin = document.getElementById('adminPinInput').value.trim();
+      const alertEl = document.getElementById('adminAuthAlert');
+      hideAlert(alertEl);
+      try {
+        const res = await fetch('/api/admin/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        if (!res.ok) {
+          showAlert(alertEl, 'رمز الإدارة غير صحيح.');
+          return;
+        }
+        adminPinToken = pin;
+        document.getElementById('adminAuthCard').classList.add('hidden');
+        document.getElementById('adminPanelCard').classList.remove('hidden');
+        if (!document.getElementById('admDepartureAt').value) {
+          document.getElementById('admDepartureAt').value = new Date(Date.now() + 23.5 * 3600 * 1000).toISOString().slice(0, 16);
+        }
+        loadAdminBookingsList();
+      } catch {
+        showAlert(alertEl, 'تعذر التحقق من الرمز.');
+      }
+    });
+
+    document.getElementById('refreshBookingsBtn').addEventListener('click', loadAdminBookingsList);
+
+    document.getElementById('buildProgramForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const resBox = document.getElementById('adminSaveResult');
+      hideAlert(resBox);
+
+      const payload = {
+        customer_name: document.getElementById('admCustomerName').value.trim(),
+        family_name: document.getElementById('admFamilyName').value.trim(),
+        phone: document.getElementById('admPhone').value.trim(),
+        price: document.getElementById('admPrice').value.trim(),
+        country: document.getElementById('admCountry').value.trim(),
+        city: document.getElementById('admCity').value.trim(),
+        trip_title: document.getElementById('admTripTitle').value.trim(),
+        departure_at: document.getElementById('admDepartureAt').value,
+        terms: document.getElementById('admTerms').value.trim(),
+        segments: builderSegments.filter((s) => s.title.trim())
+      };
+
+      try {
+        const res = await fetch('/api/admin/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-pin': adminPinToken
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || 'تعذر حفظ البرنامج.');
+          return;
+        }
+        showAlert(
+          resBox,
+          `✅ تم حفظ البرنامج بنجاح! رقم الحجز المولّد تلقائياً (PNR): ${data.booking.pnr} — اسم العائلة للدخول: ${data.booking.family_name}`
+        );
+        loadAdminBookingsList();
+      } catch {
+        alert('تعذر الاتصال بالخادم أثناء حفظ البرنامج.');
+      }
+    });
+
+    setInterval(check24HourReminder, 60000);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
