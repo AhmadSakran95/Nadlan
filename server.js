@@ -7,6 +7,8 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 app.use(cors());
 app.use(express.json());
@@ -151,6 +153,116 @@ function formatBookingRow(row, stepRows) {
   };
 }
 
+// ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
+app.post('/api/ai/chat', async (req, res) => {
+  const { message, booking, weatherSummary, history } = req.body;
+
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'يرجى إرسال نص السؤال' });
+  }
+
+  if (!GEMINI_API_KEY) {
+    return res.status(200).json({
+      reply: `⚠️ لم يتم ضبط مفتاح الذكاء الاصطناعي **GEMINI_API_KEY** على Railway بعد.
+
+ل تفعيل الذكاء الاصطناعي الحقيقي الذي يجيب على أي سؤال عن السفر:
+1. احصل على مفتاح API مجاني أو مدفوع من Google AI Studio.
+2. في لوحة تحكم **Railway**، اذهب إلى تبويب **Variables**.
+3. أضف متغير جديد باسم \`GEMINI_API_KEY\` وقيمته مفتاحك.
+4. أعد النشر (Redeploy) وسيعمل المساعد الذكي بكامل طاقته على جميع أسئلة السفر!`,
+      usedRealAI: false
+    });
+  }
+
+  const bookingContext = booking
+    ? JSON.stringify(
+        {
+          pnr: booking.pnr,
+          passenger: `${booking.firstName} ${booking.lastName}`,
+          destinationCity: booking.city,
+          totalPrice: `${booking.price} ${booking.currency}`,
+          terms: booking.terms,
+          itinerary: booking.itinerary
+        },
+        null,
+        2
+      )
+    : 'لا يوجد حجز محدد حالياً.';
+
+  const weatherContext =
+    Array.isArray(weatherSummary) && weatherSummary.length > 0
+      ? weatherSummary.join('
+')
+      : 'غير متوفر حالياً.';
+
+  const systemInstruction = `أنت مساعد سفر ذكي وخبير سياحي متكامل لوكالة "Nadlantours" (ندلان تورز).
+مهمتك مساعدة المسافر في **أي شيء يتعلق بالسفر** بأسلوب ودود، عملي، ودقيق باللغة العربية:
+- قراءة وفهم تفاصيل حجز المسافر من قاعدة البيانات (الرحلات، الفنادق، التوصيلات، الجولات، السعر، الشروط).
+- بناء جداول يومية مخصصة حسب اهتمامات المسافر (عائلات، أزواج، تسوق، طبيعة، أطفال، ميزانية).
+- اقتراح مطاعم حلال، مقاهي، أماكن سياحية، رحلات قريبة من الوجهة، وسائل مواصلات (مترو، تاكسي، أوبر، قطارات، استئجار سيارة).
+- نصائح السفر، التأشيرات/الجمارك العامة، الحقائب، العملات، التحويلات، لغة التواصل السريعة، وفيوز الكهرباء.
+- الإجابة بوضوح وبدون تقييد بأسئلة جاهزة. إذا سأل المسافر عن شيء خارج بيانات الحجز، أجب بمعرفتك السياحية الواسعة والعملية.
+
+بيانات حجز المسافر الحالية:
+${bookingContext}
+
+توقعات الطقس الحالية للوجهة:
+${weatherContext}`;
+
+  const contents = [];
+  if (Array.isArray(history)) {
+    for (const turn of history.slice(-8)) {
+      if (turn && (turn.role === 'user' || turn.role === 'model') && turn.text) {
+        contents.push({
+          role: turn.role,
+          parts: [{ text: String(turn.text) }]
+        });
+      }
+    }
+  }
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1500
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
+      return res.status(502).json({ error: `تعذر الحصول على رد من Gemini API: ${apiErrMsg}` });
+    }
+
+    const replyText =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || '')
+        .join('')
+        .trim() || 'عذراً، لم أتمكن من صياغة رد واضح الآن. جرّب إعادة صياغة سؤالك.';
+
+    res.json({ reply: replyText, usedRealAI: true });
+  } catch (err) {
+    console.error('Gemini API error:', err);
+    res.status(500).json({ error: 'حدث خطأ أثناء الاتصال بواجهة الذكاء الاصطناعي.' });
+  }
+});
+
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   if (password === '1234') {
@@ -264,4 +376,5 @@ app.delete('/api/bookings/:pnr', (req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`🚀 Nadlantours Railway Server running on http://${HOST}:${PORT}`);
+  console.log(`🤖 Gemini AI status: ${GEMINI_API_KEY ? 'Configured (' + GEMINI_MODEL + ')' : 'Missing GEMINI_API_KEY env var'}`);
 });

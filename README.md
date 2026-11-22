@@ -1,16 +1,13 @@
-# Nadlantours - جاهز للرفع على Railway مع قاعدة بيانات SQL
+# Nadlantours - جاهز على Railway مع قاعدة بيانات SQL وذكاء اصطناعي حقيقي (Gemini API)
 
-هذا الملف يحتوي على المشروع الكامل مع مجلد `public/` وقاعدة بيانات **SQL** (`schema.sql` + `server.js` عبر SQLite).
+## تفعيل الذكاء الاصطناعي على Railway
+1. احصل على مفتاح `GEMINI_API_KEY` من Google AI Studio.
+2. في لوحة تحكم **Railway**، اختر خدمتك ➔ تبويب **Variables**.
+3. أضف المتغير:
+   - `GEMINI_API_KEY` = مفتاح الـ API الخاص بك
+   - (اختياري) `GEMINI_MODEL` = `gemini-2.5-flash`
+4. أعد النشر (Redeploy) وسيجيب المساعد الذكي على أي سؤال يتعلق بالسفر والرحلات والخطط اليومية وتفاصيل الحجز.
 
-## مكان مجلد `public/`
-مجلد `public/` موجود مباشرة في الجذر الرئيسي للمشروع:
-- `public/index.html`
-- `public/app.js`
-- `public/styles.css`
-
-## خطوات الرفع على Railway
-1. فك ضغط ملف الـ ZIP على جهازك.
-2. ارفع المجلد إلى مستودع **GitHub** (أو استخدم Railway CLI).
-3. في **Railway** اضغط **New Project** ➔ **Deploy from GitHub repo** واختر المستودع.
-4. سيقوم Railway تلقائياً بتثبيت الحزم (`npm install`) وتشغيل السيرفر (`npm start`) وإنشاء قاعدة البيانات `nadlantours.db` تلقائياً.
-5. **نصيحة مهمة في Railway:** لإبقاء بيانات SQL محفوظة حتى عند إعادة النشر (Redeploy)، أضف **Volume** في إعدادات الخدمة واربطه بالمسار `/data` ثم أضف متغير البيئة `RAILWAY_VOLUME_MOUNT_PATH=/data`.
+## قاعدة البيانات ومجلد `public/`
+- قاعدة البيانات **SQL** (`schema.sql` + SQLite عبر `server.js`) تعمل تلقائياً، ويُنصح بربط **Volume** على `/data` مع `RAILWAY_VOLUME_MOUNT_PATH=/data`.
+- مجلد `public/` موجود في الجذر الرئيسي (`public/index.html`, `public/app.js`, `public/styles.css`).
