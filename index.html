@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nadlantours | ندلان تورز - إدارة وبرامج السفر</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-gradient-to-l from-slate-900 via-blue-950 to-slate-900 text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <div class="flex items-center gap-3 cursor-pointer" onclick="switchMainTab('customer')">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-900 shadow-md">
+          <i class="fa-solid fa-plane-departure text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-extrabold tracking-wide text-white">Nadlan<span class="text-amber-400">tours</span></h1>
+          <p class="text-xs text-slate-300">بوابتك الذكية لإدارة وبرامج السياحة والسفر</p>
+        </div>
+      </div>
+
+      <!-- Navigation Switcher -->
+      <nav class="flex bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
+        <button id="nav-customer" onclick="switchMainTab('customer')" class="px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 bg-amber-500 text-slate-950 shadow">
+          <i class="fa-solid fa-suitcase-rolling"></i>
+          <span>حجز الزبون</span>
+        </button>
+        <button id="nav-admin" onclick="switchMainTab('admin')" class="px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 text-slate-300 hover:text-white">
+          <i class="fa-solid fa-user-shield"></i>
+          <span>قسم الإدارة</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- ==================== CUSTOMER SECTION ==================== -->
+    <section id="section-customer" class="space-y-8">
+      
+      <!-- Customer Login Box -->
+      <div id="customer-login-view" class="max-w-xl mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden mt-6">
+        <div class="bg-gradient-to-r from-blue-900 to-slate-900 p-8 text-white text-center relative overflow-hidden">
+          <div class="w-16 h-16 bg-amber-400/20 text-amber-300 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl border border-amber-400/30">
+            <i class="fa-solid fa-passport"></i>
+          </div>
+          <h2 class="text-2xl font-extrabold mb-2">استعرض برنامج رحلتك</h2>
+          <p class="text-slate-300 text-sm">أدخل رقم الحجز (PNR) واسم العائلة للاطلاع على تفاصيل الرحلة، الطقس، المطاعم الحلال، والمساعد الذكي</p>
+        </div>
+
+        <form id="customer-login-form" class="p-8 space-y-5">
+          <div>
+            <label class="block text-sm font-bold text-slate-700 mb-2">رقم الحجز (PNR)</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                <i class="fa-solid fa-ticket"></i>
+              </span>
+              <input type="text" id="login-pnr" required placeholder="مثال: NDL101" class="w-full pr-10 pl-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none uppercase font-mono text-left" dir="ltr" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-bold text-slate-700 mb-2">اسم العائلة</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+                <i class="fa-solid fa-user"></i>
+              </span>
+              <input type="text" id="login-lastname" required placeholder="مثال: المنصور" class="w-full pr-10 pl-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none" />
+            </div>
+          </div>
+
+          <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-200 flex items-center gap-2">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>عذراً، لم يتم العثور على حجز مطابق لرقم PNR واسم العائلة.</span>
+          </div>
+
+          <button type="submit" class="w-full bg-gradient-to-l from-amber-500 to-amber-400 hover:from-amber-600 hover:to-amber-500 text-slate-950 font-extrabold py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-base">
+            <span>عرض برنامجي السياحي</span>
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+
+          <!-- Quick Demo Logins -->
+          <div class="pt-4 border-t border-slate-100">
+            <p class="text-xs text-slate-500 text-center mb-3">تجربة سريعة لحجوزات جاهزة:</p>
+            <div class="flex flex-wrap gap-2 justify-center">
+              <button type="button" onclick="quickCustomerLogin('NDL101', 'المنصور')" class="text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-slate-200 transition">
+                برشلونة (NDL101 - المنصور)
+              </button>
+              <button type="button" onclick="quickCustomerLogin('NDL202', 'العلي')" class="text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-slate-200 transition">
+                إسطنبول (NDL202 - العلي)
+              </button>
+              <button type="button" onclick="quickCustomerLogin('NDL303', 'الخالدي')" class="text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-slate-200 transition">
+                دبي (NDL303 - الخالدي)
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Customer Booking Dashboard -->
+      <div id="customer-dashboard-view" class="hidden space-y-8">
+        <!-- Top Banner -->
+        <div class="bg-gradient-to-l from-slate-900 via-blue-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <div class="flex items-center gap-3 mb-2">
+              <span class="bg-amber-400 text-slate-950 font-mono font-extrabold px-3 py-1 rounded-lg text-sm" id="cust-pnr-badge">PNR: NDL101</span>
+              <span class="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-3 py-1 rounded-lg text-xs font-bold">
+                <i class="fa-solid fa-circle-check ml-1"></i> حجز مؤكد
+              </span>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold mb-1">مرحباً بك، <span id="cust-fullname" class="text-amber-400"></span></h2>
+            <p class="text-slate-300 text-sm flex items-center gap-4 flex-wrap">
+              <span><i class="fa-solid fa-location-dot text-amber-400 ml-1"></i> الوجهة: <strong id="cust-city" class="text-white"></strong></span>
+              <span><i class="fa-solid fa-phone text-amber-400 ml-1"></i> الهاتف: <span id="cust-phone" dir="ltr"></span></span>
+            </p>
+          </div>
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+            <div class="bg-white/10 backdrop-blur px-5 py-3 rounded-2xl border border-white/10 text-center">
+              <span class="block text-xs text-slate-300">إجمالي سعر البرنامج</span>
+              <span class="text-2xl font-extrabold text-amber-400" id="cust-price"></span>
+            </div>
+            <button onclick="logoutCustomer()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-3 rounded-2xl text-sm font-bold transition flex items-center justify-center gap-2 border border-slate-700">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span>خروج</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <!-- Left 2 Columns: Itinerary + Destination Auto Guide -->
+          <div class="lg:col-span-2 space-y-8">
+            
+            <!-- Itinerary Timeline -->
+            <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                  <i class="fa-solid fa-route text-amber-500"></i>
+                  <span>مسار البرنامج السياحي</span>
+                </h3>
+                <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full" id="cust-steps-count">0 محطات</span>
+              </div>
+
+              <div id="cust-itinerary-list" class="space-y-4 relative before:content-[''] before:absolute before:top-4 before:bottom-4 before:right-6 before:w-0.5 before:bg-slate-200">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- Terms & Conditions -->
+              <div class="mt-8 pt-6 border-t border-slate-100">
+                <h4 class="text-sm font-extrabold text-slate-800 mb-2 flex items-center gap-2">
+                  <i class="fa-solid fa-file-contract text-slate-500"></i>
+                  <span>شروط وملاحظات الحجز</span>
+                </h4>
+                <div id="cust-terms" class="bg-slate-50 p-4 rounded-2xl text-sm text-slate-600 leading-relaxed border border-slate-200/70 whitespace-pre-line"></div>
+              </div>
+            </div>
+
+            <!-- Auto Destination Info (Weather, Plug, Halal Restaurants, Attractions) -->
+            <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 space-y-8">
+              <div class="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 class="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-earth-americas text-blue-600"></i>
+                    <span>دليل الوجهة التلقائي: <span id="guide-city-name" class="text-blue-700"></span></span>
+                  </h3>
+                  <p class="text-xs text-slate-500 mt-1">معلومات محدثة تلقائياً بناءً على وجهتك المسجلة في الحجز</p>
+                </div>
+                <span id="weather-source-badge" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full font-bold">
+                  <i class="fa-solid fa-satellite-dish ml-1"></i> طقس مباشر لـ 5 أيام
+                </span>
+              </div>
+
+              <!-- 5-Day Weather Forecast -->
+              <div>
+                <h4 class="text-base font-extrabold text-slate-800 mb-3 flex items-center gap-2">
+                  <i class="fa-solid fa-cloud-sun-rain text-amber-500"></i>
+                  <span>توقعات الطقس من اليوم ولمدة 5 أيام قادمة</span>
+                </h4>
+                <div id="weather-cards" class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <!-- Weather cards injected via JS -->
+                </div>
+              </div>
+
+              <!-- Power Plug & Voltage Info -->
+              <div class="bg-gradient-to-l from-amber-50 to-orange-50/50 rounded-2xl p-5 border border-amber-200/70 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-2xl shrink-0 shadow">
+                  <i class="fa-solid fa-plug"></i>
+                </div>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h4 class="font-extrabold text-slate-900 text-base">فيوز الكهرباء والجهد في <span id="plug-country"></span></h4>
+                    <span id="plug-type-badge" class="bg-slate-900 text-amber-400 font-mono text-xs font-bold px-2.5 py-0.5 rounded-md"></span>
+                  </div>
+                  <p id="plug-details" class="text-sm text-slate-700 mt-1"></p>
+                </div>
+              </div>
+
+              <!-- Top 5 Halal Restaurants -->
+              <div>
+                <h4 class="text-base font-extrabold text-slate-800 mb-3 flex items-center gap-2">
+                  <i class="fa-solid fa-utensils text-emerald-600"></i>
+                  <span>أفضل 5 مطاعم حلال بتقييم عالي في <span id="halal-city-title"></span></span>
+                </h4>
+                <div id="halal-restaurants-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <!-- 5 Halal restaurants injected via JS -->
+                </div>
+              </div>
+
+              <!-- Top Tourist Attractions -->
+              <div>
+                <h4 class="text-base font-extrabold text-slate-800 mb-3 flex items-center gap-2">
+                  <i class="fa-solid fa-camera-retro text-purple-600"></i>
+                  <span>أبرز المناطق السياحية الموصى بزيارتها</span>
+                </h4>
+                <div id="attractions-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <!-- Attractions injected via JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Smart AI Assistant -->
+          <div class="lg:col-span-1">
+            <div class="bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden sticky top-24 flex flex-col h-[680px]">
+              <div class="bg-gradient-to-r from-slate-900 to-blue-950 p-5 text-white flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center text-xl font-bold shadow relative">
+                  <i class="fa-solid fa-robot"></i>
+                  <span class="w-3 h-3 bg-emerald-400 border-2 border-slate-900 rounded-full absolute -bottom-0.5 -right-0.5"></span>
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-base">مساعد Nadlantours الذكي</h3>
+                  <p class="text-xs text-slate-300">اسألني عن برنامجك، الطقس، المطاعم، أو أي نصيحة سفر</p>
+                </div>
+              </div>
+
+              <!-- Chat Messages Area -->
+              <div id="ai-chat-messages" class="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
+                <!-- Messages injected via JS -->
+              </div>
+
+              <!-- Quick Suggested Questions -->
+              <div class="px-3 py-2 bg-white border-t border-slate-100 flex gap-1.5 overflow-x-auto no-scrollbar">
+                <button type="button" onclick="askQuickQuestion('ما هي تفاصيل رحلتي ومواعيد الطيران؟')" class="whitespace-nowrap text-xs bg-slate-100 hover:bg-amber-100 text-slate-700 px-3 py-1.5 rounded-full transition">
+                  ✈️ تفاصيل الطيران والفنادق
+                </button>
+                <button type="button" onclick="askQuickQuestion('كيف حالة الطقس وماذا ألبس؟')" class="whitespace-nowrap text-xs bg-slate-100 hover:bg-amber-100 text-slate-700 px-3 py-1.5 rounded-full transition">
+                  🌤️ الطقس والملابس
+                </button>
+                <button type="button" onclick="askQuickQuestion('رشح لي مطعم حلال ممتاز')" class="whitespace-nowrap text-xs bg-slate-100 hover:bg-amber-100 text-slate-700 px-3 py-1.5 rounded-full transition">
+                  🍽️ مطاعم حلال
+                </button>
+                <button type="button" onclick="askQuickQuestion('هل أحتاج محول فيوز كهرباء؟')" class="whitespace-nowrap text-xs bg-slate-100 hover:bg-amber-100 text-slate-700 px-3 py-1.5 rounded-full transition">
+                  🔌 فيوز الكهرباء
+                </button>
+              </div>
+
+              <!-- Chat Input -->
+              <form id="ai-chat-form" class="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+                <input type="text" id="ai-chat-input" placeholder="اكتب سؤالك هنا..." class="flex-1 bg-slate-100 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500" required />
+                <button type="submit" class="w-11 h-11 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold flex items-center justify-center transition shrink-0 shadow">
+                  <i class="fa-solid fa-paper-plane"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ADMIN SECTION ==================== -->
+    <section id="section-admin" class="hidden space-y-8">
+      
+      <!-- Admin Auth Gate -->
+      <div id="admin-login-view" class="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 p-8 mt-6 text-center">
+        <div class="w-16 h-16 bg-slate-900 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow">
+          <i class="fa-solid fa-lock"></i>
+        </div>
+        <h2 class="text-2xl font-extrabold text-slate-900 mb-2">دخول قسم الإدارة</h2>
+        <p class="text-sm text-slate-500 mb-6">أدخل رمز المرور الخاص بموظفي Nadlantours لإدارة الحجوزات وبناء البرامج</p>
+        <form id="admin-login-form" class="space-y-4">
+          <input type="password" id="admin-password" placeholder="رمز المرور (التجريبي: 1234)" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center font-mono text-lg focus:ring-2 focus:ring-amber-500 outline-none" required />
+          <p id="admin-login-error" class="hidden text-xs text-red-600 font-bold">رمز المرور غير صحيح! الرمز التجريبي هو 1234</p>
+          <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl transition shadow">
+            دخول لوحة التحكم
+          </button>
+          <button type="button" onclick="quickAdminLogin()" class="w-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold py-2.5 rounded-xl text-xs transition">
+            دخول سريع بدون كتابة الرمز (للتجربة)
+          </button>
+        </form>
+      </div>
+
+      <!-- Admin Dashboard -->
+      <div id="admin-dashboard-view" class="hidden space-y-8">
+        
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <div>
+            <h2 class="text-2xl font-extrabold text-slate-900">لوحة إدارة الحجوزات وبناء البرامج</h2>
+            <p class="text-sm text-slate-500">قم ببناء مسار الرحلة بالتفصيل وسيتم توليد رقم PNR تلقائياً للزبون</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button onclick="resetAdminForm()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow transition">
+              <i class="fa-solid fa-plus"></i>
+              <span>حجز جديد</span>
+            </button>
+            <button onclick="logoutAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2.5 rounded-xl text-sm transition">
+              قفل الإدارة
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          <!-- Builder Form (7 cols) -->
+          <div class="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100">
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+              <h3 id="form-mode-title" class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-amber-500"></i>
+                <span>إنشاء برنامج رحلة جديد</span>
+              </h3>
+              <span id="editing-pnr-badge" class="hidden bg-blue-100 text-blue-800 font-mono text-xs font-extrabold px-3 py-1 rounded-lg"></span>
+            </div>
+
+            <form id="booking-builder-form" class="space-y-6">
+              <input type="hidden" id="edit-booking-pnr" value="" />
+
+              <!-- Customer & Destination Basic Info -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">الاسم الأول للزبون *</label>
+                  <input type="text" id="b-firstname" required placeholder="مثال: أحمد" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم العائلة (يُستخدم للدخول) *</label>
+                  <input type="text" id="b-lastname" required placeholder="مثال: المنصور" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">رقم هاتف الزبون *</label>
+                  <input type="tel" id="b-phone" required placeholder="مثال: +972501234567" dir="ltr" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-left focus:ring-2 focus:ring-amber-500 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">المدينة / الوجهة الرئيسية (للطقس والمطاعم) *</label>
+                  <input type="text" id="b-city" list="popular-cities" required placeholder="مثال: برشلونة، إسطنبول، دبي..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+                  <datalist id="popular-cities">
+                    <option value="برشلونة">
+                    <option value="إسطنبول">
+                    <option value="دبي">
+                    <option value="لندن">
+                    <option value="باريس">
+                    <option value="طرابزون">
+                    <option value="شرم الشيخ">
+                    <option value="بانكوك">
+                    <option value="كوالالمبور">
+                    <option value="تبليسي">
+                  </datalist>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">السعر الإجمالي للبرنامج *</label>
+                  <div class="flex gap-2">
+                    <input type="number" id="b-price" required placeholder="مثال: 1850" class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+                    <select id="b-currency" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold bg-slate-50 outline-none">
+                      <option value="$">دولار ($)</option>
+                      <option value="€">يورو (€)</option>
+                      <option value="₪">شيكل (₪)</option>
+                      <option value="ريال">ريال سعودي</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dynamic Itinerary Builder -->
+              <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                  <label class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-layer-group text-blue-600"></i>
+                    <span>تخطيط مسار الرحلة (بالترتيب)</span>
+                  </label>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button type="button" onclick="addItineraryStep('flight')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                      <i class="fa-solid fa-plane"></i> + طيران
+                    </button>
+                    <button type="button" onclick="addItineraryStep('hotel')" class="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                      <i class="fa-solid fa-hotel"></i> + فندق
+                    </button>
+                    <button type="button" onclick="addItineraryStep('transfer')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                      <i class="fa-solid fa-car"></i> + توصيل
+                    </button>
+                    <button type="button" onclick="addItineraryStep('tour')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                      <i class="fa-solid fa-map-location-dot"></i> + جولة
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Preset Template Button -->
+                <div class="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs">
+                  <span class="text-slate-500">تعبئة سريعة لمسار قياسي (طيران ➔ فندق ➔ توصيل ➔ فندق ➔ طيران):</span>
+                  <button type="button" onclick="loadStandardTemplate()" class="text-blue-600 hover:underline font-bold">تطبيق القالب</button>
+                </div>
+
+                <!-- Steps Container -->
+                <div id="builder-steps-container" class="space-y-4">
+                  <!-- Steps rendered here -->
+                </div>
+              </div>
+
+              <!-- Booking Terms -->
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">شروط الحجز والملاحظات الهامة *</label>
+                <textarea id="b-terms" rows="3" required placeholder="مثال: السعر يشمل حقيبة 20 كغ، تسجيل الدخول للفندق الساعة 14:00، الإلغاء مجاني قبل 7 أيام..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
+              </div>
+
+              <button type="submit" class="w-full bg-gradient-to-l from-slate-900 to-blue-950 hover:from-slate-800 hover:to-blue-900 text-white font-extrabold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-base">
+                <i class="fa-solid fa-floppy-disk text-amber-400"></i>
+                <span>حفظ البرنامج وتوليد رقم PNR</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Saved Bookings List (5 cols) -->
+          <div class="lg:col-span-5 space-y-4">
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-extrabold text-slate-900">الحجوزات المحفوظة (<span id="total-bookings-count">0</span>)</h3>
+              </div>
+              
+              <div class="relative mb-4">
+                <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                  <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                </span>
+                <input type="text" id="admin-search-input" oninput="renderAdminBookings()" placeholder="بحث بالاسم، العائلة، PNR، أو الوجهة..." class="w-full pr-9 pl-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+
+              <div id="admin-bookings-list" class="space-y-3 max-h-[750px] overflow-y-auto pr-1">
+                <!-- Saved bookings rendered here -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- PNR Generated Modal -->
+  <div id="pnr-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-8 text-center shadow-2xl space-y-5 animate-fade-in">
+      <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+        <i class="fa-solid fa-check"></i>
+      </div>
+      <h3 class="text-2xl font-extrabold text-slate-900">تم حفظ البرنامج بنجاح!</h3>
+      <p class="text-sm text-slate-600">يمكن للزبون الآن الدخول واستعراض برنامجه باستخدام البيانات التالية:</p>
+      
+      <div class="bg-slate-900 text-white p-5 rounded-2xl space-y-2">
+        <div class="text-xs text-slate-400">رقم الحجز (PNR)</div>
+        <div id="modal-pnr-code" class="text-3xl font-mono font-extrabold text-amber-400 tracking-widest">NDL999</div>
+        <div class="text-xs text-slate-300 pt-2 border-t border-slate-800">
+          اسم العائلة: <strong id="modal-lastname" class="text-white"></strong>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <button onclick="copyWhatsAppMessage()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition">
+          <i class="fa-brands fa-whatsapp text-lg"></i>
+          <span>نسخ رسالة جاهزة لإرسالها للزبون</span>
+        </button>
+        <button onclick="previewBookingAsCustomer()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-xl text-sm transition">
+          معاينة صفحة الزبون الآن
+        </button>
+        <button onclick="closePnrModal()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs transition">
+          إغلاق
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-slate-900 text-slate-400 py-6 text-center text-xs mt-12">
+    <p>© 2026 Nadlantours - جميع الحقوق محفوظة | نظام إدارة وبرامج السياحة الذكي</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
