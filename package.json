@@ -1,0 +1,17 @@
+{
+  "name": "nadlantours-railway",
+  "version": "1.0.0",
+  "description": "Nadlantours Travel & Booking Management System ready for Railway with SQLite SQL",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.7"
+  }
+}
