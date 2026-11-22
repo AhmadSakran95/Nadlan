@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f4c5c" />
+  <title>المرافق — متابعة الرحلات والحجوزات</title>
+  <link rel="manifest" href="/manifest.json" />
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1c2833;
+      --muted: #5d6d7e;
+      --primary: #0f4c5c;
+      --primary-hover: #093642;
+      --accent: #e0fbfc;
+      --border: #dce3ea;
+      --success: #1e8449;
+      --danger: #b03a2e;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--primary);
+      color: #fff;
+      padding: 18px 16px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    header p {
+      font-size: 0.9rem;
+      opacity: 0.9;
+      margin-top: 4px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 680px;
+      margin: 24px auto;
+      padding: 0 16px;
+      flex: 1;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 18px;
+      box-shadow: 0 2px 6px rgba(15, 76, 92, 0.04);
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 14px;
+      color: var(--primary);
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.92rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(15, 76, 92, 0.12);
+    }
+
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.2s ease;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: var(--accent);
+      color: var(--primary);
+      border: 1px solid #b8dce0;
+      margin-top: 8px;
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      width: auto;
+      padding: 8px 14px;
+      font-size: 0.88rem;
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 10px;
+      background: #f8fafc;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border-right: 3px solid var(--primary);
+    }
+
+    .msg {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      display: none;
+    }
+
+    .msg.error {
+      display: block;
+      background: #fdecea;
+      color: var(--danger);
+    }
+
+    .msg.success {
+      display: block;
+      background: #eafaf1;
+      color: var(--success);
+    }
+
+    .trip-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin: 12px 0 18px;
+    }
+
+    .meta-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .meta-box span {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .meta-box strong {
+      font-size: 0.98rem;
+    }
+
+    .day-item {
+      border-right: 3px solid var(--primary);
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      background: #fafbfc;
+      border-radius: 6px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .topbar-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 18px 16px 28px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .admin-trigger {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>المرافق</h1>
+    <p>دليل رحلتك وحجزك خطوة بخطوة</p>
+  </header>
+
+  <main>
+    <!-- شاشة دخول الزبون -->
+    <section id="loginView" class="card">
+      <h2>الدخول إلى برنامج الرحلة</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="pnrInput">رمز الحجز (PNR)</label>
+          <input id="pnrInput" type="text" placeholder="مثال: MRF842" required />
+        </div>
+        <div class="form-group">
+          <label for="familyInput">اسم العائلة</label>
+          <input id="familyInput" type="text" placeholder="مثال: المنصور" required />
+        </div>
+        <button type="submit" class="btn btn-primary">عرض الرحلة</button>
+        <button type="button" id="demoBtn" class="btn btn-secondary">تجربة سريع بحجز تجريبي (MRF842)</button>
+      </form>
+      <div id="loginMsg" class="msg"></div>
+      <div class="hint">
+        بيانات التجربة السريعة: رمز الحجز <strong>MRF842</strong> واسم العائلة <strong>المنصور</strong>.
+      </div>
+    </section>
+
+    <!-- شاشة عرض برنامج الرحلة للزبون -->
+    <section id="tripView" class="card hidden">
+      <div class="topbar-actions">
+        <h2 id="tripTitle" style="margin: 0;">برنامج الرحلة</h2>
+        <button type="button" id="logoutBtn" class="btn btn-outline">خروج</button>
+      </div>
+      <p id="passengerName" style="color: var(--muted); font-size: 0.95rem;"></p>
+
+      <div class="trip-meta">
+        <div class="meta-box">
+          <span>رمز الحجز</span>
+          <strong id="metaPnr">—</strong>
+        </div>
+        <div class="meta-box">
+          <span>الفندق / الإقامة</span>
+          <strong id="metaHotel">—</strong>
+        </div>
+        <div class="meta-box">
+          <span>تاريخ المغادرة</span>
+          <strong id="metaDate">—</strong>
+        </div>
+      </div>
+
+      <h3 style="font-size: 1rem; margin-bottom: 10px; color: var(--primary);">تفاصيل البرنامج</h3>
+      <div id="itineraryList"></div>
+    </section>
+
+    <!-- نافذة دخول الإدارة -->
+    <section id="adminAuthView" class="card hidden">
+      <div class="topbar-actions">
+        <h2 style="margin: 0;">دخول الوكلاء / الإدارة</h2>
+        <button type="button" id="closeAdminAuthBtn" class="btn btn-outline">إلغاء</button>
+      </div>
+      <form id="adminPinForm">
+        <div class="form-group">
+          <label for="adminPinInput">رمز الإدارة</label>
+          <input id="adminPinInput" type="password" placeholder="أدخل الرمز (الافتراضي: 1234)" required />
+        </div>
+        <button type="submit" class="btn btn-primary">دخول لوحة الإدارة</button>
+      </form>
+      <div id="adminAuthMsg" class="msg"></div>
+    </section>
+
+    <!-- لوحة الإدارة -->
+    <section id="adminPanelView" class="card hidden">
+      <div class="topbar-actions">
+        <h2 style="margin: 0;">لوحة إدارة الرحلات والحجوزات</h2>
+        <button type="button" id="exitAdminBtn" class="btn btn-outline">العودة للواجهة</button>
+      </div>
+
+      <form id="createBookingForm">
+        <div class="form-group">
+          <label for="newPnr">رمز الحجز (PNR)</label>
+          <input id="newPnr" type="text" placeholder="مثال: MRF901" required />
+        </div>
+        <div class="form-group">
+          <label for="newFamily">اسم العائلة / المسافر</label>
+          <input id="newFamily" type="text" placeholder="مثال: الخطيب" required />
+        </div>
+        <div class="form-group">
+          <label for="newTripTitle">عنوان الرحلة</label>
+          <input id="newTripTitle" type="text" placeholder="مثال: رحلة إسطنبول العائلية" required />
+        </div>
+        <div class="form-group">
+          <label for="newHotel">الفندق</label>
+          <input id="newHotel" type="text" placeholder="مثال: فندق السلطان أحمد" />
+        </div>
+        <div class="form-group">
+          <label for="newDate">تاريخ المغادرة</label>
+          <input id="newDate" type="date" />
+        </div>
+        <div class="form-group">
+          <label for="newNotes">برنامج الأيام والملاحظات (سطر لكل يوم)</label>
+          <textarea id="newNotes" rows="4" placeholder="اليوم 1: الوصول والاستقبال في المطار&#10;اليوم 2: جولة البوسفور والمدينة القديمة"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">حفظ الحجز / البرنامج</button>
+      </form>
+      <div id="adminPanelMsg" class="msg"></div>
+    </section>
+  </main>
+
+  <footer>
+    <button type="button" id="openAdminBtn" class="admin-trigger">دخول الوكلاء / الإدارة</button>
+  </footer>
+
+  <script>
+    const loginView = document.getElementById('loginView');
+    const tripView = document.getElementById('tripView');
+    const adminAuthView = document.getElementById('adminAuthView');
+    const adminPanelView = document.getElementById('adminPanelView');
+
+    const showOnly = (target) => {
+      [loginView, tripView, adminAuthView, adminPanelView].forEach((el) => {
+        el.classList.toggle('hidden', el !== target);
+      });
+    };
+
+    const setMsg = (el, text, type = 'error') => {
+      el.textContent = text;
+      el.className = `msg ${type}`;
+    };
+
+    const clearMsg = (el) => {
+      el.textContent = '';
+      el.className = 'msg';
+    };
+
+    const renderTrip = (data) => {
+      const booking = data.booking || data;
+      document.getElementById('tripTitle').textContent = booking.trip_title || booking.title || 'برنامج الرحلة';
+      document.getElementById('passengerName').textContent = `مرحباً بعائلة ${booking.family_name || booking.familyName || ''}`;
+      document.getElementById('metaPnr').textContent = booking.pnr || '—';
+      document.getElementById('metaHotel').textContent = booking.hotel || 'حسب البرنامج';
+      document.getElementById('metaDate').textContent = booking.departure_date || booking.date || 'قريباً';
+
+      const list = document.getElementById('itineraryList');
+      list.innerHTML = '';
+      const rawLines = (booking.itinerary || booking.notes || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      if (!rawLines.length) {
+        list.innerHTML = '<div class="day-item">سيتم تحديث تفاصيل البرنامج اليومي قريباً.</div>';
+      } else {
+        rawLines.forEach((line) => {
+          const div = document.createElement('div');
+          div.className = 'day-item';
+          div.textContent = line;
+          list.appendChild(div);
+        });
+      }
+
+      showOnly(tripView);
+    };
+
+    document.getElementById('demoBtn').addEventListener('click', () => {
+      document.getElementById('pnrInput').value = 'MRF842';
+      document.getElementById('familyInput').value = 'المنصور';
+      document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+    });
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const loginMsg = document.getElementById('loginMsg');
+      clearMsg(loginMsg);
+
+      const pnr = document.getElementById('pnrInput').value.trim();
+      const family_name = document.getElementById('familyInput').value.trim();
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pnr, family_name, familyName: family_name })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setMsg(loginMsg, data.error || 'تعذر العثور على الحجز، تأكد من الرمز واسم العائلة.');
+          return;
+        }
+        renderTrip(data);
+      } catch (err) {
+        setMsg(loginMsg, 'حدث خطأ في الاتصال بالخادم.');
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      clearMsg(document.getElementById('loginMsg'));
+      showOnly(loginView);
+    });
+
+    document.getElementById('openAdminBtn').addEventListener('click', () => {
+      clearMsg(document.getElementById('adminAuthMsg'));
+      document.getElementById('adminPinInput').value = '';
+      showOnly(adminAuthView);
+    });
+
+    document.getElementById('closeAdminAuthBtn').addEventListener('click', () => {
+      showOnly(loginView);
+    });
+
+    document.getElementById('exitAdminBtn').addEventListener('click', () => {
+      showOnly(loginView);
+    });
+
+    document.getElementById('adminPinForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pin = document.getElementById('adminPinInput').value.trim();
+      const authMsg = document.getElementById('adminAuthMsg');
+      if (pin === '1234') {
+        clearMsg(authMsg);
+        clearMsg(document.getElementById('adminPanelMsg'));
+        showOnly(adminPanelView);
+      } else {
+        setMsg(authMsg, 'رمز الإدارة غير صحيح.');
+      }
+    });
+
+    document.getElementById('createBookingForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const panelMsg = document.getElementById('adminPanelMsg');
+      clearMsg(panelMsg);
+
+      const payload = {
+        pnr: document.getElementById('newPnr').value.trim(),
+        family_name: document.getElementById('newFamily').value.trim(),
+        familyName: document.getElementById('newFamily').value.trim(),
+        trip_title: document.getElementById('newTripTitle').value.trim(),
+        title: document.getElementById('newTripTitle').value.trim(),
+        hotel: document.getElementById('newHotel').value.trim(),
+        departure_date: document.getElementById('newDate').value,
+        itinerary: document.getElementById('newNotes').value.trim(),
+        notes: document.getElementById('newNotes').value.trim()
+      };
+
+      try {
+        const res = await fetch('/api/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setMsg(panelMsg, data.error || 'تعذر حفظ الحجز.');
+          return;
+        }
+        setMsg(panelMsg, `تم حفظ الحجز (${payload.pnr}) بنجاح.`, 'success');
+        document.getElementById('createBookingForm').reset();
+      } catch (err) {
+        setMsg(panelMsg, 'تعذر الاتصال بالخادم أثناء الحفظ.');
+      }
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
