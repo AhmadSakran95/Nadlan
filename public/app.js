@@ -803,9 +803,12 @@ function mapWeatherCode(code) {
   return { icon: "🌦️", desc: "زخات متفرقة" };
 }
 
-// ==================== SMART AI ASSISTANT ====================
+// ==================== SMART AI ASSISTANT (GEMINI API) ====================
+
+let aiChatHistory = [];
 
 function initAIChat(b) {
+  aiChatHistory = [];
   const chatBox = document.getElementById("ai-chat-messages");
   chatBox.innerHTML = `
     <div class="flex items-start gap-2.5">
@@ -814,8 +817,7 @@ function initAIChat(b) {
       </div>
       <div class="bg-white p-3.5 rounded-2xl rounded-tr-none shadow-sm border border-slate-200/70 text-xs sm:text-sm text-slate-700 leading-relaxed">
         أهلاً بك <strong>${escapeHtml(b.firstName)}</strong>! 👋<br/>
-        أنا مساعدك الشخصي من <strong>Nadlantours</strong>. لقد جلبت كامل تفاصيل حجزك رقم <span class="font-mono font-bold text-blue-700">${b.pnr}</span> إلى <strong>${escapeHtml(b.city)}</strong> من قاعدة البيانات.<br/>
-        اسألني عن مواعيد طيرانك، فنادقك، التوصيلات، حالة الطقس، فيوز الكهرباء، أو أفضل المطاعم الحلال!
+        أنا مساعد السفر الذكي من <strong>Nadlantours</strong> المدعوم بالذكاء الاصطناعي. أرى تفاصيل حجزك <span class="font-mono font-bold text-blue-700">${b.pnr}</span> إلى <strong>${escapeHtml(b.city)}</strong> ويمكنني مساعدتك في <strong>أي شيء يخص السفر</strong>: بناء جداول يومية، اقتراح أماكن ومطاعم، مواصلات، ميزانية، نصائح سفر، أو أسئلة حول رحلتك!
       </div>
     </div>
   `;
@@ -834,8 +836,16 @@ function askQuickQuestion(q) {
   handleAIQuestion(q);
 }
 
-function handleAIQuestion(question) {
+function formatMarkdownText(raw) {
+  const escaped = escapeHtml(raw);
+  return escaped
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono">$1</code>');
+}
+
+async function handleAIQuestion(question) {
   const chatBox = document.getElementById("ai-chat-messages");
+  const sendBtn = document.querySelector("#ai-chat-form button[type='submit']");
 
   chatBox.innerHTML += `
     <div class="flex items-start justify-end gap-2.5">
@@ -844,80 +854,72 @@ function handleAIQuestion(question) {
       </div>
     </div>
   `;
-  chatBox.scrollTop = chatBox.scrollHeight;
 
-  setTimeout(() => {
-    const reply = generateSmartAIReply(question, currentCustomerBooking);
+  const typingId = "ai-typing-" + Date.now();
+  chatBox.innerHTML += `
+    <div id="${typingId}" class="flex items-start gap-2.5">
+      <div class="w-8 h-8 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center text-xs shrink-0 mt-1">
+        <i class="fa-solid fa-robot"></i>
+      </div>
+      <div class="bg-white p-3.5 rounded-2xl rounded-tr-none shadow-sm border border-slate-200/70 text-xs text-slate-500 flex items-center gap-2">
+        <i class="fa-solid fa-sparkles fa-spin text-amber-500"></i>
+        <span>يفكر الذكاء الاصطناعي في إجابتك...</span>
+      </div>
+    </div>
+  `;
+  chatBox.scrollTop = chatBox.scrollHeight;
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: question,
+        booking: currentCustomerBooking,
+        weatherSummary: currentWeatherSummary,
+        history: aiChatHistory
+      })
+    });
+
+    const data = await res.json();
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+
+    const replyText = res.ok && data.reply
+      ? data.reply
+      : (data.error || "عذراً، حدث خطأ أثناء التواصل مع الذكاء الاصطناعي.");
+
+    aiChatHistory.push({ role: "user", text: question });
+    aiChatHistory.push({ role: "model", text: replyText });
+
     chatBox.innerHTML += `
       <div class="flex items-start gap-2.5">
         <div class="w-8 h-8 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center text-xs shrink-0 mt-1">
           <i class="fa-solid fa-robot"></i>
         </div>
         <div class="bg-white p-3.5 rounded-2xl rounded-tr-none shadow-sm border border-slate-200/70 text-xs sm:text-sm text-slate-700 leading-relaxed max-w-[88%] whitespace-pre-line">
-          ${reply}
+          ${formatMarkdownText(replyText)}
         </div>
       </div>
     `;
+  } catch (err) {
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    chatBox.innerHTML += `
+      <div class="flex items-start gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center text-xs shrink-0 mt-1">
+          <i class="fa-solid fa-robot"></i>
+        </div>
+        <div class="bg-red-50 p-3.5 rounded-2xl rounded-tr-none border border-red-200 text-xs text-red-700">
+          تعذر الاتصال بالسيرفر. تأكد من تشغيل التطبيق بشكل صحيح.
+        </div>
+      </div>
+    `;
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
     chatBox.scrollTop = chatBox.scrollHeight;
-  }, 450);
-}
-
-function generateSmartAIReply(q, b) {
-  if (!b) return "يرجى تسجيل الدخول أولاً برقم الحجز لأتمكن من مساعدتك.";
-  const text = q.toLowerCase();
-  const matchedKey = Object.keys(DESTINATION_DB).find(k => b.city.includes(k) || k.includes(b.city));
-  const destInfo = matchedKey ? DESTINATION_DB[matchedKey] : null;
-
-  if (text.includes("طيران") || text.includes("رحل") || text.includes("مطار") || text.includes("موعد")) {
-    const flights = b.itinerary.filter(s => s.type === "flight");
-    if (flights.length === 0) return "لا توجد رحلات طيران مسجلة في هذا البرنامج.";
-    return "✈️ إليك تفاصيل رحلات الطيران في برنامجك:\n\n" + flights.map((f, i) =>
-      `${i + 1}. من **${f.from}** إلى **${f.to}**\n   📅 الموعد: ${f.date}${f.notes ? `\n   ℹ️ ${f.notes}` : ""}`
-    ).join("\n\n");
   }
-
-  if (text.includes("فندق") || text.includes("فنادق") || text.includes("اقام") || text.includes("إقام") || text.includes("نجم")) {
-    const hotels = b.itinerary.filter(s => s.type === "hotel");
-    if (hotels.length === 0) return "لا توجد فنادق مسجلة في هذا البرنامج.";
-    return "🏨 إليك تفاصيل الفنادق المحجوزة لك:\n\n" + hotels.map((h, i) =>
-      `${i + 1}. **${h.hotelName}** (${h.stars})\n   🍽️ نوع الإقامة: ${h.boardType}${h.notes ? `\n   🛏️ ${h.notes}` : ""}`
-    ).join("\n\n");
-  }
-
-  if (text.includes("توصيل") || text.includes("سيار") || text.includes("نقل") || text.includes("سائق")) {
-    const transfers = b.itinerary.filter(s => s.type === "transfer");
-    if (transfers.length === 0) return "لا توجد خدمات توصيل مسجلة في برنامجك الحالي.";
-    return "🚗 إليك تفاصيل التوصيلات الخاصة بك:\n\n" + transfers.map((t, i) =>
-      `${i + 1}. من **${t.from}** إلى **${t.to}**\n   🕒 الموعد: ${t.date}${t.notes ? `\n   🚘 ${t.notes}` : ""}`
-    ).join("\n\n");
-  }
-
-  if (text.includes("طقس") || text.includes("جو") || text.includes("حرار") || text.includes("ملابس") || text.includes("البس")) {
-    const summary = currentWeatherSummary.length ? currentWeatherSummary.join("\n• ") : "الطقس معتدل ولطيف خلال الأيام القادمة.";
-    return `🌤️ حالة الطقس المتوقعة في **${b.city}** لـ 5 أيام:\n\n• ${summary}\n\n💡 نصيحة الملابس: يُنصح باصطحاب ملابس مريحة للمشي نهاراً مع سترة خفيفة للمساء.`;
-  }
-
-  if (text.includes("فيوز") || text.includes("كهرب") || text.includes("شاحن") || text.includes("محول")) {
-    if (destInfo) {
-      return `🔌 معلومات الكهرباء في **${destInfo.country}** (${b.city}):\n• نوع الفيش: **${destInfo.plugType}**\n• الجهد الكهربائي: **${destInfo.voltage}**\n• ملاحظة: ${destInfo.plugNote}`;
-    }
-    return `🔌 في **${b.city}** الجهد الكهربائي القياسي هو 220-240 فولت. يُفضل اصطحاب محول سفر عالمي (Universal Adapter).`;
-  }
-
-  if (text.includes("حلال") || text.includes("مطعم") || text.includes("مطاعم") || text.includes("اكل") || text.includes("أكل")) {
-    if (destInfo) {
-      return `🍽️ أفضل 5 مطاعم حلال بتقييم عالي في **${b.city}**:\n\n` + destInfo.halalRestaurants.map((r, i) =>
-        `${i + 1}. **${r.name}** (⭐ ${r.rating}) - ${r.cuisine} في منطقة ${r.area}`
-      ).join("\n");
-    }
-    return `🍽️ تتوفر عدة مطاعم حلال مميزة في وسط مدينة **${b.city}**، وقد عرضنا لك أفضل 5 خيارات في دليل الوجهة.`;
-  }
-
-  if (text.includes("سعر") || text.includes("تكلف") || text.includes("شروط") || text.includes("حقيب") || text.includes("شنط")) {
-    return `💰 السعر الإجمالي لبرنامجك هو **${b.price} ${b.currency}**.\n\n📋 شروط الحجز:\n${b.terms}`;
-  }
-
-  return `بكل سرور يا **${b.firstName}**! 🌟\nأنت مسافر إلى **${b.city}** ضمن حجز رقم **${b.pnr}** (يشمل ${b.itinerary.length} محطات بين طيران وفنادق وتوصيلات).\n\nيمكنني إعطاؤك تفاصيل دقيقة إذا سألتني عن:\n• مواعيد الطيران أو التوصيلات\n• أسماء الفنادق ونوع الإقامة\n• حالة الطقس والملابس المناسبة\n• فيوز الكهرباء أو أفضل المطاعم الحلال في ${b.city}.`;
 }
 
 function escapeHtml(str) {
