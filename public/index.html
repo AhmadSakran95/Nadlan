@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="المرافق">
+    <link rel="manifest" href="/manifest.json">
+    <title>المرافق | رفيقك الذكي في السفر</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Tajawal', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+    <header class="bg-gradient-to-l from-teal-700 to-emerald-800 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center gap-2">
+            <div class="flex items-center gap-3">
+                <div class="bg-white/20 p-2 rounded-xl text-2xl">🧭</div>
+                <div>
+                    <h1 class="text-2xl font-extrabold tracking-wide">المُرافق</h1>
+                    <p class="text-xs text-teal-100">بوابتك الذكية لإدارة رحلاتك خطوة بخطوة</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="installAppBtn" onclick="installPWA()" class="hidden bg-amber-400 hover:bg-amber-300 text-slate-900 px-3 py-2 rounded-lg text-xs font-extrabold transition shadow">
+                    📲 تثبيت التطبيق
+                </button>
+                <button id="logoutBtn" onclick="logoutCustomer()" class="hidden bg-white/15 hover:bg-white/25 px-4 py-2 rounded-lg text-sm font-bold transition">
+                    تسجيل الخروج
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main id="customerLoginView" class="flex-1 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-xl border border-slate-100 max-w-md w-full p-8">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">✈️</div>
+                <h2 class="text-2xl font-extrabold text-slate-800">استعرض برنامج رحلتك</h2>
+                <p class="text-slate-500 text-sm mt-1">أدخل رقم الحجز (PNR) واسم العائلة للوصول إلى كافة التفاصيل</p>
+            </div>
+
+            <form onsubmit="handleCustomerLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">رقم الحجز (PNR)</label>
+                    <input type="text" id="loginPnr" required placeholder="مثال: MRF842"
+                        class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-600 focus:ring-2 focus:ring-teal-100 outline-none uppercase font-mono text-left" dir="ltr">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">اسم العائلة</label>
+                    <input type="text" id="loginLastName" required placeholder="مثال: المنصور"
+                        class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-teal-600 focus:ring-2 focus:ring-teal-100 outline-none">
+                </div>
+                <div id="loginError" class="hidden text-red-600 text-sm bg-red-50 p-3 rounded-xl border border-red-100"></div>
+                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3.5 rounded-xl shadow-md transition">
+                    دخول إلى برنامجي
+                </button>
+            </form>
+
+            <div class="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
+                <p class="text-xs text-slate-400">حجز تجريبي جاهز لاختبار النظام والـ Check-in:</p>
+                <button onclick="fillDemo()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold transition">
+                    تجربة حجز: MRF842 / المنصور
+                </button>
+                <p class="text-[11px] text-slate-400 pt-1">لتثبيت التطبيق على الآيفون: اضغط مشاركة (Share) ثم "إضافة إلى الشاشة الرئيسية".</p>
+            </div>
+        </div>
+    </main>
+
+    <main id="customerDashboardView" class="hidden flex-1 max-w-5xl w-full mx-auto p-4 space-y-6">
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-wrap justify-between items-center gap-4">
+            <div>
+                <span class="bg-teal-50 text-teal-700 text-xs font-bold px-3 py-1 rounded-full">PNR: <span id="custPnr" class="font-mono"></span></span>
+                <h2 class="text-2xl font-extrabold text-slate-800 mt-2">أهلاً بك، <span id="custFullName"></span> 👋</h2>
+                <p class="text-slate-500 text-sm mt-1">وجهتك القادمة: <strong id="custDestination" class="text-teal-700"></strong></p>
+            </div>
+            <div class="bg-slate-50 px-5 py-3 rounded-2xl border border-slate-100 text-left">
+                <p class="text-xs text-slate-400">إجمالي قيمة البرنامج</p>
+                <p class="text-2xl font-extrabold text-emerald-700"><span id="custPrice"></span> <span id="custCurrency" class="text-sm"></span></p>
+            </div>
+        </div>
+
+        <div id="checkinBanner" class="hidden bg-gradient-to-l from-amber-500 to-orange-600 text-white rounded-3xl p-6 shadow-lg">
+            <div class="flex flex-wrap justify-between items-center gap-4">
+                <div>
+                    <span class="bg-white/20 px-3 py-1 rounded-full text-xs font-bold animate-pulse">تنبيه هام • متبقي أقل من 24 ساعة</span>
+                    <h3 class="text-xl font-extrabold mt-2">حان موعد تسجيل الدخول الإلكتروني (Online Check-in)</h3>
+                    <p id="checkinFlightInfo" class="text-sm text-amber-50 mt-1"></p>
+                </div>
+                <button onclick="openCheckinModal()" class="bg-white text-orange-600 hover:bg-amber-50 font-extrabold px-6 py-3 rounded-xl shadow transition">
+                    إتمام الـ Check-in الآن
+                </button>
+            </div>
+        </div>
+
+        <div id="boardingPassCard" class="hidden bg-white border-2 border-emerald-500 rounded-3xl p-6 shadow-md">
+            <div class="flex flex-wrap justify-between items-center gap-4">
+                <div>
+                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">✓ تم تأكيد الحضور وإصدار بطاقة الصعود</span>
+                    <h3 class="text-lg font-extrabold text-slate-800 mt-2">بطاقة الصعود الرقمية (Boarding Pass)</h3>
+                    <p id="boardingDetails" class="text-sm text-slate-600 mt-1"></p>
+                </div>
+                <div class="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div class="text-center">
+                        <p class="text-xs text-slate-400">المقعد</p>
+                        <p id="boardingSeat" class="text-2xl font-extrabold text-teal-700 font-mono"></p>
+                    </div>
+                    <div class="text-4xl">📱</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 space-y-4">
+                <h3 class="text-lg font-extrabold text-slate-800 flex items-center gap-2">🗺️ مسار الرحلة التفصيلي</h3>
+                <div id="itineraryTimeline" class="space-y-4"></div>
+
+                <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                    <h4 class="font-bold text-slate-700 text-sm mb-2">📋 شروط وأحكام الحجز</h4>
+                    <p id="custTerms" class="text-sm text-slate-600 leading-relaxed"></p>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm space-y-4">
+                    <h3 class="text-lg font-extrabold text-slate-800">🌍 دليل الوجهة التلقائي</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="bg-sky-50 p-3 rounded-xl">
+                            <p class="font-bold text-sky-900">🌤️ حالة الطقس</p>
+                            <p id="guideWeather" class="text-sky-800 mt-1 text-xs leading-relaxed"></p>
+                        </div>
+                        <div class="bg-amber-50 p-3 rounded-xl">
+                            <p class="font-bold text-amber-900">🔌 نوع فيش الكهرباء</p>
+                            <p id="guidePlug" class="text-amber-800 mt-1 text-xs leading-relaxed"></p>
+                        </div>
+                        <div class="bg-emerald-50 p-3 rounded-xl">
+                            <p class="font-bold text-emerald-900">🍽️ المطاعم الحلال</p>
+                            <p id="guideHalal" class="text-emerald-800 mt-1 text-xs leading-relaxed"></p>
+                        </div>
+                        <div class="bg-purple-50 p-3 rounded-xl">
+                            <p class="font-bold text-purple-900">🏛️ أبرز المناطق السياحية</p>
+                            <p id="guideAttractions" class="text-purple-800 mt-1 text-xs leading-relaxed"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm flex flex-col h-96">
+                    <div class="flex items-center gap-2 pb-3 border-b border-slate-100">
+                        <span class="text-xl">🤖</span>
+                        <div>
+                            <h3 class="font-extrabold text-sm text-slate-800">مساعد المرافق الذكي</h3>
+                            <p class="text-[11px] text-emerald-600">متصل ببيانات رحلتك للإجابة الفورية</p>
+                        </div>
+                    </div>
+                    <div id="chatMessages" class="flex-1 overflow-y-auto py-3 space-y-2 text-xs">
+                        <div class="bg-slate-100 text-slate-700 p-3 rounded-2xl rounded-tr-none">
+                            أهلاً بك! اسألني أي شيء عن رحلتك، فنادقك، الطقس، المطاعم الحلال، أو فيش الكهرباء.
+                        </div>
+                    </div>
+                    <form onsubmit="sendChatMessage(event)" class="flex gap-2 pt-2 border-t border-slate-100">
+                        <input type="text" id="chatInput" placeholder="اكتب سؤالك هنا..." class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-teal-600">
+                        <button type="submit" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-700">إرسال</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="checkinModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 class="text-xl font-extrabold text-slate-800">إتمام تسجيل الدخول (Online Check-in)</h3>
+            <p id="modalFlightSummary" class="text-sm text-slate-600 bg-slate-50 p-3 rounded-xl"></p>
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1">رقم جواز السفر للتأكيد</label>
+                <input type="text" id="passportInput" placeholder="مثال: P12345678" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm uppercase font-mono">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-slate-700 mb-1">تفضيل المقعد</label>
+                <select id="seatPref" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                    <option value="window">بجانب النافذة (Window)</option>
+                    <option value="aisle">بجانب الممر (Aisle)</option>
+                    <option value="any">أي مقعد متاح</option>
+                </select>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button onclick="submitCheckin()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl">تأكيد وإصدار البطاقة</button>
+                <button onclick="closeCheckinModal()" class="px-4 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminLoginModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4">
+            <h3 class="text-lg font-extrabold text-slate-800">🔐 دخول قسم الإدارة</h3>
+            <p class="text-xs text-slate-500">أدخل الرمز السري للوكلاء (الافتراضي: 1234)</p>
+            <input type="password" id="adminPassInput" placeholder="****" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-center font-mono text-lg">
+            <div class="flex gap-2">
+                <button onclick="verifyAdmin()" class="flex-1 bg-slate-800 text-white font-bold py-2.5 rounded-xl">دخول</button>
+                <button onclick="document.getElementById('adminLoginModal').classList.add('hidden')" class="px-4 py-2.5 bg-slate-100 rounded-xl text-sm">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <section id="adminDashboardView" class="hidden flex-1 max-w-5xl w-full mx-auto p-4 space-y-6">
+        <div class="bg-slate-900 text-white rounded-3xl p-6 flex justify-between items-center">
+            <div>
+                <h2 class="text-xl font-extrabold">🛠️ لوحة إدارة برامج الرحلات (SQL Database)</h2>
+                <p class="text-xs text-slate-400 mt-1">بناء برامج العملاء وتوليد أكواد الـ PNR وحفظها في قاعدة البيانات</p>
+            </div>
+            <button onclick="exitAdmin()" class="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-xs font-bold">العودة لبوابة الزبون</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5">
+                <h3 class="font-extrabold text-lg text-slate-800 border-b pb-3">➕ إنشاء برنامج رحلة جديد</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">اسم الزبون الأول *</label>
+                        <input type="text" id="admFirstName" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="مثال: خالد">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">اسم العائلة (للدخول) *</label>
+                        <input type="text" id="admLastName" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="مثال: العتيبي">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">رقم الهاتف</label>
+                        <input type="text" id="admPhone" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="+966500000000">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">الدولة / الوجهة *</label>
+                        <input type="text" id="admDestination" list="destinationsList" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="تركيا، ماليزيا، الإمارات...">
+                        <datalist id="destinationsList">
+                            <option value="تركيا">
+                            <option value="ماليزيا">
+                            <option value="الإمارات">
+                            <option value="البوسنة">
+                            <option value="اليابان">
+                        </datalist>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">السعر الإجمالي</label>
+                        <input type="number" id="admPrice" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="1500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">العملة</label>
+                        <select id="admCurrency" class="w-full border rounded-xl px-3 py-2 text-sm">
+                            <option value="USD">USD ($)</option>
+                            <option value="SAR">SAR (ريال)</option>
+                            <option value="AED">AED (درهم)</option>
+                            <option value="EUR">EUR (€)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <label class="block text-sm font-extrabold text-slate-700 mb-2">بناء مسار الرحلة:</label>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="addItineraryBlock('flight')" class="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-4 py-2 rounded-xl text-xs font-bold">+ إضافة طيران ✈️</button>
+                        <button type="button" onclick="addItineraryBlock('hotel')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl text-xs font-bold">+ إضافة فندق 🏨</button>
+                        <button type="button" onclick="addItineraryBlock('transfer')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-xl text-xs font-bold">+ إضافة مواصلات 🚐</button>
+                    </div>
+                </div>
+
+                <div id="adminItineraryContainer" class="space-y-4"></div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">شروط الحجز</label>
+                    <textarea id="admTerms" rows="2" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="اكتب شروط الإلغاء، التعديل، وما يشمله السعر..."></textarea>
+                </div>
+
+                <button onclick="saveBookingToSQL()" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-extrabold py-3.5 rounded-xl shadow-md transition">
+                    💾 حفظ البرنامج في قاعدة البيانات وتوليد PNR
+                </button>
+            </div>
+
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-4">
+                <h3 class="font-extrabold text-lg text-slate-800 border-b pb-3">📂 الحجوزات المحفوظة</h3>
+                <div id="adminBookingsList" class="space-y-3 max-h-[600px] overflow-y-auto"></div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="py-6 text-center text-xs text-slate-400">
+        <p>© 2026 تطبيق المرافق للسفر والسياحة • جميع الحقوق محفوظة</p>
+        <button onclick="document.getElementById('adminLoginModal').classList.remove('hidden')" class="mt-2 text-slate-300 hover:text-slate-500 underline">
+            دخول الوكلاء / الإدارة
+        </button>
+    </footer>
+
+    <script>
+        let deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installAppBtn').classList.remove('hidden');
+        });
+
+        async function installPWA() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            await deferredPrompt.userChoice;
+            deferredPrompt = null;
+            document.getElementById('installAppBtn').classList.add('hidden');
+        }
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+
+        let currentSession = null;
+        let adminItinerary = [];
+
+        function fillDemo() {
+            document.getElementById('loginPnr').value = 'MRF842';
+            document.getElementById('loginLastName').value = 'المنصور';
+        }
+
+        async function handleCustomerLogin(e) {
+            e.preventDefault();
+            const pnr = document.getElementById('loginPnr').value;
+            const last_name = document.getElementById('loginLastName').value;
+            const errBox = document.getElementById('loginError');
+            errBox.classList.add('hidden');
+
+            const res = await fetch('/api/customer/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pnr, last_name })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errBox.textContent = data.error;
+                errBox.classList.remove('hidden');
+                return;
+            }
+            currentSession = data;
+            renderCustomerDashboard();
+        }
+
+        function renderCustomerDashboard() {
+            const { booking, itinerary, guide } = currentSession;
+            document.getElementById('customerLoginView').classList.add('hidden');
+            document.getElementById('adminDashboardView').classList.add('hidden');
+            document.getElementById('customerDashboardView').classList.remove('hidden');
+            document.getElementById('logoutBtn').classList.remove('hidden');
+
+            document.getElementById('custPnr').textContent = booking.pnr;
+            document.getElementById('custFullName').textContent = `${booking.first_name} ${booking.last_name}`;
+            document.getElementById('custDestination').textContent = booking.destination;
+            document.getElementById('custPrice').textContent = booking.total_price;
+            document.getElementById('custCurrency').textContent = booking.currency;
+            document.getElementById('custTerms').textContent = booking.terms || 'تطبق الشروط والأحكام القياسية.';
+
+            document.getElementById('guideWeather').textContent = guide.weather;
+            document.getElementById('guidePlug').textContent = guide.plug_type;
+            document.getElementById('guideHalal').textContent = guide.halal_restaurants;
+            document.getElementById('guideAttractions').textContent = guide.attractions;
+
+            const now = Date.now();
+            const upcomingFlight = itinerary.find(item => {
+                if (item.type !== 'flight' || !item.departure_datetime) return false;
+                const diffHours = (new Date(item.departure_datetime).getTime() - now) / (1000 * 60 * 60);
+                return diffHours > -2 && diffHours <= 24;
+            });
+
+            if (booking.checked_in) {
+                document.getElementById('checkinBanner').classList.add('hidden');
+                document.getElementById('boardingPassCard').classList.remove('hidden');
+                document.getElementById('boardingSeat').textContent = booking.seat_number || '14A';
+                const f = upcomingFlight || itinerary.find(i => i.type === 'flight');
+                document.getElementById('boardingDetails').textContent = f ? `${f.from_location} ➔ ${f.to_location} | ${f.departure_datetime.replace('T', ' ')}` : 'تم تأكيد الحضور بنجاح';
+            } else if (upcomingFlight) {
+                document.getElementById('boardingPassCard').classList.add('hidden');
+                document.getElementById('checkinBanner').classList.remove('hidden');
+                document.getElementById('checkinFlightInfo').textContent = `رحلة ${upcomingFlight.airline || ''} ${upcomingFlight.flight_number || ''}: من ${upcomingFlight.from_location} إلى ${upcomingFlight.to_location} (${upcomingFlight.departure_datetime.replace('T', ' ')})`;
+                document.getElementById('modalFlightSummary').textContent = document.getElementById('checkinFlightInfo').textContent;
+            } else {
+                document.getElementById('checkinBanner').classList.add('hidden');
+                document.getElementById('boardingPassCard').classList.add('hidden');
+            }
+
+            const container = document.getElementById('itineraryTimeline');
+            container.innerHTML = '';
+            itinerary.forEach((item, idx) => {
+                let html = '';
+                if (item.type === 'flight') {
+                    html = `
+                    <div class="bg-white rounded-2xl p-5 border-r-4 border-sky-500 shadow-sm">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-extrabold bg-sky-50 text-sky-700 px-3 py-1 rounded-full">✈️ طيران • محطة ${idx + 1}</span>
+                            <span class="text-xs font-mono text-slate-500">${(item.departure_datetime || '').replace('T', ' ')}</span>
+                        </div>
+                        <h4 class="font-extrabold text-slate-800 text-base">${item.from_location} ⬅️ ${item.to_location}</h4>
+                        <p class="text-xs text-slate-500 mt-1">الناقل: ${item.airline || 'غير محدد'} | رقم الرحلة: ${item.flight_number || '-'}</p>
+                        ${item.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg mt-2">${item.notes}</p>` : ''}
+                    </div>`;
+                } else if (item.type === 'hotel') {
+                    const starsStr = '⭐'.repeat(item.stars || 4);
+                    html = `
+                    <div class="bg-white rounded-2xl p-5 border-r-4 border-amber-500 shadow-sm">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-extrabold bg-amber-50 text-amber-700 px-3 py-1 rounded-full">🏨 إقامة فندقية • محطة ${idx + 1}</span>
+                            <span class="text-xs font-bold text-amber-600">${starsStr}</span>
+                        </div>
+                        <h4 class="font-extrabold text-slate-800 text-base">${item.hotel_name}</h4>
+                        <div class="grid grid-cols-2 gap-2 text-xs text-slate-600 mt-2 bg-slate-50 p-3 rounded-xl">
+                            <div><strong>نوع الغرفة:</strong> ${item.room_type}</div>
+                            <div><strong>نظام الوجبات:</strong> ${item.board_type}</div>
+                            <div><strong>تسجيل الدخول:</strong> ${item.check_in_date}</div>
+                            <div><strong>تسجيل الخروج:</strong> ${item.check_out_date}</div>
+                        </div>
+                        ${item.notes ? `<p class="text-xs text-slate-500 mt-2">${item.notes}</p>` : ''}
+                    </div>`;
+                } else if (item.type === 'transfer') {
+                    html = `
+                    <div class="bg-white rounded-2xl p-5 border-r-4 border-emerald-500 shadow-sm">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-extrabold bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full">🚐 مواصلات وتوصيل • محطة ${idx + 1}</span>
+                            <span class="text-xs font-mono text-slate-500">${(item.transfer_datetime || '').replace('T', ' ')}</span>
+                        </div>
+                        <h4 class="font-extrabold text-slate-800 text-base">${item.transfer_from} ⬅️ ${item.transfer_to}</h4>
+                        <p class="text-xs text-slate-500 mt-1">نوع المركبة: ${item.vehicle_type}</p>
+                        ${item.notes ? `<p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg mt-2">${item.notes}</p>` : ''}
+                    </div>`;
+                }
+                container.innerHTML += html;
+            });
+        }
+
+        function openCheckinModal() { document.getElementById('checkinModal').classList.remove('hidden'); }
+        function closeCheckinModal() { document.getElementById('checkinModal').classList.add('hidden'); }
+
+        async function submitCheckin() {
+            const seat_preference = document.getElementById('seatPref').value;
+            const res = await fetch('/api/customer/checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pnr: currentSession.booking.pnr,
+                    last_name: currentSession.booking.last_name,
+                    seat_preference
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentSession.booking.checked_in = 1;
+                currentSession.booking.seat_number = data.seat_number;
+                closeCheckinModal();
+                renderCustomerDashboard();
+            }
+        }
+
+        async function sendChatMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+
+            const box = document.getElementById('chatMessages');
+            box.innerHTML += `<div class="bg-teal-600 text-white p-3 rounded-2xl rounded-tl-none mr-8">${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+
+            const res = await fetch('/api/customer/ai-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: msg,
+                    booking: currentSession.booking,
+                    itinerary: currentSession.itinerary,
+                    guide: currentSession.guide
+                })
+            });
+            const data = await res.json();
+            box.innerHTML += `<div class="bg-slate-100 text-slate-800 p-3 rounded-2xl rounded-tr-none ml-8 whitespace-pre-line">${data.reply}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function logoutCustomer() {
+            currentSession = null;
+            document.getElementById('customerDashboardView').classList.add('hidden');
+            document.getElementById('logoutBtn').classList.add('hidden');
+            document.getElementById('customerLoginView').classList.remove('hidden');
+        }
+
+        async function verifyAdmin() {
+            const passcode = document.getElementById('adminPassInput').value;
+            const res = await fetch('/api/admin/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode })
+            });
+            if (res.ok) {
+                document.getElementById('adminLoginModal').classList.add('hidden');
+                document.getElementById('customerLoginView').classList.add('hidden');
+                document.getElementById('customerDashboardView').classList.add('hidden');
+                document.getElementById('adminDashboardView').classList.remove('hidden');
+                loadAdminBookings();
+            } else {
+                alert('رمز الإدارة غير صحيح');
+            }
+        }
+
+        function exitAdmin() {
+            document.getElementById('adminDashboardView').classList.add('hidden');
+            document.getElementById('customerLoginView').classList.remove('hidden');
+        }
+
+        function addItineraryBlock(type) {
+            adminItinerary.push({ type });
+            renderAdminItinerary();
+        }
+
+        function removeItineraryBlock(index) {
+            adminItinerary.splice(index, 1);
+            renderAdminItinerary();
+        }
+
+        function updateItemField(index, field, value) {
+            adminItinerary[index][field] = value;
+        }
+
+        function renderAdminItinerary() {
+            const container = document.getElementById('adminItineraryContainer');
+            container.innerHTML = '';
+            adminItinerary.forEach((item, idx) => {
+                if (item.type === 'flight') {
+                    container.innerHTML += `
+                    <div class="bg-sky-50/60 border border-sky-200 rounded-2xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-xs text-sky-800">✈️ بند #${idx + 1}: رحلة طيران</span>
+                            <button onclick="removeItineraryBlock(${idx})" class="text-red-500 text-xs font-bold">حذف</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                            <input type="text" placeholder="من (مطار المغادرة)" value="${item.from_location || ''}" onchange="updateItemField(${idx}, 'from_location', this.value)" class="border rounded-lg p-2 bg-white">
+                            <input type="text" placeholder="إلى (مطار الوصول)" value="${item.to_location || ''}" onchange="updateItemField(${idx}, 'to_location', this.value)" class="border rounded-lg p-2 bg-white">
+                            <input type="datetime-local" value="${item.departure_datetime || ''}" onchange="updateItemField(${idx}, 'departure_datetime', this.value)" class="border rounded-lg p-2 bg-white">
+                            <input type="text" placeholder="شركة الطيران ورقم الرحلة" value="${item.airline || ''}" onchange="updateItemField(${idx}, 'airline', this.value)" class="border rounded-lg p-2 bg-white">
+                        </div>
+                    </div>`;
+                } else if (item.type === 'hotel') {
+                    container.innerHTML += `
+                    <div class="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-xs text-amber-800">🏨 بند #${idx + 1}: إقامة فندقية</span>
+                            <button onclick="removeItineraryBlock(${idx})" class="text-red-500 text-xs font-bold">حذف</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                            <input type="text" placeholder="اسم الفندق" value="${item.hotel_name || ''}" onchange="updateItemField(${idx}, 'hotel_name', this.value)" class="border rounded-lg p-2 bg-white">
+                            <select onchange="updateItemField(${idx}, 'stars', this.value)" class="border rounded-lg p-2 bg-white">
+                                <option value="5" ${item.stars == 5 ? 'selected' : ''}>5 نجوم ⭐⭐⭐⭐⭐</option>
+                                <option value="4" ${item.stars == 4 ? 'selected' : ''}>4 نجوم ⭐⭐⭐⭐</option>
+                                <option value="3" ${item.stars == 3 ? 'selected' : ''}>3 نجوم ⭐⭐⭐</option>
+                            </select>
+                            <input type="text" placeholder="نوع الغرفة (مثال: ديلوكس مزدوجة)" value="${item.room_type || ''}" onchange="updateItemField(${idx}, 'room_type', this.value)" class="border rounded-lg p-2 bg-white">
+                            <select onchange="updateItemField(${idx}, 'board_type', this.value)" class="border rounded-lg p-2 bg-white">
+                                <option value="Room Only">غرفة فقط (Room Only)</option>
+                                <option value="Bed & Breakfast">غرفة مع إفطار (B&B)</option>
+                                <option value="Half Board">نصف إقامة (Half Board)</option>
+                                <option value="Full Board">إقامة كاملة (Full Board)</option>
+                                <option value="All Inclusive">شامل كلياً (All Inclusive)</option>
+                            </select>
+                            <div>
+                                <label class="text-[10px] text-slate-500">تاريخ الدخول:</label>
+                                <input type="date" value="${item.check_in_date || ''}" onchange="updateItemField(${idx}, 'check_in_date', this.value)" class="w-full border rounded-lg p-2 bg-white">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-500">تاريخ الخروج:</label>
+                                <input type="date" value="${item.check_out_date || ''}" onchange="updateItemField(${idx}, 'check_out_date', this.value)" class="w-full border rounded-lg p-2 bg-white">
+                            </div>
+                        </div>
+                    </div>`;
+                } else if (item.type === 'transfer') {
+                    container.innerHTML += `
+                    <div class="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-xs text-emerald-800">🚐 بند #${idx + 1}: مواصلات وتوصيل</span>
+                            <button onclick="removeItineraryBlock(${idx})" class="text-red-500 text-xs font-bold">حذف</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                            <input type="text" placeholder="نوع المركبة (سيدان، فان VIP...)" value="${item.vehicle_type || ''}" onchange="updateItemField(${idx}, 'vehicle_type', this.value)" class="border rounded-lg p-2 bg-white">
+                            <input type="datetime-local" value="${item.transfer_datetime || ''}" onchange="updateItemField(${idx}, 'transfer_datetime', this.value)" class="border rounded-lg p-2 bg-white">
+                            <input type="text" placeholder="من (نقطة الانطلاق)" value="${item.transfer_from || ''}" onchange="updateItemField(${idx}, 'transfer_from', this.value)" class="border rounded-lg p-2 bg-white">
+                            <input type="text" placeholder="إلى (نقطة الوصول)" value="${item.transfer_to || ''}" onchange="updateItemField(${idx}, 'transfer_to', this.value)" class="border rounded-lg p-2 bg-white">
+                        </div>
+                    </div>`;
+                }
+            });
+        }
+
+        async function saveBookingToSQL() {
+            const payload = {
+                first_name: document.getElementById('admFirstName').value,
+                last_name: document.getElementById('admLastName').value,
+                phone: document.getElementById('admPhone').value,
+                destination: document.getElementById('admDestination').value,
+                total_price: document.getElementById('admPrice').value,
+                currency: document.getElementById('admCurrency').value,
+                terms: document.getElementById('admTerms').value,
+                itinerary: adminItinerary.map(item => ({
+                    ...item,
+                    stars: item.stars || 5,
+                    board_type: item.board_type || 'Bed & Breakfast'
+                }))
+            };
+
+            const res = await fetch('/api/admin/bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(`تم حفظ الحجز بنجاح في قاعدة البيانات!\nكود الدخول (PNR): ${data.pnr}\nاسم العائلة: ${payload.last_name}`);
+                adminItinerary = [];
+                renderAdminItinerary();
+                loadAdminBookings();
+            } else {
+                alert(data.error);
+            }
+        }
+
+        async function loadAdminBookings() {
+            const res = await fetch('/api/admin/bookings');
+            const bookings = await res.json();
+            const list = document.getElementById('adminBookingsList');
+            list.innerHTML = '';
+            bookings.forEach(b => {
+                list.innerHTML += `
+                <div class="border border-slate-200 rounded-2xl p-3 text-xs space-y-1 bg-slate-50">
+                    <div class="flex justify-between items-center">
+                        <span class="font-mono font-extrabold text-teal-700 bg-teal-50 px-2 py-0.5 rounded">${b.pnr}</span>
+                        <button onclick="deleteBooking(${b.id})" class="text-red-500 hover:underline">حذف</button>
+                    </div>
+                    <p class="font-bold text-slate-800">${b.first_name} ${b.last_name} — ${b.destination}</p>
+                    <p class="text-slate-500">السعر: ${b.total_price} ${b.currency}</p>
+                </div>`;
+            });
+        }
+
+        async function deleteBooking(id) {
+            if (!confirm('هل أنت متأكد من حذف هذا الحجز من قاعدة البيانات؟')) return;
+            await fetch(`/api/admin/bookings/${id}`, { method: 'DELETE' });
+            loadAdminBookings();
+        }
+    </script>
+</body>
+</html>
