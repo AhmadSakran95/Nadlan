@@ -191,9 +191,7 @@ app.post('/api/ai/chat', async (req, res) => {
 
   const weatherContext =
     Array.isArray(weatherSummary) && weatherSummary.length > 0
-      ? weatherSummary.join('
-')
-      : 'غير متوفر حالياً.';
+      ? weatherSummary.join('\n')\n: 'غير متوفر حالياً.';
 
   const systemInstruction = `أنت مساعد سفر ذكي وخبير سياحي متكامل لوكالة "Nadlantours" (ندلان تورز).
 مهمتك مساعدة المسافر في **أي شيء يتعلق بالسفر** بأسلوب ودود، عملي، ودقيق باللغة العربية:
