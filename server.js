@@ -10,6 +10,7 @@ const HOST = '0.0.0.0';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -174,12 +175,15 @@ app.post('/api/ai/chat', async (req, res) => {
     });
   }
 
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  
   const bookingContext = booking
     ? JSON.stringify(
         {
           pnr: booking.pnr,
           passenger: `${booking.firstName} ${booking.lastName}`,
           destinationCity: booking.city,
+          currentDate: today,
           totalPrice: `${booking.price} ${booking.currency}`,
           terms: booking.terms,
           itinerary: booking.itinerary
