@@ -270,7 +270,7 @@ ${weatherContext}`;
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
-  if (password === '1234') {
+  if (password === '300795') {
     res.json({ success: true, token: 'nadlan-admin-session-2026' });
   } else {
     res.status(401).json({ success: false, message: 'رمز المرور غير صحيح' });
