@@ -178,6 +178,20 @@
     }
   }
 
+  function styleBadgeContainer(badgeEl, isConfirmed) {
+    if (!badgeEl) return;
+    if (isConfirmed) {
+      badgeEl.style.backgroundColor = '';
+      badgeEl.style.color = '';
+      badgeEl.style.borderColor = '';
+      badgeEl.classList.remove('bg-amber-100', 'text-amber-800', 'border-amber-300', 'bg-yellow-100', 'text-yellow-800', 'bg-red-100', 'text-red-800');
+    } else {
+      badgeEl.style.backgroundColor = '#fef3c7';
+      badgeEl.style.color = '#92400e';
+      badgeEl.style.borderColor = '#fcd34d';
+    }
+  }
+
   function syncExistingStatusBadge(explicitConfirmed) {
     const key = getCurrentBookingKey();
     let isConfirmed =
@@ -193,19 +207,53 @@
       } catch (_) {}
     }
 
+    // Keep select in sync if present
+    const sel = document.getElementById('nadlan-booking-status-select-v26');
+    if (sel && sel.value !== (isConfirmed ? 'true' : 'false')) {
+      sel.value = isConfirmed ? 'true' : 'false';
+    }
+
     // Remove any duplicate banner we might have added earlier
     const oldBanner = document.getElementById('nadlan-customer-status-badge-v26');
     if (oldBanner) oldBanner.remove();
 
-    // Update the existing status badge in the page design without duplicating it
-    const candidates = Array.from(document.querySelectorAll('span, div, button, a'));
-    candidates.forEach((el) => {
+    const targetLabel = isConfirmed ? 'حجز مؤكد' : 'حجز غير مؤكد';
+
+    // Update leaf nodes first
+    const leafCandidates = Array.from(document.querySelectorAll('span, div, button, a, p, strong'));
+    leafCandidates.forEach((el) => {
       if (el.id === 'nadlan-booking-status-end-v26' || el.closest('#nadlan-booking-status-end-v26')) return;
       if (el.children && el.children.length > 0) return;
       const t = normText(el.innerText || el.textContent || '');
-      if (t === 'حجز مؤكد' || t === 'حجز مؤكد ✓' || t === 'حجز غير مؤكد') {
-        el.textContent = isConfirmed ? 'حجز مؤكد' : 'حجز غير مؤكد';
+      if (t === 'حجز مؤكد' || t === 'حجز مؤكد ✓' || t === 'حجز غير مؤكد' || t === 'حجز غير مؤكد ✕') {
+        el.textContent = targetLabel;
+        const pill = el.closest('span, div, button, a') || el;
+        styleBadgeContainer(pill, isConfirmed);
       }
+    });
+
+    // Also handle badges that contain an icon (like <i> or <svg>) inside them
+    const iconBadges = Array.from(document.querySelectorAll('span, div, button, a')).filter((el) => {
+      if (el.id === 'nadlan-booking-status-end-v26' || el.closest('#nadlan-booking-status-end-v26')) return false;
+      const t = normText(el.innerText || el.textContent || '');
+      return (t === 'حجز مؤكد' || t === 'حجز غير مؤكد') && el.querySelector('i, svg');
+    });
+
+    iconBadges.forEach((badge) => {
+      const textNode = Array.from(badge.childNodes).find(
+        (n) => n.nodeType === 3 && /حجز\s*(غير\s*)?مؤكد/.test(normText(n.textContent || ''))
+      );
+      if (textNode) {
+        textNode.textContent = ' ' + targetLabel;
+      } else {
+        const spanChild = Array.from(badge.querySelectorAll('span')).find((s) =>
+          /حجز\s*(غير\s*)?مؤكد/.test(normText(s.textContent || ''))
+        );
+        if (spanChild) {
+          spanChild.textContent = targetLabel;
+        }
+      }
+      styleBadgeContainer(badge, isConfirmed);
     });
   }
 
