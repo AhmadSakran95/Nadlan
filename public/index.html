@@ -30,7 +30,7 @@
       }
     };
   </script>
-    <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
   <!-- إشعار نظام مخصص بديل عن alert/confirm -->
@@ -58,19 +58,19 @@
       <div class="flex items-center gap-2 bg-slate-950/50 p-1.5 rounded-2xl border border-white/10">
         <button
           type="button"
-          id="tab-admin-btn"
-          onclick="switchPortal('admin')"
+          id="tab-customer-btn"
+          onclick="switchPortal('customer')"
           class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-amber-400 text-slate-950 shadow cursor-pointer"
         >
-          🛠️ قسم الإدارة
+          🧳 دخول الزبون
         </button>
         <button
           type="button"
-          id="tab-customer-btn"
-          onclick="switchPortal('customer')"
+          id="tab-admin-btn"
+          onclick="switchPortal('admin')"
           class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition text-slate-200 hover:bg-white/10 cursor-pointer"
         >
-          🧳 قسم الزبون
+          🛠️ قسم الإدارة
         </button>
       </div>
     </div>
@@ -79,7 +79,7 @@
   <!-- المحتوى الرئيسي -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
     <!-- ==================== قسم الإدارة ==================== -->
-    <section id="admin-section" class="space-y-6">
+    <section id="admin-section" class="hidden space-y-6">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <!-- نموذج إضافة / تعديل الحجز -->
         <div class="lg:col-span-7 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
@@ -250,7 +250,7 @@
     </section>
 
     <!-- ==================== قسم الزبون ==================== -->
-    <section id="customer-section" class="hidden space-y-6">
+    <section id="customer-section" class="space-y-6">
       <!-- شاشة تسجيل دخول الزبون -->
       <div id="customer-login-card" class="max-w-lg mx-auto bg-white rounded-3xl shadow-md border border-slate-200 p-6 sm:p-8 space-y-5">
         <div class="text-center space-y-1.5">
@@ -474,6 +474,56 @@
     </section>
   </main>
 
+  <!-- نافذة كود الدخول لقسم الإدارة -->
+  <div id="admin-code-modal" class="fixed inset-0 z-50 hidden bg-slate-950/65 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-black">🔐</span>
+          <h3 class="text-base font-black text-slate-900">كود دخول الإدارة</h3>
+        </div>
+        <button
+          type="button"
+          onclick="closeAdminCodeModal()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <form onsubmit="submitAdminCode(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-extrabold text-slate-700 mb-1">أدخل كود الإدارة</label>
+          <input
+            type="password"
+            id="admin-code-input"
+            placeholder="أدخل الكود السري"
+            autocomplete="off"
+            class="w-full px-4 py-2.5 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-extrabold"
+          />
+        </div>
+        <p id="admin-code-error" class="hidden text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl">
+          كود الإدارة غير صحيح
+        </p>
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onclick="closeAdminCodeModal()"
+            class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold cursor-pointer"
+          >
+            إلغاء
+          </button>
+          <button
+            type="submit"
+            class="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer"
+          >
+            دخول
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- نافذة منبثقة (Popup) لعرض جميع المسافرين -->
   <div id="passengers-modal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs items-center justify-center p-4">
     <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
@@ -500,6 +550,6 @@
     </div>
   </div>
 
-    <script src="/js/app.js" defer></script>
+  <script src="/js/app.js" defer></script>
 </body>
 </html>
