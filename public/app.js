@@ -928,6 +928,32 @@ function readFileAsBase64(file) {
   });
 }
 
+function applyPassengersToBookingForm(passengers) {
+  if (!Array.isArray(passengers) || passengers.length === 0) return;
+
+  const firstInput = document.getElementById("b-firstname");
+  const lastInput = document.getElementById("b-lastname");
+  const termsInput = document.getElementById("b-terms");
+
+  const leadPassenger = passengers[0].trim();
+  if (firstInput && !firstInput.value.trim() && leadPassenger) {
+    const parts = leadPassenger.split(/\s+/);
+    firstInput.value = parts[0] || leadPassenger;
+    if (lastInput && !lastInput.value.trim() && parts.length > 1) {
+      lastInput.value = parts.slice(1).join(" ");
+    }
+  }
+
+  if (termsInput) {
+    const paxLine = `• المسافرون: ${passengers.join("، ")}`;
+    if (!termsInput.value.includes(paxLine)) {
+      termsInput.value = termsInput.value.trim()
+        ? `${termsInput.value.trim()}\n${paxLine}`
+        : paxLine;
+    }
+  }
+}
+
 async function handleFlightFileUpload(stepIndex, inputEl) {
   const file = inputEl.files && inputEl.files[0];
   if (!file) return;
@@ -940,7 +966,7 @@ async function handleFlightFileUpload(stepIndex, inputEl) {
 
   const statusEl = document.getElementById(`flight-upload-status-${stepIndex}`);
   if (statusEl) {
-    statusEl.innerHTML = `<span class="text-[11px] font-bold text-blue-700"><i class="fa-solid fa-spinner fa-spin ml-1"></i> جاري قراءة تفاصيل الطيران أوتوماتيكياً...</span>`;
+    statusEl.innerHTML = `<span class="text-[11px] font-bold text-blue-700"><i class="fa-solid fa-spinner fa-spin ml-1"></i> جاري قراءة المسافرين وتفاصيل الذهاب والعودة أوتوماتيكياً...</span>`;
   }
 
   try {
@@ -962,11 +988,43 @@ async function handleFlightFileUpload(stepIndex, inputEl) {
     });
 
     const data = await res.json();
-    if (res.ok && data.flight) {
-      if (data.flight.from) builderSteps[stepIndex].from = data.flight.from;
-      if (data.flight.to) builderSteps[stepIndex].to = data.flight.to;
-      if (data.flight.date) builderSteps[stepIndex].date = data.flight.date;
-      if (data.flight.notes) builderSteps[stepIndex].notes = data.flight.notes;
+    if (res.ok && data.outbound) {
+      const out = data.outbound;
+      if (out.from) builderSteps[stepIndex].from = out.from;
+      if (out.to) builderSteps[stepIndex].to = out.to;
+      if (out.date) builderSteps[stepIndex].date = out.date;
+      if (out.notes) builderSteps[stepIndex].notes = out.notes;
+
+      if (Array.isArray(data.passengers) && data.passengers.length > 0) {
+        builderSteps[stepIndex].passengers = data.passengers;
+        applyPassengersToBookingForm(data.passengers);
+      }
+
+      if (data.returnFlight && data.returnFlight.hasReturn) {
+        const ret = data.returnFlight;
+        const returnStepPayload = {
+          type: "flight",
+          from: ret.from || out.to || "",
+          to: ret.to || out.from || "",
+          date: ret.date || "",
+          notes: ret.notes || "",
+          passengers: data.passengers || [],
+          flightFileName: file.name,
+          flightFileMime: mimeType,
+          flightFileData: base64Data
+        };
+
+        const existingReturnIdx = builderSteps.findIndex((s, i) => i > stepIndex && s.type === "flight");
+        if (existingReturnIdx !== -1) {
+          builderSteps[existingReturnIdx] = {
+            ...builderSteps[existingReturnIdx],
+            ...returnStepPayload
+          };
+        } else {
+          builderSteps.push(returnStepPayload);
+        }
+      }
+
       renderBuilderSteps();
     } else {
       renderBuilderSteps();
