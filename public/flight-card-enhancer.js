@@ -1,16 +1,16 @@
 (function () {
   function normText(s) {
-    return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+    return String(s || '').replace(/\u00A0/g, ' ').replace(/\\s+/g, ' ').trim();
   }
 
   function stripTrailingNoise(nameStr) {
     let s = normText(nameStr);
     const stopMarkers = [
-      /\s+تحميل\s+ملف\s+الطيران.*$/i,
-      /\s+E-?ticket\s+Confirmation.*$/i,
-      /\s+(?:Airline\s*booking\s*reference|PNR|Flight)\s*[:：#\-]?.*$/i,
-      /\s+المسافرون\s*\(?\d*\)?.*$/i,
-      /\s+الطيران\s*[:：].*$/i
+      /\\s+تحميل\\s+ملف\\s+الطيران.*$/i,
+      /\\s+E-?ticket\\s+Confirmation.*$/i,
+      /\\s+(?:Airline\\s*booking\\s*reference|PNR|Flight)\\s*[:：#\-]?.*$/i,
+      /\\s+المسافرون\\s*\\(?\\d*\\)?.*$/i,
+      /\\s+الطيران\\s*[:：].*$/i
     ];
     for (const re of stopMarkers) {
       s = s.replace(re, '').trim();
@@ -20,34 +20,106 @@
 
   function isValidPassengerName(n) {
     if (!n || n.length < 2 || n.length > 70) return false;
-    if (/^(?:PNR|Flight|Airline\s*booking\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
-    if (/\.pdf\b/i.test(n)) return false;
+    if (/^(?:PNR|Flight|Airline\\s*booking\\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
+    if (/\\.pdf\b/i.test(n)) return false;
     return true;
+  }
+
+  function extractAirlineBookingRef(str) {
+    const s = normText(str);
+    if (!s) return '';
+    // Match "Airline booking reference: XXXXXX" or "Airline Booking Reference - XXXXXX"
+    const m1 = s.match(/Airline\\s*booking\\s*reference\\s*[:：#\-]?\\s*([A-Z0-9]{4,12})/i);
+    if (m1 && m1[1]) return m1[1].trim().toUpperCase();
+    return '';
+  }
+
+  function extractTextFromPdfBytes(bytes) {
+    try {
+      // Decode ASCII/Latin1 chunks and scan uncompressed or FlateDecode streams if available
+      let raw = '';
+      for (let i = 0; i < bytes.length; i++) {
+        raw += String.fromCharCode(bytes[i]);
+      }
+
+      // 1. Direct plain-text search in PDF
+      const directRef = extractAirlineBookingRef(raw);
+      if (directRef) return directRef;
+
+      // 2. Scan PDF text-showing operators like (Airline booking reference:) Tj / TJ
+      const textParts = [];
+      const parenMatches = raw.match(/\\(([^()\\]{1,120})\\)/g) || [];
+      for (const p of parenMatches) {
+        textParts.push(p.slice(1, -1));
+      }
+      const joined = normText(textParts.join(' '));
+      return extractAirlineBookingRef(joined);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  async function extractRefFromCardFile(card) {
+    const link = card.querySelector('a[href], a[download], input[type="file"]');
+    if (!link) return '';
+
+    const href = link.getAttribute('href') || '';
+    if (href.startsWith('data:')) {
+      try {
+        const commaIdx = href.indexOf(',');
+        if (commaIdx !== -1) {
+          const meta = href.slice(5, commaIdx);
+          const payload = href.slice(commaIdx + 1);
+          if (meta.indexOf('base64') !== -1) {
+            const binStr = atob(payload);
+            const bytes = new Uint8Array(binStr.length);
+            for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+            const fromPdf = extractTextFromPdfBytes(bytes);
+            if (fromPdf) return fromPdf;
+            return extractAirlineBookingRef(binStr);
+          } else {
+            return extractAirlineBookingRef(decodeURIComponent(payload));
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (href.startsWith('blob:') || href.startsWith('http') || href.startsWith('/')) {
+      try {
+        const resp = await fetch(href);
+        if (resp && resp.ok) {
+          const buf = await resp.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          const fromPdf = extractTextFromPdfBytes(bytes);
+          if (fromPdf) return fromPdf;
+          const dec = new TextDecoder('latin1').decode(bytes);
+          return extractAirlineBookingRef(dec);
+        }
+      } catch (_) {}
+    }
+
+    return '';
   }
 
   function parseFlightText(raw) {
     const t = normText(raw);
 
-    // Prioritize "Airline booking reference:" first, then fallback to PNR if Airline booking reference isn't present
-    let pnr = '';
-    const airlineRefMatch = t.match(/Airline\s*booking\s*reference\s*[:：#\-]?\s*([A-Z0-9]{4,12})/i);
-    if (airlineRefMatch && airlineRefMatch[1]) {
-      pnr = airlineRefMatch[1].trim().toUpperCase();
-    } else {
-      const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#\-]?\s*([A-Z0-9]{5,10})/i);
+    let pnr = extractAirlineBookingRef(t);
+    if (!pnr) {
+      const pnrMatch = t.match(/PNR(?:\\s*الطيران)?\\s*[:：#-]?\\s*([A-Z0-9]{5,10})/i);
       if (pnrMatch && pnrMatch[1]) {
         pnr = pnrMatch[1].trim().toUpperCase();
       }
     }
 
     let flightNo = '';
-    const fnMatch = t.match(/Flight(?:\s*(?:No\.?|Number))?\s*[:：#\-]?\s*([A-Z0-9]{1,3}\s*\d{2,5})/i);
+    const fnMatch = t.match(/Flight(?:\\s*(?:No\\.?|Number))?\\s*[:：#-]?\\s*([A-Z0-9]{1,3}\\s*\\d{2,5})/i);
     if (fnMatch && fnMatch[1]) {
-      flightNo = fnMatch[1].replace(/\s+/g, ' ').trim().toUpperCase();
+      flightNo = fnMatch[1].replace(/\\s+/g, ' ').trim().toUpperCase();
     }
 
     let passengers = [];
-    const paxMatch = t.match(/المسافرون\s*[:：]\s*(.+)$/i);
+    const paxMatch = t.match(/المسافرون\\s*[:：]\\s*(.+)$/i);
     if (paxMatch && paxMatch[1]) {
       const cleanedTail = stripTrailingNoise(paxMatch[1]);
       passengers = cleanedTail
@@ -57,7 +129,7 @@
           if (idx === arr.length - 1) {
             item = stripTrailingNoise(item);
           }
-          item = item.replace(/\s*\([^)]*\)\s*$/g, '').trim();
+          item = item.replace(/\\s*\\([^)]*\\)\\s*$/g, '').trim();
           return item;
         })
         .filter(isValidPassengerName);
@@ -135,6 +207,49 @@
     return normText(clone.innerText || clone.textContent || '');
   }
 
+  function renderCardBar(card, meta, currentIndex) {
+    let bar = card.querySelector('.nadlan-flight-bar-v15');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'nadlan-flight-bar-v15';
+      bar.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;margin-bottom:8px;';
+
+      const dl = card.querySelector('a[download], a[href^="data:"], a[href^="blob:"]');
+      if (dl && dl.parentElement) {
+        dl.parentElement.insertBefore(bar, dl);
+      } else {
+        card.appendChild(bar);
+      }
+    }
+
+    bar.innerHTML = '';
+
+    if (meta.pnr) {
+      const b1 = document.createElement('span');
+      b1.style.cssText = 'background:#0f172a;color:#fbbf24;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;font-family:monospace;';
+      b1.textContent = 'Airline booking reference: ' + meta.pnr;
+      bar.appendChild(b1);
+    }
+
+    if (meta.flightNo) {
+      const b2 = document.createElement('span');
+      b2.style.cssText = 'background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;font-family:monospace;';
+      b2.textContent = 'Flight: ' + meta.flightNo;
+      bar.appendChild(b2);
+    }
+
+    const paxBtn = document.createElement('button');
+    paxBtn.type = 'button';
+    paxBtn.style.cssText = 'background:#f59e0b;color:#0f172a;border:none;padding:7px 14px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;';
+    paxBtn.textContent = 'المسافرون' + (meta.passengers.length ? ' (' + meta.passengers.length + ')' : '');
+    paxBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.openNadlanPaxPopup(currentIndex);
+    });
+    bar.appendChild(paxBtn);
+  }
+
   function runEnhancer() {
     const container = document.getElementById('cust-itinerary-list');
     if (!container) return;
@@ -158,47 +273,16 @@
       const meta = parseFlightText(txt);
       const currentIndex = fIdx++;
       window.__NADLAN_FLIGHT_ITEMS_V15__[currentIndex] = meta;
+      renderCardBar(card, meta, currentIndex);
 
-      let bar = card.querySelector('.nadlan-flight-bar-v15');
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.className = 'nadlan-flight-bar-v15';
-        bar.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;margin-bottom:8px;';
-
-        const dl = card.querySelector('a[download], a[href^="data:"], a[href^="blob:"]');
-        if (dl && dl.parentElement) {
-          dl.parentElement.insertBefore(bar, dl);
-        } else {
-          card.appendChild(bar);
+      // Async check inside the attached flight file (data:/blob:/URL) for "Airline booking reference:"
+      extractRefFromCardFile(card).then((fileRef) => {
+        if (fileRef && fileRef !== meta.pnr) {
+          meta.pnr = fileRef;
+          window.__NADLAN_FLIGHT_ITEMS_V15__[currentIndex] = meta;
+          renderCardBar(card, meta, currentIndex);
         }
-      }
-
-      bar.innerHTML = '';
-
-      if (meta.pnr) {
-        const b1 = document.createElement('span');
-        b1.style.cssText = 'background:#0f172a;color:#fbbf24;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;font-family:monospace;';
-        b1.textContent = 'Airline booking reference: ' + meta.pnr;
-        bar.appendChild(b1);
-      }
-
-      if (meta.flightNo) {
-        const b2 = document.createElement('span');
-        b2.style.cssText = 'background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;font-family:monospace;';
-        b2.textContent = 'Flight: ' + meta.flightNo;
-        bar.appendChild(b2);
-      }
-
-      const paxBtn = document.createElement('button');
-      paxBtn.type = 'button';
-      paxBtn.style.cssText = 'background:#f59e0b;color:#0f172a;border:none;padding:7px 14px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;';
-      paxBtn.textContent = 'المسافرون' + (meta.passengers.length ? ' (' + meta.passengers.length + ')' : '');
-      paxBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.openNadlanPaxPopup(currentIndex);
       });
-      bar.appendChild(paxBtn);
     });
   }
 
