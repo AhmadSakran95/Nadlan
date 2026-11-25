@@ -141,8 +141,84 @@
 
   function getCardSourceText(card) {
     const clone = card.cloneNode(true);
-    clone.querySelectorAll('.nadlan-flight-bar-v15, .nadlan-open-pax-btn, #nadlan-pax-modal-v15').forEach((el) => el.remove());
+    clone.querySelectorAll('.nadlan-flight-bar-v15, .nadlan-open-pax-btn, .nadlan-hotel-clean-box-v24, #nadlan-pax-modal-v15').forEach((el) => el.remove());
     return normText(clone.innerText || clone.textContent || '');
+  }
+
+  function isHotelCard(card, txt) {
+    if (!card) return false;
+    if (/إقامة\s*فندقية|نوع\s*الغرفة|العنوان\s*[:：]|تفاصيل\s*الوجبات|سياسة\s*الإلغاء|CXL\s*deadline/i.test(txt)) {
+      return true;
+    }
+    if (card.querySelector('.fa-hotel, .fa-bed')) return true;
+    return false;
+  }
+
+  function parseHotelDetails(txt) {
+    // Extract "نوع الغرفة:" value
+    let roomType = '';
+    const roomMatch = txt.match(/نوع\s*الغرفة\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
+    if (roomMatch && roomMatch[1]) {
+      roomType = normText(roomMatch[1]);
+    }
+
+    // Extract "العنوان:" value and strip extra distance note like "(يبعد ... عن المركز)" if present or keep clean address
+    let address = '';
+    const addrMatch = txt.match(/العنوان\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
+    if (addrMatch && addrMatch[1]) {
+      address = normText(addrMatch[1]).replace(/\s*\(يبعد[^)]*\)\s*$/g, '').trim();
+    }
+
+    return { roomType, address };
+  }
+
+  function simplifyHotelCardDisplay(card, txt) {
+    if (!card || !isHotelCard(card, txt)) return;
+    const { roomType, address } = parseHotelDetails(txt);
+    if (!roomType && !address) return;
+
+    // Hide noisy hotel extra detail lines (address/room/meals/cancellation raw line) and render a clean 2-line box
+    const nodes = Array.from(card.querySelectorAll('p, div, span, li'));
+    nodes.forEach((el) => {
+      if (
+        el.classList.contains('nadlan-hotel-clean-box-v24') ||
+        el.closest('.nadlan-hotel-clean-box-v24') ||
+        el.closest('.nadlan-flight-bar-v15') ||
+        el.closest('#nadlan-pax-modal-v15')
+      ) return;
+      if (el.querySelector('a, button')) return;
+
+      const elTxt = normText(el.innerText || el.textContent || '');
+      if (
+        (elTxt.indexOf('العنوان:') !== -1 || elTxt.indexOf('نوع الغرفة:') !== -1) &&
+        (elTxt.indexOf('تفاصيل الوجبات:') !== -1 || elTxt.indexOf('سياسة الإلغاء:') !== -1 || elTxt.indexOf('CXL deadline:') !== -1 || elTxt.length > 45)
+      ) {
+        el.style.display = 'none';
+      }
+    });
+
+    let cleanBox = card.querySelector('.nadlan-hotel-clean-box-v24');
+    if (!cleanBox) {
+      cleanBox = document.createElement('div');
+      cleanBox.className = 'nadlan-hotel-clean-box-v24';
+      cleanBox.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:10px;margin-bottom:10px;padding:12px 14px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;text-align:right;';
+
+      const dl = card.querySelector('a[download], a[href^="data:"], a[href^="blob:"]');
+      if (dl && dl.parentElement) {
+        dl.parentElement.insertBefore(cleanBox, dl);
+      } else {
+        card.appendChild(cleanBox);
+      }
+    }
+
+    const lines = [];
+    if (roomType) {
+      lines.push(`<div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.5;">نوع الغرفة: <span style="font-weight:700;color:#334155;">${roomType}</span></div>`);
+    }
+    if (address) {
+      lines.push(`<div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.5;">العنوان: <span style="font-weight:700;color:#334155;">${address}</span></div>`);
+    }
+    cleanBox.innerHTML = lines.join('');
   }
 
   function isPdfAttachment(el) {
@@ -175,13 +251,11 @@
     return false;
   }
 
-  // Applies to ALL itinerary cards (flights, hotels, vouchers, etc.) in customer view
-  // Upload inputs (<input type="file">) are untouched so admin can still upload images or PDFs freely
   function enforcePdfOnlyDownloadOnCard(card) {
     if (!card) return;
     const candidates = card.querySelectorAll('a[download], a[href^="data:"], a[href^="blob:"], button, a');
     candidates.forEach((el) => {
-      if (el.closest('.nadlan-flight-bar-v15') || el.closest('#nadlan-pax-modal-v15')) return;
+      if (el.closest('.nadlan-flight-bar-v15') || el.closest('.nadlan-hotel-clean-box-v24') || el.closest('#nadlan-pax-modal-v15')) return;
       if (el.tagName === 'INPUT' && el.type === 'file') return;
 
       const txt = normText(el.innerText || el.textContent || '');
@@ -199,7 +273,6 @@
         el.style.display = '';
         el.dataset.nadlanPdfAllowed = '1';
       } else {
-        // Hide download option when attachment is an image or not confirmed as PDF
         el.style.display = 'none';
         el.dataset.nadlanPdfAllowed = '0';
       }
@@ -332,11 +405,12 @@
     directChildren.forEach((card) => {
       if (!card || card.id === 'nadlan-pax-modal-v15') return;
 
-      // Enforce PDF-only download on every card (hotels, flights, vouchers) in customer itinerary view
       enforcePdfOnlyDownloadOnCard(card);
       fixMobileLinks(card);
 
       const txt = getCardSourceText(card);
+      simplifyHotelCardDisplay(card, txt);
+
       const isFlight =
         txt.indexOf('طيران:') !== -1 ||
         txt.indexOf('Flight:') !== -1 ||
