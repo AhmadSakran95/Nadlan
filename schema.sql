@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS itinerary_steps (
     board_type VARCHAR(100),
     tour_title VARCHAR(255),
     notes TEXT,
+    flight_file_name VARCHAR(255),
+    flight_file_mime VARCHAR(120),
+    flight_file_data LONGTEXT,
     FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
 );
 

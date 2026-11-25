@@ -10,9 +10,8 @@ const HOST = '0.0.0.0';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
-
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Use Railway volume path if mounted, otherwise local project directory
@@ -28,6 +27,34 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
+function ensureFlightFileColumns(callback) {
+  db.all('PRAGMA table_info(itinerary_steps)', [], (err, cols) => {
+    if (err) return callback(err);
+    const existing = new Set((cols || []).map((c) => c.name));
+    const alters = [];
+    if (!existing.has('flight_file_name')) {
+      alters.push('ALTER TABLE itinerary_steps ADD COLUMN flight_file_name VARCHAR(255)');
+    }
+    if (!existing.has('flight_file_mime')) {
+      alters.push('ALTER TABLE itinerary_steps ADD COLUMN flight_file_mime VARCHAR(120)');
+    }
+    if (!existing.has('flight_file_data')) {
+      alters.push('ALTER TABLE itinerary_steps ADD COLUMN flight_file_data TEXT');
+    }
+    if (alters.length === 0) return callback(null);
+
+    let idx = 0;
+    function runNext() {
+      if (idx >= alters.length) return callback(null);
+      db.run(alters[idx++], (aErr) => {
+        if (aErr) return callback(aErr);
+        runNext();
+      });
+    }
+    runNext();
+  });
+}
+
 function initDatabase() {
   db.run('PRAGMA foreign_keys = ON');
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
@@ -35,7 +62,10 @@ function initDatabase() {
     if (err) {
       console.error('❌ Schema execution error:', err.message);
     } else {
-      seedInitialBookings();
+      ensureFlightFileColumns((colErr) => {
+        if (colErr) console.error('❌ Column migration error:', colErr.message);
+        seedInitialBookings();
+      });
     }
   });
 }
@@ -105,8 +135,8 @@ function insertStepsSQL(bookingId, steps, callback) {
   if (!steps || steps.length === 0) return callback(null);
   const stmt = db.prepare(`
     INSERT INTO itinerary_steps 
-    (booking_id, step_order, step_type, from_location, to_location, travel_date, hotel_name, stars, board_type, tour_title, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (booking_id, step_order, step_type, from_location, to_location, travel_date, hotel_name, stars, board_type, tour_title, notes, flight_file_name, flight_file_mime, flight_file_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   steps.forEach((s, idx) => {
@@ -121,7 +151,10 @@ function insertStepsSQL(bookingId, steps, callback) {
       s.stars || null,
       s.boardType || null,
       s.title || null,
-      s.notes || null
+      s.notes || null,
+      s.flightFileName || null,
+      s.flightFileMime || null,
+      s.flightFileData || null
     ]);
   });
 
@@ -149,10 +182,98 @@ function formatBookingRow(row, stepRows) {
       stars: s.stars || '',
       boardType: s.board_type || '',
       title: s.tour_title || '',
-      notes: s.notes || ''
+      notes: s.notes || '',
+      flightFileName: s.flight_file_name || '',
+      flightFileMime: s.flight_file_mime || '',
+      flightFileData: s.flight_file_data || ''
     }))
   };
 }
+
+// ==================== EXTRACT FLIGHT DETAILS FROM PDF / IMAGE ====================
+app.post('/api/ai/extract-flight', async (req, res) => {
+  const { fileName, mimeType, base64Data } = req.body;
+
+  if (!base64Data || !mimeType) {
+    return res.status(400).json({ error: 'يرجى إرفاق ملف PDF أو صورة لتفاصيل الطيران' });
+  }
+
+  if (!GEMINI_API_KEY) {
+    return res.status(400).json({ error: 'مفتاح GEMINI_API_KEY غير مضبوط على السيرفر' });
+  }
+
+  const prompt = `استخرج تفاصيل رحلة الطيران من الملف المرفق بدقة وأرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
+{
+  "from": "مطار المغادرة مع الرمز إن وجد، مثال: مطار بن غوريون (TLV)",
+  "to": "مطار الوصول مع الرمز إن وجد، مثال: مطار برشلونة الدولي (BCN)",
+  "date": "تاريخ ووقت الرحلة، مثال: 2026-12-01 | 08:30 صباحاً",
+  "notes": "شركة الطيران ورقم الرحلة وأي ملاحظة مهمة، مثال: الخطوط الجوية التركية - رحلة TK815"
+}
+إذا لم يتوفر حقل معين في الملف اجعله نصاً فارغاً "".`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data
+                  }
+                },
+                { text: prompt }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 800
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
+      return res.status(502).json({ error: `تعذر قراءة ملف الطيران: ${apiErrMsg}` });
+    }
+
+    const rawText =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || '')
+        .join('')
+        .trim() || '';
+
+    const cleaned = rawText.replace(/```json\s*|```/gi, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
+      return res.status(422).json({ error: 'لم يتمكن الذكاء الاصطناعي من استخراج حقول منظمة من الملف' });
+    }
+
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    res.json({
+      flight: {
+        from: String(parsed.from || ''),
+        to: String(parsed.to || ''),
+        date: String(parsed.date || ''),
+        notes: String(parsed.notes || ''),
+        flightFileName: fileName || 'flight-ticket'
+      }
+    });
+  } catch (err) {
+    console.error('Flight extraction error:', err);
+    res.status(500).json({ error: 'حدث خطأ أثناء تحليل ملف الطيران' });
+  }
+});
 
 // ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
 app.post('/api/ai/chat', async (req, res) => {
@@ -177,6 +298,10 @@ app.post('/api/ai/chat', async (req, res) => {
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
+  const cleanItinerary = Array.isArray(booking?.itinerary)
+    ? booking.itinerary.map(({ flightFileData, ...rest }) => rest)
+    : [];
+
   const bookingContext = booking
     ? JSON.stringify(
         {
@@ -186,7 +311,7 @@ app.post('/api/ai/chat', async (req, res) => {
           currentDate: today,
           totalPrice: `${booking.price} ${booking.currency}`,
           terms: booking.terms,
-          itinerary: booking.itinerary
+          itinerary: cleanItinerary
         },
         null,
         2
