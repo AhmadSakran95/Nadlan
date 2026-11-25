@@ -548,6 +548,6 @@ app.delete('/api/bookings/:pnr', (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(\`🚀 Nadlantours Railway Server running on http://\${HOST}:\${PORT}\`);
-  console.log(\`🤖 Gemini AI status: \${GEMINI_API_KEY ? 'Configured (' + GEMINI_MODEL + ')' : 'Missing GEMINI_API_KEY env var'}\`);
+  console.log(`🚀 Nadlantours Railway Server running on http://${HOST}:${PORT}`);
+  console.log(`🤖 Gemini AI status: ${GEMINI_API_KEY ? 'Configured (' + GEMINI_MODEL + ')' : 'Missing GEMINI_API_KEY env var'}`);
 });
