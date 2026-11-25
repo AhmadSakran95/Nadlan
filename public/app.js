@@ -6,15 +6,115 @@ const DESTINATION_DB = {};
 
 // ==================== STATE MANAGEMENT ====================
 
+const DEFAULT_TERMS_FALLBACK = `• السعر يشمل البرنامج المتفق عليه حسب التفاصيل أعلاه.
+• يُرجى التأكد من صلاحية جواز السفر (لا تقل عن 6 أشهر) ومتطلبات الدخول للوجهة.
+• تسجيل الدخول للفنادق الساعة 15:00 والمغادرة الساعة 11:00 ما لم يُذكر خلاف ذلك.`;
+
 let bookings = [];
 let builderSteps = [];
 let currentCustomerBooking = null;
 let currentWeatherSummary = [];
 let lastGeneratedModalData = null;
+let defaultBookingTerms = localStorage.getItem("nadlan_default_terms") || DEFAULT_TERMS_FALLBACK;
 
-function initApp() {
+async function initApp() {
+  await loadDefaultTermsFromServer();
   loadStandardTemplate();
+  applyDefaultTermsToForm(true);
 }
+
+async function loadDefaultTermsFromServer() {
+  try {
+    const res = await fetch(`${API_BASE}/settings/default-terms`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.defaultTerms === "string" && data.defaultTerms.trim()) {
+        defaultBookingTerms = data.defaultTerms;
+        localStorage.setItem("nadlan_default_terms", defaultBookingTerms);
+      }
+    }
+  } catch (e) {
+    // Fallback to localStorage / constant
+  }
+  const inputEl = document.getElementById("default-terms-input");
+  if (inputEl) inputEl.value = defaultBookingTerms;
+}
+
+function applyDefaultTermsToForm(force = false) {
+  const termsEl = document.getElementById("b-terms");
+  if (!termsEl) return;
+  if (force || !termsEl.value.trim()) {
+    termsEl.value = defaultBookingTerms;
+  }
+}
+
+function switchAdminSubTab(tab) {
+  const panels = {
+    add: document.getElementById("admin-panel-add"),
+    list: document.getElementById("admin-panel-list"),
+    terms: document.getElementById("admin-panel-terms")
+  };
+  const tabs = {
+    add: document.getElementById("admin-tab-add"),
+    list: document.getElementById("admin-tab-list"),
+    terms: document.getElementById("admin-tab-terms")
+  };
+
+  Object.keys(panels).forEach((key) => {
+    if (panels[key]) panels[key].classList.toggle("hidden", key !== tab);
+    if (tabs[key]) {
+      tabs[key].className = key === tab
+        ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 bg-slate-900 text-amber-400 shadow"
+        : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 bg-slate-100 text-slate-700 hover:bg-slate-200";
+    }
+  });
+
+  if (tab === "list") {
+    fetchAllBookingsFromSQL();
+  } else if (tab === "terms") {
+    const inputEl = document.getElementById("default-terms-input");
+    if (inputEl) inputEl.value = defaultBookingTerms;
+  }
+}
+
+function openAddCustomerTab(resetForm = false) {
+  if (resetForm) {
+    resetAdminForm(false);
+  }
+  switchAdminSubTab("add");
+}
+
+document.getElementById("default-terms-form")?.addEventListener("submit", async function (e) {
+  e.preventDefault();
+  const inputEl = document.getElementById("default-terms-input");
+  const newTerms = (inputEl?.value || "").trim();
+  if (!newTerms) return;
+
+  defaultBookingTerms = newTerms;
+  localStorage.setItem("nadlan_default_terms", newTerms);
+
+  try {
+    await fetch(`${API_BASE}/settings/default-terms`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultTerms: newTerms })
+    });
+  } catch (err) {
+    console.warn("Could not save default terms to server, saved locally:", err);
+  }
+
+  // If currently creating a new booking (not editing an existing one), update terms field
+  const editingPnr = document.getElementById("edit-booking-pnr")?.value;
+  if (!editingPnr) {
+    applyDefaultTermsToForm(true);
+  }
+
+  const msgEl = document.getElementById("default-terms-saved-msg");
+  if (msgEl) {
+    msgEl.classList.remove("hidden");
+    setTimeout(() => msgEl.classList.add("hidden"), 3000);
+  }
+});
 
 // ==================== NAVIGATION ====================
 
@@ -62,7 +162,9 @@ async function quickAdminLogin() {
   document.getElementById("admin-login-error").classList.add("hidden");
   document.getElementById("admin-login-view").classList.add("hidden");
   document.getElementById("admin-dashboard-view").classList.remove("hidden");
+  await loadDefaultTermsFromServer();
   await fetchAllBookingsFromSQL();
+  switchAdminSubTab("add");
 }
 
 function logoutAdmin() {
@@ -351,17 +453,21 @@ document.getElementById("booking-builder-form").addEventListener("submit", async
   }
 });
 
-function resetAdminForm() {
+function resetAdminForm(switchTab = true) {
   document.getElementById("booking-builder-form").reset();
   document.getElementById("edit-booking-pnr").value = "";
-  document.getElementById("form-mode-title").innerHTML = `<i class="fa-solid fa-pen-to-square text-amber-500"></i><span>إنشاء برنامج رحلة جديد</span>`;
+  document.getElementById("form-mode-title").innerHTML = `<i class="fa-solid fa-pen-to-square text-amber-500"></i><span>إضافة زبون / إنشاء برنامج رحلة جديد</span>`;
   document.getElementById("editing-pnr-badge").classList.add("hidden");
   loadStandardTemplate();
+  applyDefaultTermsToForm(true);
+  if (switchTab) switchAdminSubTab("add");
 }
 
 function editBooking(pnr) {
   const b = bookings.find(item => item.pnr === pnr);
   if (!b) return;
+
+  switchAdminSubTab("add");
 
   document.getElementById("edit-booking-pnr").value = b.pnr;
   document.getElementById("b-firstname").value = b.firstName;
@@ -375,7 +481,7 @@ function editBooking(pnr) {
   builderSteps = JSON.parse(JSON.stringify(b.itinerary));
   renderBuilderSteps();
 
-  document.getElementById("form-mode-title").innerHTML = `<i class="fa-solid fa-pen text-blue-600"></i><span>تعديل الحجز</span>`;
+  document.getElementById("form-mode-title").innerHTML = `<i class="fa-solid fa-pen text-blue-600"></i><span>تعديل بيانات وحجز الزبون</span>`;
   const badge = document.getElementById("editing-pnr-badge");
   badge.textContent = `PNR: ${b.pnr}`;
   badge.classList.remove("hidden");

@@ -276,7 +276,7 @@
     </section>
 
     <!-- ==================== ADMIN SECTION ==================== -->
-    <section id="section-admin" class="hidden space-y-8">
+    <section id="section-admin" class="hidden space-y-6">
       
       <!-- Admin Auth Gate -->
       <div id="admin-login-view" class="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 p-8 mt-6 text-center">
@@ -295,152 +295,208 @@
       </div>
 
       <!-- Admin Dashboard -->
-      <div id="admin-dashboard-view" class="hidden space-y-8">
+      <div id="admin-dashboard-view" class="hidden space-y-6">
         
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <div>
-            <h2 class="text-2xl font-extrabold text-slate-900">لوحة إدارة الحجوزات وبناء البرامج</h2>
-            <p class="text-sm text-slate-500">قم ببناء مسار الرحلة بالتفصيل وسيتم توليد رقم PNR تلقائياً للزبون</p>
-          </div>
-          <div class="flex items-center gap-3">
-            <button onclick="resetAdminForm()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow transition">
-              <i class="fa-solid fa-plus"></i>
-              <span>حجز جديد</span>
-            </button>
-            <button onclick="logoutAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2.5 rounded-xl text-sm transition">
-              قفل الإدارة
-            </button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          <!-- Builder Form (7 cols) -->
-          <div class="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100">
-            <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
-              <h3 id="form-mode-title" class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <i class="fa-solid fa-pen-to-square text-amber-500"></i>
-                <span>إنشاء برنامج رحلة جديد</span>
-              </h3>
-              <span id="editing-pnr-badge" class="hidden bg-blue-100 text-blue-800 font-mono text-xs font-extrabold px-3 py-1 rounded-lg"></span>
+        <!-- Top Admin Header + Sub-Navigation Bar -->
+        <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-extrabold text-slate-900">لوحة إدارة Nadlantours</h2>
+              <p class="text-xs sm:text-sm text-slate-500">تنقّل بين إضافة زبون، قائمة الزبائن، وشروط الحجز الافتراضية</p>
             </div>
-
-            <form id="booking-builder-form" class="space-y-6">
-              <input type="hidden" id="edit-booking-pnr" value="" />
-
-              <!-- Customer & Destination Basic Info -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">الاسم الأول للزبون *</label>
-                  <input type="text" id="b-firstname" required placeholder="مثال: أحمد" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم العائلة (يُستخدم للدخول) *</label>
-                  <input type="text" id="b-lastname" required placeholder="مثال: المنصور" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">رقم هاتف الزبون *</label>
-                  <input type="tel" id="b-phone" required placeholder="مثال: +972501234567" dir="ltr" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-left focus:ring-2 focus:ring-amber-500 outline-none" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">المدينة / الوجهة الرئيسية (للطقس والمطاعم) *</label>
-                  <input type="text" id="b-city" list="popular-cities" required placeholder="مثال: برشلونة، إسطنبول، دبي..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
-                  <datalist id="popular-cities">
-                    <option value="برشلونة">
-                    <option value="إسطنبول">
-                    <option value="دبي">
-                    <option value="لندن">
-                    <option value="باريس">
-                    <option value="طرابزون">
-                    <option value="شرم الشيخ">
-                    <option value="بانكوك">
-                    <option value="كوالالمبور">
-                    <option value="تبليسي">
-                  </datalist>
-                </div>
-                <div class="sm:col-span-2">
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">السعر الإجمالي للبرنامج *</label>
-                  <div class="flex gap-2">
-                    <input type="number" id="b-price" required placeholder="مثال: 1850" class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
-                    <select id="b-currency" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold bg-slate-50 outline-none">
-                      <option value="$">دولار ($)</option>
-                      <option value="€">يورو (€)</option>
-                      <option value="₪">شيكل (₪)</option>
-                      <option value="ريال">ريال سعودي</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Dynamic Itinerary Builder -->
-              <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
-                <div class="flex items-center justify-between flex-wrap gap-2">
-                  <label class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                    <i class="fa-solid fa-layer-group text-blue-600"></i>
-                    <span>تخطيط مسار الرحلة (بالترتيب)</span>
-                  </label>
-                  <div class="flex flex-wrap gap-1.5">
-                    <button type="button" onclick="addItineraryStep('flight')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
-                      <i class="fa-solid fa-plane"></i> + طيران
-                    </button>
-                    <button type="button" onclick="addItineraryStep('hotel')" class="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
-                      <i class="fa-solid fa-hotel"></i> + فندق
-                    </button>
-                    <button type="button" onclick="addItineraryStep('transfer')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
-                      <i class="fa-solid fa-car"></i> + توصيل
-                    </button>
-                    <button type="button" onclick="addItineraryStep('tour')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
-                      <i class="fa-solid fa-map-location-dot"></i> + جولة
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Preset Template Button -->
-                <div class="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs">
-                  <span class="text-slate-500">تعبئة سريعة لمسار قياسي (طيران ➔ فندق ➔ توصيل ➔ فندق ➔ طيران):</span>
-                  <button type="button" onclick="loadStandardTemplate()" class="text-blue-600 hover:underline font-bold">تطبيق القالب</button>
-                </div>
-
-                <!-- Steps Container -->
-                <div id="builder-steps-container" class="space-y-4">
-                  <!-- Steps rendered here -->
-                </div>
-              </div>
-
-              <!-- Booking Terms -->
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1.5">شروط الحجز والملاحظات الهامة *</label>
-                <textarea id="b-terms" rows="3" required placeholder="مثال: السعر يشمل حقيبة 20 كغ، تسجيل الدخول للفندق الساعة 14:00، الإلغاء مجاني قبل 7 أيام..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
-              </div>
-
-              <button type="submit" class="w-full bg-gradient-to-l from-slate-900 to-blue-950 hover:from-slate-800 hover:to-blue-900 text-white font-extrabold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-base">
-                <i class="fa-solid fa-floppy-disk text-amber-400"></i>
-                <span>حفظ البرنامج وتوليد رقم PNR</span>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="openAddCustomerTab(true)" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow transition">
+                <i class="fa-solid fa-plus"></i>
+                <span>حجز جديد</span>
               </button>
-            </form>
-          </div>
-
-          <!-- Saved Bookings List (5 cols) -->
-          <div class="lg:col-span-5 space-y-4">
-            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-extrabold text-slate-900">الحجوزات المحفوظة (<span id="total-bookings-count">0</span>)</h3>
-              </div>
-              
-              <div class="relative mb-4">
-                <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                  <i class="fa-solid fa-magnifying-glass text-xs"></i>
-                </span>
-                <input type="text" id="admin-search-input" oninput="renderAdminBookings()" placeholder="بحث بالاسم، العائلة، PNR، أو الوجهة..." class="w-full pr-9 pl-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-amber-500" />
-              </div>
-
-              <div id="admin-bookings-list" class="space-y-3 max-h-[750px] overflow-y-auto pr-1">
-                <!-- Saved bookings rendered here -->
-              </div>
+              <button type="button" onclick="logoutAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition">
+                قفل الإدارة
+              </button>
             </div>
           </div>
 
+          <!-- Admin Top Sub-Bar -->
+          <div class="flex flex-wrap gap-2 pt-3 border-t border-slate-100" role="tablist">
+            <button id="admin-tab-add" type="button" onclick="switchAdminSubTab('add')" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 bg-slate-900 text-amber-400 shadow">
+              <i class="fa-solid fa-user-plus"></i>
+              <span>إضافة زبون</span>
+            </button>
+            <button id="admin-tab-list" type="button" onclick="switchAdminSubTab('list')" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 bg-slate-100 text-slate-700 hover:bg-slate-200">
+              <i class="fa-solid fa-users"></i>
+              <span>قائمة الزبائن</span>
+              <span id="total-bookings-count" class="bg-amber-500 text-slate-950 font-mono text-xs font-extrabold px-2 py-0.5 rounded-full">0</span>
+            </button>
+            <button id="admin-tab-terms" type="button" onclick="switchAdminSubTab('terms')" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 bg-slate-100 text-slate-700 hover:bg-slate-200">
+              <i class="fa-solid fa-file-contract"></i>
+              <span>شروط الحجز الافتراضية</span>
+            </button>
+          </div>
         </div>
+
+        <!-- TAB 1: Add / Edit Customer -->
+        <div id="admin-panel-add" class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100">
+          <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+            <h3 id="form-mode-title" class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-pen-to-square text-amber-500"></i>
+              <span>إضافة زبون / إنشاء برنامج رحلة جديد</span>
+            </h3>
+            <span id="editing-pnr-badge" class="hidden bg-blue-100 text-blue-800 font-mono text-xs font-extrabold px-3 py-1 rounded-lg"></span>
+          </div>
+
+          <form id="booking-builder-form" class="space-y-6">
+            <input type="hidden" id="edit-booking-pnr" value="" />
+
+            <!-- Customer & Destination Basic Info -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">الاسم الأول للزبون *</label>
+                <input type="text" id="b-firstname" required placeholder="مثال: أحمد" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">اسم العائلة (يُستخدم للدخول) *</label>
+                <input type="text" id="b-lastname" required placeholder="مثال: المنصور" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">رقم هاتف الزبون *</label>
+                <input type="tel" id="b-phone" required placeholder="مثال: +972501234567" dir="ltr" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-left focus:ring-2 focus:ring-amber-500 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">المدينة / الوجهة الرئيسية (للطقس والمطاعم) *</label>
+                <input type="text" id="b-city" list="popular-cities" required placeholder="مثال: برشلونة، إسطنبول، دبي..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+                <datalist id="popular-cities">
+                  <option value="برشلونة">
+                  <option value="إسطنبول">
+                  <option value="دبي">
+                  <option value="لندن">
+                  <option value="باريس">
+                  <option value="طرابزون">
+                  <option value="شرم الشيخ">
+                  <option value="بانكوك">
+                  <option value="كوالالمبور">
+                  <option value="تبليسي">
+                </datalist>
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">السعر الإجمالي للبرنامج *</label>
+                <div class="flex gap-2">
+                  <input type="number" id="b-price" required placeholder="مثال: 1850" class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+                  <select id="b-currency" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold bg-slate-50 outline-none">
+                    <option value="$">دولار ($)</option>
+                    <option value="€">يورو (€)</option>
+                    <option value="₪">شيكل (₪)</option>
+                    <option value="ريال">ريال سعودي</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic Itinerary Builder -->
+            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <label class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <i class="fa-solid fa-layer-group text-blue-600"></i>
+                  <span>تخطيط مسار الرحلة (بالترتيب)</span>
+                </label>
+                <div class="flex flex-wrap gap-1.5">
+                  <button type="button" onclick="addItineraryStep('flight')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                    <i class="fa-solid fa-plane"></i> + طيران
+                  </button>
+                  <button type="button" onclick="addItineraryStep('hotel')" class="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                    <i class="fa-solid fa-hotel"></i> + فندق
+                  </button>
+                  <button type="button" onclick="addItineraryStep('transfer')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                    <i class="fa-solid fa-car"></i> + توصيل
+                  </button>
+                  <button type="button" onclick="addItineraryStep('tour')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1">
+                    <i class="fa-solid fa-map-location-dot"></i> + جولة
+                  </button>
+                </div>
+              </div>
+
+              <!-- Preset Template Button -->
+              <div class="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs">
+                <span class="text-slate-500">تعبئة سريعة لمسار قياسي (طيران ➔ فندق ➔ توصيل ➔ فندق ➔ طيران):</span>
+                <button type="button" onclick="loadStandardTemplate()" class="text-blue-600 hover:underline font-bold">تطبيق القالب</button>
+              </div>
+
+              <!-- Steps Container -->
+              <div id="builder-steps-container" class="space-y-4">
+                <!-- Steps rendered here -->
+              </div>
+            </div>
+
+            <!-- Booking Terms (Pre-filled from Default Terms, editable per customer) -->
+            <div>
+              <div class="flex items-center justify-between flex-wrap gap-2 mb-1.5">
+                <label class="block text-xs font-bold text-slate-700">شروط الحجز والملاحظات الهامة لهذا الزبون * (معبأة تلقائياً من الافتراضي ويمكن تعديلها)</label>
+                <button type="button" onclick="applyDefaultTermsToForm()" class="text-xs text-blue-600 hover:underline font-bold">
+                  استعادة النص الافتراضي
+                </button>
+              </div>
+              <textarea id="b-terms" rows="4" required placeholder="مثال: السعر يشمل حقيبة 20 كغ، تسجيل الدخول للفندق الساعة 14:00..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
+            </div>
+
+            <button type="submit" class="w-full bg-gradient-to-l from-slate-900 to-blue-950 hover:from-slate-800 hover:to-blue-900 text-white font-extrabold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-base">
+              <i class="fa-solid fa-floppy-disk text-amber-400"></i>
+              <span>حفظ البرنامج وتوليد رقم PNR</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- TAB 2: Customers List -->
+        <div id="admin-panel-list" class="hidden bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 class="text-xl font-extrabold text-slate-900">قائمة الزبائن والحجوزات</h3>
+              <p class="text-xs text-slate-500">يمكنك معاينة حجز الزبون، تعديل بياناته، أو مسحه من النظام</p>
+            </div>
+            <button type="button" onclick="openAddCustomerTab(true)" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 self-start sm:self-auto">
+              <i class="fa-solid fa-plus"></i>
+              <span>إضافة زبون جديد</span>
+            </button>
+          </div>
+
+          <div class="relative">
+            <span class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+              <i class="fa-solid fa-magnifying-glass text-xs"></i>
+            </span>
+            <input type="text" id="admin-search-input" oninput="renderAdminBookings()" placeholder="بحث بالاسم، العائلة، PNR، أو الوجهة..." class="w-full pr-10 pl-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+
+          <div id="admin-bookings-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Saved bookings rendered here -->
+          </div>
+        </div>
+
+        <!-- TAB 3: Default Terms Settings -->
+        <div id="admin-panel-terms" class="hidden bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 max-w-3xl space-y-5">
+          <div>
+            <h3 class="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-file-contract text-amber-500"></i>
+              <span>إعداد شروط الحجز الافتراضية (Default)</span>
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">
+              أي نص تحفظه هنا سيظهر تلقائياً جاهزاً في حقل الشروط عند إضافة زبون جديد، مع إمكانية تعديله لكل زبون على حدة أثناء الحجز.
+            </p>
+          </div>
+
+          <form id="default-terms-form" class="space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-2">النص الافتراضي لشروط الحجز</label>
+              <textarea id="default-terms-input" rows="6" required class="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm leading-relaxed focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
+            </div>
+            <div class="flex items-center gap-3">
+              <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-extrabold px-6 py-3 rounded-xl text-sm flex items-center gap-2 shadow transition">
+                <i class="fa-solid fa-check text-amber-400"></i>
+                <span>حفظ الشروط الافتراضية</span>
+              </button>
+              <span id="default-terms-saved-msg" class="hidden text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
+                ✓ تم حفظ الشروط الافتراضية بنجاح
+              </span>
+            </div>
+          </form>
+        </div>
+
       </div>
     </section>
 
