@@ -190,7 +190,7 @@ function formatBookingRow(row, stepRows) {
   };
 }
 
-// ==================== EXTRACT FLIGHT DETAILS FROM PDF / IMAGE ====================
+// ==================== EXTRACT FLIGHT DETAILS (MULTI-PASSENGER & ROUND-TRIP) ====================
 app.post('/api/ai/extract-flight', async (req, res) => {
   const { fileName, mimeType, base64Data } = req.body;
 
@@ -202,14 +202,26 @@ app.post('/api/ai/extract-flight', async (req, res) => {
     return res.status(400).json({ error: 'مفتاح GEMINI_API_KEY غير مضبوط على السيرفر' });
   }
 
-  const prompt = `استخرج تفاصيل رحلة الطيران من الملف المرفق بدقة وأرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
+  const prompt = `حلّل ملف أو صورة تذكرة الطيران المرفقة بدقة عالية واستخرج جميع المسافرين وجميع قطاعات الرحلة (ذهاب وعودة أو عدة محطات إن وُجدت)، ثم أرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
 {
-  "from": "مطار المغادرة مع الرمز إن وجد، مثال: مطار بن غوريون (TLV)",
-  "to": "مطار الوصول مع الرمز إن وجد، مثال: مطار برشلونة الدولي (BCN)",
-  "date": "تاريخ ووقت الرحلة، مثال: 2026-12-01 | 08:30 صباحاً",
-  "notes": "شركة الطيران ورقم الرحلة وأي ملاحظة مهمة، مثال: الخطوط الجوية التركية - رحلة TK815"
+  "passengers": ["اسم المسافر الأول", "اسم المسافر الثاني"],
+  "outbound": {
+    "from": "مطار المغادرة للذهاب مع الرمز إن وجد، مثال: مطار بن غوريون (TLV)",
+    "to": "مطار الوصول للذهاب مع الرمز إن وجد، مثال: مطار برشلونة الدولي (BCN)",
+    "date": "تاريخ ووقت رحلة الذهاب، مثال: 2026-12-01 | 08:30 صباحاً",
+    "notes": "شركة الطيران ورقم الرحلة والملاحظات للذهاب"
+  },
+  "returnFlight": {
+    "hasReturn": true,
+    "from": "مطار المغادرة للعودة إن وُجدت عودة، وإلا نص فارغ",
+    "to": "مطار الوصول للعودة إن وُجدت عودة، وإلا نص فارغ",
+    "date": "تاريخ ووقت رحلة العودة إن وُجدت عودة، وإلا نص فارغ",
+    "notes": "شركة الطيران ورقم الرحلة والملاحظات للعودة إن وُجدت عودة، وإلا نص فارغ"
+  }
 }
-إذا لم يتوفر حقل معين في الملف اجعله نصاً فارغاً "".`;
+تنبيهات مهمة:
+- استخرج كل أسماء المسافرين الموجودة في التذكرة في مصفوفة "passengers" حتى لو كان مسافراً واحداً أو عدة مسافرين.
+- إذا كانت التذكرة ذهاباً وعودة (أو تحتوي على رحلة عودة)، اجعل "hasReturn": true واملأ حقول "returnFlight" بدقة. إذا كانت ذهاباً فقط اجعل "hasReturn": false.`;
 
   try {
     const response = await fetch(
@@ -234,7 +246,7 @@ app.post('/api/ai/extract-flight', async (req, res) => {
           ],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 800
+            maxOutputTokens: 1200
           }
         })
       }
@@ -260,14 +272,45 @@ app.post('/api/ai/extract-flight', async (req, res) => {
     }
 
     const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    const passengers = Array.isArray(parsed.passengers)
+      ? parsed.passengers.map((p) => String(p || '').trim()).filter(Boolean)
+      : [];
+
+    const outObj = parsed.outbound || parsed;
+    const retObj = parsed.returnFlight || {};
+    const hasReturn = Boolean(
+      retObj.hasReturn ||
+        (retObj.from && String(retObj.from).trim()) ||
+        (retObj.to && String(retObj.to).trim()) ||
+        (retObj.date && String(retObj.date).trim())
+    );
+
+    const paxSuffix = passengers.length > 0 ? ` | المسافرون: ${passengers.join('، ')}` : '';
+    const baseOutNotes = String(outObj.notes || '').trim();
+    const outNotes = `${baseOutNotes}${paxSuffix}`.trim();
+
+    const baseRetNotes = String(retObj.notes || '').trim();
+    const retNotes = hasReturn ? `${baseRetNotes}${paxSuffix}`.trim() : '';
+
     res.json({
-      flight: {
-        from: String(parsed.from || ''),
-        to: String(parsed.to || ''),
-        date: String(parsed.date || ''),
-        notes: String(parsed.notes || ''),
+      passengers,
+      outbound: {
+        from: String(outObj.from || ''),
+        to: String(outObj.to || ''),
+        date: String(outObj.date || ''),
+        notes: outNotes,
         flightFileName: fileName || 'flight-ticket'
-      }
+      },
+      returnFlight: hasReturn
+        ? {
+            hasReturn: true,
+            from: String(retObj.from || ''),
+            to: String(retObj.to || ''),
+            date: String(retObj.date || ''),
+            notes: retNotes,
+            flightFileName: fileName || 'flight-ticket'
+          }
+        : { hasReturn: false }
     });
   } catch (err) {
     console.error('Flight extraction error:', err);
@@ -505,6 +548,6 @@ app.delete('/api/bookings/:pnr', (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`🚀 Nadlantours Railway Server running on http://${HOST}:${PORT}`);
-  console.log(`🤖 Gemini AI status: ${GEMINI_API_KEY ? 'Configured (' + GEMINI_MODEL + ')' : 'Missing GEMINI_API_KEY env var'}`);
+  console.log(\`🚀 Nadlantours Railway Server running on http://\${HOST}:\${PORT}\`);
+  console.log(\`🤖 Gemini AI status: \${GEMINI_API_KEY ? 'Configured (' + GEMINI_MODEL + ')' : 'Missing GEMINI_API_KEY env var'}\`);
 });
