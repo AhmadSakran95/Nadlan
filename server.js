@@ -45,7 +45,7 @@ app.post("/api/gemini", async (req, res) => {
 
 // SPA/static fallback
 app.get("*", (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 app.listen(PORT, "0.0.0.0", () => {

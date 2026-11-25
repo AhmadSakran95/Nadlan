@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ندلان تورز (Nadlantours) — نظام إدارة الحجوزات ومساعد الزبون الذكي</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            cairo: ["Cairo", "sans-serif"]
+          },
+          colors: {
+            brand: {
+              50: "#f0fdf9",
+              100: "#ccfbf1",
+              500: "#0d9488",
+              600: "#0f766e",
+              700: "#115e59",
+              800: "#134e4a",
+              900: "#042f2e"
+            }
+          }
+        }
+      }
+    };
+  </script>
+    <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+  <!-- إشعار نظام مخصص بديل عن alert/confirm -->
+  <div id="toast-banner" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden max-w-md w-[92%] px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-2xl border border-slate-700 items-center justify-between gap-3">
+    <span id="toast-message"></span>
+    <button type="button" onclick="hideToast()" class="text-amber-300 hover:text-amber-200 text-xs font-extrabold px-2 py-1 rounded-lg bg-slate-800">إغلاق</button>
+  </div>
+
+  <!-- الشريط العلوي -->
+  <header class="bg-gradient-to-l from-brand-900 via-brand-800 to-slate-900 text-white shadow-lg border-b border-brand-700/50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 font-black text-xl flex items-center justify-center shadow">
+          ✈️
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">ندلان تورز — Nadlantours</h1>
+            <span class="text-[11px] px-2.5 py-0.5 rounded-full bg-brand-700/80 text-amber-300 font-bold border border-brand-500/40">نظام ذكي</span>
+          </div>
+          <p class="text-xs text-slate-300">إدارة الحجوزات، استخراج التذاكر والفنادق والمواصلات، وبوابة الزبون الذكية</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 bg-slate-950/50 p-1.5 rounded-2xl border border-white/10">
+        <button
+          type="button"
+          id="tab-admin-btn"
+          onclick="switchPortal('admin')"
+          class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-amber-400 text-slate-950 shadow cursor-pointer"
+        >
+          🛠️ قسم الإدارة
+        </button>
+        <button
+          type="button"
+          id="tab-customer-btn"
+          onclick="switchPortal('customer')"
+          class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition text-slate-200 hover:bg-white/10 cursor-pointer"
+        >
+          🧳 قسم الزبون
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- المحتوى الرئيسي -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+    <!-- ==================== قسم الإدارة ==================== -->
+    <section id="admin-section" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- نموذج إضافة / تعديل الحجز -->
+        <div class="lg:col-span-7 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <h2 id="form-heading" class="text-lg font-black text-slate-900">إضافة حجز جديد</h2>
+              <p class="text-xs text-slate-500">يُسجل الحجز باسم الزبون الرئيسي مع حفظ جميع المسافرين واستخراج البيانات تلقائياً</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onclick="applyStandardTemplate()"
+                class="px-3 py-2 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 text-xs font-extrabold transition cursor-pointer"
+              >
+                📋 القالب القياسي
+              </button>
+              <button
+                type="button"
+                id="btn-cancel-edit"
+                onclick="cancelEditBooking()"
+                class="hidden px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold transition cursor-pointer"
+              >
+                ✖ إلغاء التعديل
+              </button>
+            </div>
+          </div>
+
+          <input type="hidden" id="editing-booking-id" value="" />
+
+          <!-- بيانات الزبون الرئيسي -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">الاسم الأول للزبون *</label>
+              <input
+                type="text"
+                id="customer-first-name"
+                placeholder="مثال: أحمد"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">اسم العائلة للزبون *</label>
+              <input
+                type="text"
+                id="customer-last-name"
+                placeholder="مثال: محاجنة"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">المدينة / الوجهة الرئيسية</label>
+              <input
+                type="text"
+                id="main-destination"
+                placeholder="مثال: باتومي أو دبي"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">رمز الحجز / PNR للدخول</label>
+              <input
+                type="text"
+                id="booking-pnr"
+                placeholder="يُولّد تلقائياً مثل NDL10 أو أدخل PNR"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-extrabold uppercase"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">أسماء جميع المسافرين (سطر لكل مسافر)</label>
+              <textarea
+                id="passengers-list-input"
+                rows="2"
+                placeholder="أحمد محاجنة&#10;سارة محاجنة"
+                class="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-xs font-bold"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- استخراج تلقائي من ملف PDF أو صورة -->
+          <div class="bg-slate-50 border border-dashed border-brand-400 rounded-2xl p-4 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-xs sm:text-sm font-black text-brand-900">⚡ استخراج تلقائي من ملف PDF أو صورة</h3>
+                <p class="text-[11px] text-slate-600">يدعم تذاكر الطيران (ذهاب وعودة، رقم الرحلة، PNR، الحقائب، المسافرين) والفنادق والتوصيل</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="triggerExtract('flight')" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-extrabold cursor-pointer">
+                  ✈️ استخراج طيران
+                </button>
+                <button type="button" onclick="triggerExtract('hotel')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold cursor-pointer">
+                  🏨 استخراج فندق
+                </button>
+                <button type="button" onclick="triggerExtract('transfer')" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold cursor-pointer">
+                  🚐 استخراج توصيل
+                </button>
+              </div>
+            </div>
+            <input
+              type="file"
+              id="extract-file-input"
+              accept="application/pdf,image/*"
+              onchange="handleExtractFileSelected(event)"
+              class="hidden"
+            />
+            <div id="extract-status" class="hidden text-xs font-bold text-brand-800 bg-brand-100/70 px-3 py-2 rounded-xl items-center gap-2">
+              <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>
+              <span id="extract-status-text">جاري تحليل الملف واستخراج البيانات...</span>
+            </div>
+          </div>
+
+          <!-- أزرار إضافة المحطات بالترتيب -->
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-black text-slate-900">محطات الرحلة بالترتيب</h3>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="addStation('flight')" class="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-xs font-extrabold cursor-pointer">+ طيران</button>
+                <button type="button" onclick="addStation('hotel')" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-extrabold cursor-pointer">+ فندق</button>
+                <button type="button" onclick="addStation('transfer')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-extrabold cursor-pointer">+ توصيل</button>
+                <button type="button" onclick="addStation('tour')" class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-extrabold cursor-pointer">+ جولة</button>
+              </div>
+            </div>
+
+            <div id="stations-container" class="space-y-3"></div>
+          </div>
+
+          <div class="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <button
+              type="button"
+              onclick="saveBooking()"
+              class="px-6 py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-black shadow-md transition cursor-pointer"
+            >
+              💾 حفظ الحجز وتوليد الرسالة
+            </button>
+          </div>
+
+          <!-- بطاقة الرسالة الجاهزة للنسخ -->
+          <div id="generated-message-box" class="hidden bg-amber-50/90 border border-amber-300 rounded-2xl p-4 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-black text-amber-950">📩 رسالة جاهزة لإرسالها للزبون</span>
+              <button
+                type="button"
+                onclick="copyGeneratedMessage()"
+                class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-extrabold cursor-pointer"
+              >
+                📋 نسخ الرسالة
+              </button>
+            </div>
+            <pre id="generated-message-text" class="whitespace-pre-wrap text-xs leading-relaxed text-slate-800 font-bold bg-white p-3 rounded-xl border border-amber-200"></pre>
+          </div>
+        </div>
+
+        <!-- قائمة الزبائن المحفوظين -->
+        <div class="lg:col-span-5 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 class="text-lg font-black text-slate-900">قائمة الزبائن</h2>
+              <p class="text-xs text-slate-500">اختر أي حجز لتعديله أو فتحه في بوابة الزبون</p>
+            </div>
+            <span id="bookings-count-badge" class="px-3 py-1 rounded-full bg-brand-100 text-brand-800 text-xs font-black">0 حجوزات</span>
+          </div>
+
+          <div id="bookings-list" class="space-y-3 max-h-[780px] overflow-y-auto custom-scroll pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== قسم الزبون ==================== -->
+    <section id="customer-section" class="hidden space-y-6">
+      <!-- شاشة تسجيل دخول الزبون -->
+      <div id="customer-login-card" class="max-w-lg mx-auto bg-white rounded-3xl shadow-md border border-slate-200 p-6 sm:p-8 space-y-5">
+        <div class="text-center space-y-1.5">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-brand-100 text-brand-800 flex items-center justify-center text-2xl font-black">🧳</div>
+          <h2 class="text-xl font-black text-slate-900">بوابة الزبون — ندلان تورز</h2>
+          <p class="text-xs sm:text-sm text-slate-500">أدخل رمز الحجز / PNR واسم العائلة لعرض تفاصيل رحلتك ومساعدك الذكي</p>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-extrabold text-slate-700 mb-1">رمز الحجز / PNR</label>
+            <input
+              type="text"
+              id="login-pnr"
+              placeholder="مثال: NDL10"
+              class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-extrabold uppercase"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-extrabold text-slate-700 mb-1">اسم العائلة</label>
+            <input
+              type="text"
+              id="login-last-name"
+              placeholder="مثال: محاجنة"
+              class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+            />
+          </div>
+          <button
+            type="button"
+            onclick="loginCustomerPortal()"
+            class="w-full py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-black shadow-md transition cursor-pointer"
+          >
+            دخول إلى رحلتي 🚀
+          </button>
+        </div>
+
+        <div id="login-error-msg" class="hidden text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl"></div>
+
+        <!-- وصول سريع للحجوزات التجريبية / المحفوظة -->
+        <div class="pt-3 border-t border-slate-100 space-y-2">
+          <p class="text-[11px] font-extrabold text-slate-400">حجوزات سريعة للمعاينة:</p>
+          <div id="quick-demo-bookings" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- لوحة رحلة الزبون -->
+      <div id="customer-dashboard" class="hidden space-y-6">
+        <div id="checkin-alert-banner" class="hidden rounded-3xl p-4 sm:p-5 shadow-lg">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span id="checkin-alert-badge" class="px-2.5 py-0.5 rounded-full bg-slate-950 text-amber-300 text-[11px] font-black">🔥 فتح الشيك إن!</span>
+                <h3 id="checkin-alert-title" class="text-base sm:text-lg font-black">رحلتك اقتربت وبوابة الشيك إن مفتوحة الآن!</h3>
+              </div>
+              <p id="checkin-alert-desc" class="text-xs sm:text-sm font-bold text-slate-900"></p>
+              <div id="checkin-alert-codes" class="flex flex-wrap items-center gap-2 pt-1 text-xs font-black"></div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <a
+                id="btn-airline-checkin-link"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="hidden px-4 py-2.5 rounded-2xl bg-brand-800 hover:bg-brand-900 text-white text-xs font-extrabold shadow transition items-center gap-1.5"
+              >
+                <span>✈️ شيك إن</span>
+                <span id="btn-airline-checkin-name" class="text-amber-300"></span>
+              </a>
+              <button
+                type="button"
+                id="btn-copy-checkin-info"
+                onclick="copyCheckinCodesInfo()"
+                class="px-4 py-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 text-amber-300 text-xs font-extrabold shadow transition cursor-pointer"
+              >
+                📋 نسخ بيانات الشيك إن
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- رأس بطاقة الزبون -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="customer-welcome-name" class="text-xl font-black text-slate-900"></span>
+              <span id="customer-pnr-badge" class="px-3 py-1 rounded-full bg-brand-100 text-brand-800 text-xs font-black"></span>
+              <span id="customer-dest-badge" class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-extrabold inline-flex items-center gap-1.5"></span>
+            </div>
+            <p class="text-xs text-slate-500">تفاصيل المسار، الطقس، الأماكن السياحية، المطاعم الحلال، وفيوز الكهرباء للوجهة</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onclick="openPassengersModal()"
+              class="px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black shadow-sm transition cursor-pointer"
+            >
+              👥 المسافرين
+            </button>
+            <button
+              type="button"
+              onclick="logoutCustomerPortal()"
+              class="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition cursor-pointer"
+            >
+              خروج
+            </button>
+          </div>
+        </div>
+
+        <!-- شبكة المسار + مساعد ندلان تورز الذكي -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <!-- مسار الرحلة المرتب -->
+          <div class="lg:col-span-7 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-black text-slate-900">🗺️ خط سير الرحلة</h3>
+              <span id="customer-stages-count" class="text-xs font-extrabold text-slate-500"></span>
+            </div>
+            <div id="customer-stages-list" class="space-y-4"></div>
+          </div>
+
+          <!-- شات مساعد ندلان تورز الذكي -->
+          <div class="lg:col-span-5 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[540px]">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-brand-900 text-white rounded-t-3xl">
+              <div class="flex items-center gap-2.5">
+                <span class="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">🤖</span>
+                <div>
+                  <h3 class="text-sm font-black">مساعد ندلان تورز الذكي</h3>
+                  <p class="text-[11px] text-brand-100">يساعدك في مواعيد رحلتك، الشيك إن، والوجهة</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onclick="resetAiChat()"
+                class="text-xs px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 font-bold cursor-pointer"
+              >
+                محادثة جديدة
+              </button>
+            </div>
+
+            <div id="ai-chat-messages" class="flex-1 p-4 space-y-3 overflow-y-auto custom-scroll bg-slate-50/60"></div>
+
+            <!-- أسئلة سريعة جاهزة أعلى حقل الإدخال -->
+            <div id="ai-quick-questions" class="px-3 pt-2.5 pb-1.5 border-t border-slate-100 bg-white flex items-center gap-1.5 overflow-x-auto custom-scroll">
+              <button
+                type="button"
+                onclick="sendQuickAiQuestion('وينتا رحلتي؟ وكم باقي عليها؟')"
+                class="shrink-0 px-3 py-1.5 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 text-[11px] font-extrabold transition cursor-pointer"
+              >
+                📅 وينتا رحلتي؟
+              </button>
+              <button
+                type="button"
+                onclick="sendQuickAiQuestion('كيف أعمل شيك إن؟ وما هو رمز PNR واسم العائلة؟')"
+                class="shrink-0 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 text-[11px] font-extrabold transition cursor-pointer"
+              >
+                ✈️ طريقة الشيك إن
+              </button>
+              <button
+                type="button"
+                onclick="sendQuickAiQuestion('ما هي تفاصيل الفندق والمواصلات؟')"
+                class="shrink-0 px-3 py-1.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[11px] font-extrabold transition cursor-pointer"
+              >
+                🏨 الفندق والتوصيل
+              </button>
+              <button
+                type="button"
+                onclick="sendQuickAiQuestion('ما هي الحقائب المسموحة لي في الرحلة؟')"
+                class="shrink-0 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-[11px] font-extrabold transition cursor-pointer"
+              >
+                🧳 الحقائب المسموحة
+              </button>
+            </div>
+
+            <form onsubmit="handleAiChatSubmit(event)" class="p-3 pt-1.5 flex items-center gap-2 bg-white rounded-b-3xl">
+              <input
+                type="text"
+                id="ai-chat-input"
+                placeholder="اسأل مثل: وينتا رحلتي؟ أو كيف أعمل شيك إن؟"
+                class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 outline-none text-xs sm:text-sm font-bold"
+              />
+              <button
+                type="submit"
+                class="px-4 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs sm:text-sm font-black cursor-pointer"
+              >
+                إرسال
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- الطقس لـ 5 أيام -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-black text-slate-900">🌤️ توقعات الطقس لـ 5 أيام</h3>
+            <span id="weather-city-label" class="text-xs font-extrabold text-brand-700 bg-brand-50 px-3 py-1 rounded-full"></span>
+          </div>
+          <div id="weather-5days-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3"></div>
+        </div>
+
+        <!-- أبرز 4 مناطق سياحية + أفضل 5 مطاعم حلال -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+            <h3 class="text-base font-black text-slate-900">🏛️ أبرز 4 مناطق سياحية موصى بزيارتها</h3>
+            <div id="attractions-4-grid" class="space-y-3"></div>
+          </div>
+
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+            <h3 class="text-base font-black text-slate-900">🍽️ أفضل 5 مطاعم حلال بتقييم</h3>
+            <div id="halal-5-grid" class="space-y-3"></div>
+          </div>
+        </div>
+
+        <!-- فيوز الكهرباء والجهد مع رسومات مبسطة -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-black text-slate-900">🔌 فيوز الكهرباء والجهد في الوجهة</h3>
+            <span id="plug-voltage-badge" class="text-xs font-black px-3 py-1 rounded-full bg-amber-100 text-amber-900"></span>
+          </div>
+          <div id="power-info-card" class="grid grid-cols-1 md:grid-cols-12 gap-5 items-center"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- نافذة منبثقة (Popup) لعرض جميع المسافرين -->
+  <div id="passengers-modal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-lg font-black text-slate-900">👥 قائمة جميع المسافرين</h3>
+        <button
+          type="button"
+          onclick="closePassengersModal()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+      <div id="passengers-modal-list" class="space-y-2 max-h-72 overflow-y-auto custom-scroll"></div>
+      <div class="pt-2 flex justify-end">
+        <button
+          type="button"
+          onclick="closePassengersModal()"
+          class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer"
+        >
+          إغلاق
+        </button>
+      </div>
+    </div>
+  </div>
+
+    <script src="/js/app.js" defer></script>
+</body>
+</html>
