@@ -307,11 +307,10 @@ app.post('/api/ai/extract-flight', async (req, res) => {
 
     const paxSuffix = passengers.length > 0 ? ` | المسافرون: ${passengers.join('، ')}` : '';
     const baseOutNotes = String(outObj.notes || '').trim();
-    const pnrTag = String(parsed.flightPnr || '').trim().toUpperCase() ? ` | PNR الطيران: ${String(parsed.flightPnr || '').trim().toUpperCase()}` : '';
-    const outNotes = `${baseOutNotes}${pnrTag}${paxSuffix}`.trim();
+    const outNotes = `${baseOutNotes}${paxSuffix}`.trim();
 
     const baseRetNotes = String(retObj.notes || '').trim();
-    const retNotes = hasReturn ? `${baseRetNotes}${pnrTag}${paxSuffix}`.trim() : '';
+    const retNotes = hasReturn ? `${baseRetNotes}${paxSuffix}`.trim() : '';
 
     const airlineName = String(parsed.airlineName || '').trim();
     const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
@@ -327,6 +326,14 @@ app.post('/api/ai/extract-flight', async (req, res) => {
       else if (low.includes('emirates')) checkInUrl = 'https://www.emirates.com/english/manage-booking/';
       else if (low.includes('qatar')) checkInUrl = 'https://www.qatarairways.com/en/hia-online-check-in.html';
     }
+    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
+    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
+    const checkInUrl = String(parsed.checkInUrl || '').trim();
+    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
+
+        const airlineName = String(parsed.airlineName || '').trim();
+    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
+    const checkInUrl = String(parsed.checkInUrl || '').trim();
     const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
 
     res.json({
@@ -659,7 +666,7 @@ app.post('/api/customer/login', (req, res) => {
       [pnr.trim(), lastName.trim()],
       (err, bookingRow) => {
         if (err) return res.status(500).json({ error: err.message });
-        if (!bookingRow) return res.status(404).json({ error: 'لم يتم العثور على حجز مطابق (قد يكون انتهى وتم حذفه تلقائياً بعد مرور يوم على الرحلة)' });
+        if (!bookingRow) return res.status(404).json({ error: 'لم يتم العثور على حجز مطابق' });
 
         db.all(
           `SELECT * FROM itinerary_steps WHERE booking_id = ? ORDER BY step_order ASC`,
@@ -935,43 +942,6 @@ app.delete('/api/bookings/:pnr', (req, res) => {
 // ==================== AUTO-CLEANUP EXPIRED FLIGHTS (+1 DAY AFTER DEPARTURE OR RETURN) ====================
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-const MONTH_MAP_SRV = {
-  january: '01', jan: '01',
-  february: '02', feb: '02',
-  march: '03', mar: '03',
-  april: '04', apr: '04',
-  may: '05',
-  june: '06', jun: '06',
-  july: '07', jul: '07',
-  august: '08', aug: '08',
-  september: '09', sep: '09', sept: '09',
-  october: '10', oct: '10',
-  november: '11', nov: '11',
-  december: '12', dec: '12'
-};
-
-function extractYmdServer(text) {
-  const iso = text.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (iso) {
-    return `${iso[1]}-${String(iso[2]).padStart(2, '0')}-${String(iso[3]).padStart(2, '0')}`;
-  }
-  const dmy = text.match(/\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b/);
-  if (dmy) {
-    return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
-  }
-  const mDayFirst = text.match(/\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})\b/i);
-  if (mDayFirst) {
-    const mm = MONTH_MAP_SRV[mDayFirst[2].toLowerCase()];
-    if (mm) return `${mDayFirst[3]}-${mm}-${String(mDayFirst[1]).padStart(2, '0')}`;
-  }
-  const mMonthFirst = text.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i);
-  if (mMonthFirst) {
-    const mm = MONTH_MAP_SRV[mMonthFirst[1].toLowerCase()];
-    if (mm) return `${mMonthFirst[3]}-${mm}-${String(mMonthFirst[2]).padStart(2, '0')}`;
-  }
-  return null;
-}
-
 function parseFlightDateTime(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return null;
   const trimmed = dateStr.trim();
@@ -985,10 +955,11 @@ function parseFlightDateTime(dateStr) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  const ymd = extractYmdServer(normalized);
-  if (!ymd) return null;
+  const dateMatch = normalized.match(/(\d{4}-\d{2}-\d{2})/);
+  if (!dateMatch) return null;
+  const ymd = dateMatch[1];
 
-  const timeMatch = normalized.match(/(?<!\d{4})(?:\b|:)(\d{1,2}:\d{2})(?:\s*(AM|PM))?/i);
+  const timeMatch = normalized.match(/(\d{1,2}:\d{2})(?:\s*(AM|PM))?/i);
   let hh = 23;
   let mm = 59;
   if (timeMatch) {
