@@ -193,14 +193,44 @@
     return alerts;
   }
 
+  function fallbackCopy(text) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (_) {}
+  }
+
   function triggerAlert(index) {
     const alerts = window.__NADLAN_CHECKIN_ALERTS__ || [];
-    const item = alerts[index];
+    const item = alerts[index] || alerts[0];
     if (!item) return;
 
+    const targetUrl = buildCheckInUrlWithParams(
+      item.checkInUrl || 'https://www.google.com/search?q=' + encodeURIComponent((item.airlineName || 'airline') + ' online check-in'),
+      item.pnr,
+      item.lastName
+    );
+
+    // Open tab immediately inside direct user click handler
+    const win = window.open(targetUrl, '_blank');
+    if (!win) {
+      window.location.href = targetUrl;
+    }
+
     const copyPayload = [item.pnr, item.lastName].filter(Boolean).join(' ');
-    if (navigator.clipboard && copyPayload) {
-      navigator.clipboard.writeText(copyPayload).catch(() => {});
+    if (copyPayload) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(copyPayload).catch(() => fallbackCopy(copyPayload));
+      } else {
+        fallbackCopy(copyPayload);
+      }
     }
 
     const toast = document.getElementById('checkin-copy-toast');
@@ -209,13 +239,10 @@
       if (item.pnr) infoParts.push(`PNR: ${item.pnr}`);
       if (item.lastName) infoParts.push(`الاسم: ${item.lastName}`);
       toast.textContent = infoParts.length > 0
-        ? `تم نسخ بيانات الكرت (${infoParts.join(' | ')}) وتمريرها لصفحة شيك إن ${item.airlineName}...`
-        : `جاري فتح صفحة شيك إن ${item.airlineName}...`;
+        ? `تم نسخ بيانات الكرت (${infoParts.join(' | ')}) وتمريرها لصفحة شيك إن ${item.airlineName || ''}...`
+        : `جاري فتح صفحة شيك إن ${item.airlineName || ''}...`;
       toast.classList.remove('hidden');
     }
-
-    const targetUrl = buildCheckInUrlWithParams(item.checkInUrl, item.pnr, item.lastName);
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   }
 
   function renderCheckInBanner(booking, containerId = 'nadlan-checkin-container') {
@@ -242,7 +269,7 @@
               ${hypeSentence}
             </p>
           </div>
-          <button type="button" onclick="window.NadlanCheckIn.triggerAlert(${index})" class="w-full sm:w-auto bg-slate-950 hover:bg-slate-800 text-amber-400 font-extrabold px-6 py-3 rounded-2xl text-sm shadow-lg transition flex items-center justify-center gap-2 shrink-0">
+          <button type="button" data-checkin-index="${index}" onclick="window.NadlanCheckIn.triggerAlert(${index}); return false;" class="w-full sm:w-auto bg-slate-950 hover:bg-slate-800 text-amber-400 font-extrabold px-6 py-3 rounded-2xl text-sm shadow-lg transition flex items-center justify-center gap-2 shrink-0">
             <i class="fa-solid fa-check-to-slot"></i>
             <span>شيك إن</span>
           </button>
@@ -257,6 +284,15 @@
       </div>
     `;
   }
+
+  document.addEventListener('click', function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest('[data-checkin-index]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const idx = parseInt(btn.getAttribute('data-checkin-index'), 10);
+    triggerAlert(Number.isNaN(idx) ? 0 : idx);
+  });
 
   window.NadlanCheckIn = {
     renderCheckInBanner,
