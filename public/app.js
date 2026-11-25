@@ -83,18 +83,18 @@ async function fetchAllBookingsFromSQL() {
 
 function loadStandardTemplate() {
   builderSteps = [
-    { type: "flight", from: "", to: "", date: "", notes: "" },
+    { type: "flight", from: "", to: "", date: "", notes: "", flightFileName: "", flightFileMime: "", flightFileData: "" },
     { type: "hotel", hotelName: "", stars: "5 نجوم", boardType: "إفطار فقط (BB)", notes: "" },
     { type: "transfer", from: "", to: "", date: "", notes: "" },
     { type: "hotel", hotelName: "", stars: "5 نجوم", boardType: "نصف إقامة (HB)", notes: "" },
-    { type: "flight", from: "", to: "", date: "", notes: "" }
+    { type: "flight", from: "", to: "", date: "", notes: "", flightFileName: "", flightFileMime: "", flightFileData: "" }
   ];
   renderBuilderSteps();
 }
 
 function addItineraryStep(type) {
   if (type === "flight") {
-    builderSteps.push({ type: "flight", from: "", to: "", date: "", notes: "" });
+    builderSteps.push({ type: "flight", from: "", to: "", date: "", notes: "", flightFileName: "", flightFileMime: "", flightFileData: "" });
   } else if (type === "hotel") {
     builderSteps.push({ type: "hotel", hotelName: "", stars: "4 نجوم", boardType: "إفطار فقط (BB)", notes: "" });
   } else if (type === "transfer") {
@@ -136,7 +136,24 @@ function renderBuilderSteps() {
 
     if (step.type === "flight") {
       badgeHtml = `<span class="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5"><i class="fa-solid fa-plane"></i> طيران (محطة ${idx + 1})</span>`;
+      const attachedBadge = step.flightFileName
+        ? `<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i> ${escapeHtml(step.flightFileName)}</span>`
+        : `<span class="text-[11px] text-slate-400">ارفع PDF أو صورة ليتم تعبئة التفاصيل تلقائياً</span>`;
       fieldsHtml = `
+        <div class="mt-3 p-3 rounded-xl bg-blue-50/70 border border-blue-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="space-y-0.5">
+            <div class="text-xs font-extrabold text-blue-950 flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles text-blue-600"></i>
+              <span>استخراج تلقائي من ملف PDF أو صورة تذكرة الطيران</span>
+            </div>
+            <div id="flight-upload-status-${idx}">${attachedBadge}</div>
+          </div>
+          <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shrink-0 shadow-sm">
+            <i class="fa-solid fa-upload"></i>
+            <span>رفع ملف الطيران</span>
+            <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleFlightFileUpload(${idx}, this)" />
+          </label>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
           <div>
             <label class="block text-[11px] font-bold text-slate-600 mb-1">من (مطار المغادرة) *</label>
@@ -396,7 +413,14 @@ function closePnrModal() {
 function copyWhatsAppMessage() {
   if (!lastGeneratedModalData) return;
   const b = lastGeneratedModalData;
-  const msg = `مرحباً ${b.firstName} ${b.lastName} ✈️\nتم تأكيد برنامجك السياحي عبر *Nadlantours* لوجهة *${b.city}*.\n\nبيانات الدخول لاستعراض برنامجك والطقس والمطاعم الحلال:\n• رقم الحجز (PNR): *${b.pnr}*\n• اسم العائلة: *${b.lastName}*\n\nنتمنى لك رحلة سعيدة! 🌍`;
+  const msg = `مرحباً ${b.firstName} ${b.lastName} ✈️
+تم تأكيد برنامجك السياحي عبر *Nadlantours* لوجهة *${b.city}*.
+
+بيانات الدخول لاستعراض برنامجك والطقس والمطاعم الحلال:
+• رقم الحجز (PNR): *${b.pnr}*
+• اسم العائلة: *${b.lastName}*
+
+نتمنى لك رحلة سعيدة! 🌍`;
   navigator.clipboard.writeText(msg);
   alert("تم نسخ رسالة الواتساب بنجاح!");
 }
@@ -475,6 +499,14 @@ function renderCustomerDashboard(b) {
       icon = "fa-plane";
       colorClass = "bg-blue-600 text-white";
       title = `طيران: من ${escapeHtml(step.from)} إلى ${escapeHtml(step.to)}`;
+      const downloadBtnHtml = step.flightFileData
+        ? `<div class="mt-3">
+             <button type="button" onclick="downloadFlightAttachment(${idx})" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition inline-flex items-center gap-2 shadow-sm">
+               <i class="fa-solid fa-file-arrow-down"></i>
+               <span>تحميل ملف الطيران (${escapeHtml(step.flightFileName || 'تذكرة الطيران')})</span>
+             </button>
+           </div>`
+        : "";
       detailsHtml = `
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 text-xs text-slate-600">
           <div class="bg-white px-3 py-2 rounded-xl border border-slate-200/70">
@@ -490,6 +522,7 @@ function renderCustomerDashboard(b) {
           </div>
         </div>
         ${step.notes ? `<p class="text-xs text-slate-500 mt-2"><i class="fa-solid fa-circle-info ml-1 text-blue-500"></i> ${escapeHtml(step.notes)}</p>` : ""}
+        ${downloadBtnHtml}
       `;
     } else if (step.type === "hotel") {
       icon = "fa-hotel";
@@ -880,6 +913,83 @@ async function handleAIQuestion(question) {
     if (sendBtn) sendBtn.disabled = false;
     chatBox.scrollTop = chatBox.scrollHeight;
   }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const commaIdx = result.indexOf(",");
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleFlightFileUpload(stepIndex, inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+
+  if (file.size > 10 * 1024 * 1024) {
+    alert("حجم الملف كبير جداً. يُرجى اختيار ملف أصغر من 10MB.");
+    inputEl.value = "";
+    return;
+  }
+
+  const statusEl = document.getElementById(`flight-upload-status-${stepIndex}`);
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="text-[11px] font-bold text-blue-700"><i class="fa-solid fa-spinner fa-spin ml-1"></i> جاري قراءة تفاصيل الطيران أوتوماتيكياً...</span>`;
+  }
+
+  try {
+    const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+    const base64Data = await readFileAsBase64(file);
+
+    builderSteps[stepIndex].flightFileName = file.name;
+    builderSteps[stepIndex].flightFileMime = mimeType;
+    builderSteps[stepIndex].flightFileData = base64Data;
+
+    const res = await fetch(`${API_BASE}/ai/extract-flight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType,
+        base64Data
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.flight) {
+      if (data.flight.from) builderSteps[stepIndex].from = data.flight.from;
+      if (data.flight.to) builderSteps[stepIndex].to = data.flight.to;
+      if (data.flight.date) builderSteps[stepIndex].date = data.flight.date;
+      if (data.flight.notes) builderSteps[stepIndex].notes = data.flight.notes;
+      renderBuilderSteps();
+    } else {
+      renderBuilderSteps();
+      alert(data.error || "تم حفظ الملف لكن تعذر استخراج التفاصيل تلقائياً، يمكنك تعبئتها يدوياً.");
+    }
+  } catch (err) {
+    console.error("Flight upload error:", err);
+    renderBuilderSteps();
+    alert("حدث خطأ أثناء رفع ملف الطيران.");
+  }
+}
+
+function downloadFlightAttachment(stepIndex) {
+  const step = currentCustomerBooking?.itinerary?.[stepIndex];
+  if (!step || !step.flightFileData) return;
+
+  const mime = step.flightFileMime || "application/pdf";
+  const link = document.createElement("a");
+  link.href = `data:${mime};base64,${step.flightFileData}`;
+  link.download = step.flightFileName || (mime.includes("pdf") ? "flight-ticket.pdf" : "flight-ticket.jpg");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function escapeHtml(str) {
