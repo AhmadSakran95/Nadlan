@@ -1149,6 +1149,7 @@ function openBookingInCustomerPortal(bookingId) {
   document.getElementById("customer-dashboard").classList.remove("hidden");
 
   renderCustomerDashboard(found);
+  renderCustomerNotesCard(found);
   initAiChatForBooking(found);
   fetchDestinationIntelligence(found.destination);
 }
@@ -1370,6 +1371,23 @@ function copyCheckinCodesInfo() {
   copyTextToClipboard(lines.join("\n"), "تم نسخ بيانات الشيك إن");
 }
 
+function renderCustomerNotesCard(booking) {
+  const notesCard = document.getElementById("customer-notes-card");
+  const notesTextEl = document.getElementById("customer-notes-text");
+  if (!notesCard || !notesTextEl) return;
+
+  const cleanNotes = String((booking && booking.notes) || "").trim();
+  if (cleanNotes) {
+    notesTextEl.textContent = cleanNotes;
+    notesCard.classList.remove("hidden");
+    notesCard.classList.add("block");
+  } else {
+    notesTextEl.textContent = "";
+    notesCard.classList.add("hidden");
+    notesCard.classList.remove("block");
+  }
+}
+
 function renderCustomerDashboard(booking) {
   document.getElementById("customer-welcome-name").textContent = `${booking.firstName} ${booking.lastName}`;
   document.getElementById("customer-pnr-badge").textContent = `PNR: ${booking.pnr}`;
@@ -1383,6 +1401,7 @@ function renderCustomerDashboard(booking) {
   `;
 
   renderCheckinAlertBanner(booking);
+  renderCustomerNotesCard(booking);
 
   const notesCard = document.getElementById("customer-notes-card");
   const notesTextEl = document.getElementById("customer-notes-text");
