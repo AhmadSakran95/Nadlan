@@ -5,12 +5,10 @@
 
   function stripTrailingNoise(nameStr) {
     let s = normText(nameStr);
-    // Cut off any trailing UI / download / flight / PNR / button text that leaked after the last passenger name
     const stopMarkers = [
       /\s+تحميل\s+ملف\s+الطيران.*$/i,
       /\s+E-?ticket\s+Confirmation.*$/i,
-      /\s+PNR\s*[:：#\-]?.*$/i,
-      /\s+Flight\s*[:：#\-]?.*$/i,
+      /\s+(?:Airline\s*booking\s*reference|PNR|Flight)\s*[:：#\-]?.*$/i,
       /\s+المسافرون\s*\(?\d*\)?.*$/i,
       /\s+الطيران\s*[:：].*$/i
     ];
@@ -22,7 +20,7 @@
 
   function isValidPassengerName(n) {
     if (!n || n.length < 2 || n.length > 70) return false;
-    if (/^(?:PNR|Flight|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
+    if (/^(?:PNR|Flight|Airline\s*booking\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
     if (/\.pdf\b/i.test(n)) return false;
     return true;
   }
@@ -30,14 +28,20 @@
   function parseFlightText(raw) {
     const t = normText(raw);
 
+    // Prioritize "Airline booking reference:" first, then fallback to PNR if Airline booking reference isn't present
     let pnr = '';
-    const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#-]?\s*([A-Z0-9]{5,10})/i);
-    if (pnrMatch && pnrMatch[1]) {
-      pnr = pnrMatch[1].trim().toUpperCase();
+    const airlineRefMatch = t.match(/Airline\s*booking\s*reference\s*[:：#\-]?\s*([A-Z0-9]{4,12})/i);
+    if (airlineRefMatch && airlineRefMatch[1]) {
+      pnr = airlineRefMatch[1].trim().toUpperCase();
+    } else {
+      const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#\-]?\s*([A-Z0-9]{5,10})/i);
+      if (pnrMatch && pnrMatch[1]) {
+        pnr = pnrMatch[1].trim().toUpperCase();
+      }
     }
 
     let flightNo = '';
-    const fnMatch = t.match(/Flight(?:\s*(?:No\.?|Number))?\s*[:：#-]?\s*([A-Z0-9]{1,3}\s*\d{2,5})/i);
+    const fnMatch = t.match(/Flight(?:\s*(?:No\.?|Number))?\s*[:：#\-]?\s*([A-Z0-9]{1,3}\s*\d{2,5})/i);
     if (fnMatch && fnMatch[1]) {
       flightNo = fnMatch[1].replace(/\s+/g, ' ').trim().toUpperCase();
     }
@@ -53,7 +57,6 @@
           if (idx === arr.length - 1) {
             item = stripTrailingNoise(item);
           }
-          // Remove trailing parenthesis or leftover file/code bits
           item = item.replace(/\s*\([^)]*\)\s*$/g, '').trim();
           return item;
         })
@@ -104,7 +107,7 @@
     const list = document.getElementById('nadlan-pax-list-v15');
 
     const parts = [];
-    if (meta.pnr) parts.push('PNR: ' + meta.pnr);
+    if (meta.pnr) parts.push('Airline booking reference: ' + meta.pnr);
     if (meta.flightNo) parts.push('Flight: ' + meta.flightNo);
     sub.textContent = parts.join('  •  ');
 
@@ -127,7 +130,6 @@
   };
 
   function getCardSourceText(card) {
-    // Prefer reading original text before our injected bar/button was added
     const clone = card.cloneNode(true);
     clone.querySelectorAll('.nadlan-flight-bar-v15, .nadlan-open-pax-btn, #nadlan-pax-modal-v15').forEach((el) => el.remove());
     return normText(clone.innerText || clone.textContent || '');
@@ -147,6 +149,7 @@
       const isFlight =
         txt.indexOf('طيران:') !== -1 ||
         txt.indexOf('Flight:') !== -1 ||
+        txt.indexOf('Airline booking reference') !== -1 ||
         txt.indexOf('PNR') !== -1 ||
         Boolean(card.querySelector('.fa-plane, .fa-plane-departure'));
 
@@ -175,7 +178,7 @@
       if (meta.pnr) {
         const b1 = document.createElement('span');
         b1.style.cssText = 'background:#0f172a;color:#fbbf24;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;font-family:monospace;';
-        b1.textContent = 'PNR: ' + meta.pnr;
+        b1.textContent = 'Airline booking reference: ' + meta.pnr;
         bar.appendChild(b1);
       }
 
