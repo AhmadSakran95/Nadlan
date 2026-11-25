@@ -41,6 +41,15 @@ function ensureFlightFileColumns(callback) {
     if (!existing.has('flight_file_data')) {
       alters.push('ALTER TABLE itinerary_steps ADD COLUMN flight_file_data TEXT');
     }
+    if (!existing.has('voucher_file_name')) {
+      alters.push('ALTER TABLE itinerary_steps ADD COLUMN voucher_file_name VARCHAR(255)');
+    }
+    if (!existing.has('voucher_file_mime')) {
+      alters.push('ALTER TABLE itinerary_steps ADD COLUMN voucher_file_mime VARCHAR(120)');
+    }
+    if (!existing.has('voucher_file_data')) {
+      alters.push('ALTER TABLE itinerary_steps ADD COLUMN voucher_file_data TEXT');
+    }
     if (alters.length === 0) return callback(null);
 
     let idx = 0;
@@ -136,8 +145,8 @@ function insertStepsSQL(bookingId, steps, callback) {
   if (!steps || steps.length === 0) return callback(null);
   const stmt = db.prepare(`
     INSERT INTO itinerary_steps 
-    (booking_id, step_order, step_type, from_location, to_location, travel_date, hotel_name, stars, board_type, tour_title, notes, flight_file_name, flight_file_mime, flight_file_data)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (booking_id, step_order, step_type, from_location, to_location, travel_date, hotel_name, stars, board_type, tour_title, notes, flight_file_name, flight_file_mime, flight_file_data, voucher_file_name, voucher_file_mime, voucher_file_data)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   steps.forEach((s, idx) => {
@@ -155,7 +164,10 @@ function insertStepsSQL(bookingId, steps, callback) {
       s.notes || null,
       s.flightFileName || null,
       s.flightFileMime || null,
-      s.flightFileData || null
+      s.flightFileData || null,
+      s.voucherFileName || null,
+      s.voucherFileMime || null,
+      s.voucherFileData || null
     ]);
   });
 
@@ -186,7 +198,10 @@ function formatBookingRow(row, stepRows) {
       notes: s.notes || '',
       flightFileName: s.flight_file_name || '',
       flightFileMime: s.flight_file_mime || '',
-      flightFileData: s.flight_file_data || ''
+      flightFileData: s.flight_file_data || '',
+      voucherFileName: s.voucher_file_name || '',
+      voucherFileMime: s.voucher_file_mime || '',
+      voucherFileData: s.voucher_file_data || ''
     }))
   };
 }
@@ -319,6 +334,133 @@ app.post('/api/ai/extract-flight', async (req, res) => {
   }
 });
 
+// ==================== EXTRACT HOTEL / TRANSFER VOUCHER DETAILS ====================
+app.post('/api/ai/extract-voucher', async (req, res) => {
+  const { fileName, mimeType, base64Data, voucherType } = req.body;
+
+  if (!base64Data || !mimeType) {
+    return res.status(400).json({ error: 'يرجى إرفاق ملف PDF أو صورة للفاوشر' });
+  }
+
+  if (!GEMINI_API_KEY) {
+    return res.status(400).json({ error: 'مفتاح GEMINI_API_KEY غير مضبوط على السيرفر' });
+  }
+
+  const isHotel = voucherType === 'hotel';
+  const prompt = isHotel
+    ? `حلّل ملف أو صورة فاوشر الفندق المرفقة بدقة عالية واستخرج بيانات الحجز وأرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
+{
+  "passengers": ["اسم الضيف الأول", "اسم الضيف الثاني"],
+  "hotelName": "اسم الفندق كاملاً، مثال: فندق إليت وورلد تقسيم (Elite World Taksim)",
+  "stars": "اختر الأقرب من القيم التالية فقط: 5 نجوم أو 4 نجوم أو 3 نجوم أو منتجع فاخر",
+  "boardType": "اختر الأقرب من القيم التالية فقط: بدون وجبات (RO) أو إفطار فقط (BB) أو نصف إقامة (فطور + عشاء HB) أو إقامة كاملة (FB) أو شامل كلياً (All Inclusive)",
+  "notes": "تواريخ الدخول والخروج وعدد الليالي ونوع الغرفة وأي ملاحظات أو رقم تأكيد الحجز"
+}`
+    : `حلّل ملف أو صورة فاوشر المواصلات / التوصيل المرفقة بدقة عالية واستخرج بيانات التوصيل وأرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
+{
+  "passengers": ["اسم الراكب الأول", "اسم الراكب الثاني"],
+  "from": "نقطة الانطلاق / الاستلام، مثال: مطار إسطنبول الدولي (IST)",
+  "to": "نقطة الوصول / التوصيل، مثال: فندق إليت وورلد تقسيم",
+  "date": "تاريخ ووقت التوصيل، مثال: 2026-12-02 | 12:30 ظهراً",
+  "notes": "نوع السيارة أو شركة التوصيل أو رقم الحجز وأي ملاحظات مهمة"
+}`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data
+                  }
+                },
+                { text: prompt }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1000
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
+      return res.status(502).json({ error: `تعذر قراءة ملف الفاوشر: ${apiErrMsg}` });
+    }
+
+    const rawText =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || '')
+        .join('')
+        .trim() || '';
+
+    const cleaned = rawText.replace(/```json\s*|```/gi, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
+      return res.status(422).json({ error: 'لم يتمكن الذكاء الاصطناعي من استخراج حقول منظمة من الفاوشر' });
+    }
+
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    const passengers = Array.isArray(parsed.passengers)
+      ? parsed.passengers.map((p) => String(p || '').trim()).filter(Boolean)
+      : [];
+    const paxSuffix = passengers.length > 0 ? ` | المسافرون: ${passengers.join('، ')}` : '';
+    const baseNotes = String(parsed.notes || '').trim();
+    const fullNotes = `${baseNotes}${paxSuffix}`.trim();
+
+    if (isHotel) {
+      const allowedStars = ['5 نجوم', '4 نجوم', '3 نجوم', 'منتجع فاخر'];
+      const allowedBoards = [
+        'بدون وجبات (RO)',
+        'إفطار فقط (BB)',
+        'نصف إقامة (فطور + عشاء HB)',
+        'إقامة كاملة (FB)',
+        'شامل كلياً (All Inclusive)'
+      ];
+      const starsVal = allowedStars.includes(parsed.stars) ? parsed.stars : '4 نجوم';
+      const boardVal = allowedBoards.includes(parsed.boardType) ? parsed.boardType : 'إفطار فقط (BB)';
+
+      return res.json({
+        passengers,
+        voucher: {
+          hotelName: String(parsed.hotelName || ''),
+          stars: starsVal,
+          boardType: boardVal,
+          notes: fullNotes,
+          voucherFileName: fileName || 'hotel-voucher'
+        }
+      });
+    }
+
+    res.json({
+      passengers,
+      voucher: {
+        from: String(parsed.from || ''),
+        to: String(parsed.to || ''),
+        date: String(parsed.date || ''),
+        notes: fullNotes,
+        voucherFileName: fileName || 'transfer-voucher'
+      }
+    });
+  } catch (err) {
+    console.error('Voucher extraction error:', err);
+    res.status(500).json({ error: 'حدث خطأ أثناء تحليل ملف الفاوشر' });
+  }
+});
+
 // ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
 app.post('/api/ai/chat', async (req, res) => {
   const { message, booking, weatherSummary, history } = req.body;
@@ -343,7 +485,7 @@ app.post('/api/ai/chat', async (req, res) => {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
   const cleanItinerary = Array.isArray(booking?.itinerary)
-    ? booking.itinerary.map(({ flightFileData, ...rest }) => rest)
+    ? booking.itinerary.map(({ flightFileData, voucherFileData, ...rest }) => rest)
     : [];
 
   const bookingContext = booking
@@ -497,7 +639,7 @@ app.post('/api/ai/chat', async (req, res) => {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
   const cleanItinerary = Array.isArray(booking?.itinerary)
-    ? booking.itinerary.map(({ flightFileData, ...rest }) => rest)
+    ? booking.itinerary.map(({ flightFileData, voucherFileData, ...rest }) => rest)
     : [];
 
   const bookingContext = booking
