@@ -2,11 +2,10 @@
   function extractFlightDetailsFromText(rawText) {
     const txt = String(rawText || '').replace(/\s+/g, ' ').trim();
 
-    // 1. PNR: matches PNR: KV13VE, PNR الطيران: KV13VE, Booking Ref: KV13VE, رمز الحجز: KV13VE
     let pnr = '';
     const pnrPatterns = [
-      /(?:PNR(?:\s*الطيران)?|Booking\s*Ref(?:erence)?|رمز\s*الحجز|رقم\s*حجز\s*الطيران)[:\s#-]*([A-Z0-9]{5,8})/i,
-      /PNR\s*[:\-]?\s*([A-Z0-9]{5,8})/i
+      /(?:PNR(?:\s*الطيران)?|Booking\s*Ref(?:erence)?|رمز\s*الحجز|رقم\s*حجز\s*الطيران)[:\s#-]*([A-Z0-9]{5,8}) /i,
+      / PNR\s*[:\-]?\s*([A-Z0-9]{5,8}) /i
     ];
     for (const re of pnrPatterns) {
       const m = txt.match(re);
@@ -16,11 +15,10 @@
       }
     }
 
-    // 2. Flight Number: matches Flight: W4 6406, Flight No: W46406, رقم الرحلة: TK815, etc.
     let flightNumber = '';
     const fnPatterns = [
-      /(?:Flight(?:\s*No\.?|Number)?|رقم\s*(?:الرحلة|الطيران))[:\s#-]*([A-Z0-9]{2,3}\s*\d{2,4})/i,
-      /Flight\s*[:\-]?\s*([A-Z0-9]{2,3}\s*\d{2,4})/i
+      /(?:Flight(?:\s*No\.?|Number)?|رقم\s*(?:الرحلة|الطيران))[:\s#-]*([A-Z0-9]{2,3}\s*\d{2,4}) /i,
+      / Flight\s*[:\-]?\s*([A-Z0-9]{2,3}\s*\d{2,4}) /i
     ];
     for (const re of fnPatterns) {
       const m = txt.match(re);
@@ -30,7 +28,6 @@
       }
     }
 
-    // 3. Passengers: look after "المسافرون:" or "Passengers:" up to "|" or end of string
     let passengers = [];
     const paxMatch = txt.match(/(?:المسافرون|Passengers?)\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
     if (paxMatch && paxMatch[1]) {
@@ -40,17 +37,6 @@
         .map((s) => s.replace(/^(?:MR\.?|MRS\.?|MS\.?|MISS\.?|DR\.?)\s+/i, '').trim())
         .map((s) => s.trim())
         .filter((s) => s.length > 1 && !/^(?:PNR|Flight|الطيران|تحميل)/i.test(s));
-    }
-
-    // Fallback: if no explicit label, look for comma/Arabic-comma separated capitalized names after "الطيران:"
-    if (passengers.length === 0) {
-      const afterAirline = txt.match(/الطيران:\s*[^|]+(?:\|\s*([^|]+))?/);
-      if (afterAirline && afterAirline[1]) {
-        const candidate = afterAirline[1].trim();
-        if ((candidate.includes('،') || candidate.includes(',')) && !/PNR|Flight/i.test(candidate)) {
-          passengers = candidate.split(/،|,/).map((s) => s.trim()).filter(Boolean);
-        }
-      }
     }
 
     return { pnr, flightNumber, passengers };
@@ -103,8 +89,6 @@
   function getMetaForFlight(flightIdx) {
     const store = window.__NADLAN_FLIGHT_META__ || [];
     if (store[flightIdx]) return store[flightIdx];
-
-    // Re-scan DOM on demand in case window store wasn't populated yet
     enhanceFlightCards(true);
     return (window.__NADLAN_FLIGHT_META__ || [])[flightIdx] || { flightNumber: '', pnr: '', passengers: [] };
   }
@@ -189,6 +173,11 @@
     let flightCounter = 0;
 
     children.forEach((card) => {
+      // Skip if this element is a passenger modal or inside a modal
+      if (card.id === 'nadlan-passengers-modal' || (card.closest && card.closest('#nadlan-passengers-modal'))) {
+        return;
+      }
+
       const fullText = (card.innerText || card.textContent || '').replace(/\s+/g, ' ').trim();
       const isFlightCard =
         fullText.includes('طيران:') ||
@@ -198,7 +187,6 @@
 
       if (!isFlightCard) return;
 
-      // Merge any booking object data if available
       const bookingSteps = Array.isArray(window.__NADLAN_CURRENT_BOOKING__?.itinerary)
         ? window.__NADLAN_CURRENT_BOOKING__.itinerary.filter((s) => s && s.type === 'flight')
         : [];
@@ -238,11 +226,13 @@
     });
   }
 
-  // Capture-phase delegation so clicking "المسافرون" or its icon/text always opens the popup
+  // Only intercept clicks on .nadlan-pax-btn or [data-pax-flight-index]; NEVER interfere with any other clicks/tabs/lists
   document.addEventListener(
     'click',
     function (e) {
-      const btn = e.target && e.target.closest ? e.target.closest('[data-pax-flight-index], .nadlan-pax-btn') : null;
+      const target = e.target;
+      if (!target || !target.closest) return;
+      const btn = target.closest('[data-pax-flight-index], .nadlan-pax-btn');
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
@@ -253,13 +243,17 @@
     true
   );
 
+  let debounceTimer = null;
+  function scheduleEnhance() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => enhanceFlightCards(true), 120);
+  }
+
   const listTarget = document.getElementById('cust-itinerary-list');
   if (listTarget && typeof MutationObserver !== 'undefined') {
-    const observer = new MutationObserver(() => {
-      setTimeout(() => enhanceFlightCards(true), 60);
-    });
+    const observer = new MutationObserver(scheduleEnhance);
     observer.observe(listTarget, { childList: true, subtree: true });
   }
 
-  window.addEventListener('DOMContentLoaded', () => setTimeout(() => enhanceFlightCards(true), 180));
+  window.addEventListener('DOMContentLoaded', () => setTimeout(() => enhanceFlightCards(true), 200));
 })();
