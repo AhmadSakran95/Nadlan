@@ -576,7 +576,145 @@
     bar.appendChild(paxBtn);
   }
 
+
+  // --- Baggage (الحقائب) selector for flight / new customer creation + display in customer view ---
+  const BAGGAGE_KEY_PREFIX = 'nadlan_flight_baggage_v31_';
+  const BAGGAGE_OPTIONS = [
+    'بدون حقائب',
+    'شنطة ظهر',
+    '20 كغ',
+    '23 كغ',
+    '25 كغ',
+    '30 كغ'
+  ];
+
+  function getBaggageStorageKey() {
+    return getCurrentBookingKey().replace(STATUS_KEY_PREFIX, BAGGAGE_KEY_PREFIX);
+  }
+
+  function loadSelectedBaggage() {
+    try {
+      const k = getBaggageStorageKey();
+      const v = localStorage.getItem(k);
+      if (v) return v;
+      const defV = localStorage.getItem(BAGGAGE_KEY_PREFIX + 'default');
+      if (defV) return defV;
+    } catch (_) {}
+    return 'بدون حقائب';
+  }
+
+  function saveSelectedBaggage(val) {
+    try {
+      const k = getBaggageStorageKey();
+      localStorage.setItem(k, val);
+      localStorage.setItem(BAGGAGE_KEY_PREFIX + 'default', val);
+    } catch (_) {}
+  }
+
+  function findFlightCreationTarget() {
+    // Look for flight section/inputs in admin or booking creation form
+    const flightInputs = Array.from(document.querySelectorAll('input, select, textarea')).filter((el) => {
+      if (el.id && el.id.indexOf('nadlan-') === 0) return false;
+      const ph = (el.getAttribute('placeholder') || '') + ' ' + (el.getAttribute('name') || '') + ' ' + (el.id || '');
+      return /flight|طيران|pnr|إقلاع|وصول|مسافر/i.test(ph);
+    });
+
+    if (flightInputs.length > 0) {
+      const first = flightInputs[0];
+      const container = first.closest('form') || first.closest('.card, .box, .panel, section, div') || first.parentElement;
+      if (container && container !== document.body) {
+        return { container, anchorEl: flightInputs[flightInputs.length - 1] };
+      }
+    }
+    return null;
+  }
+
+  function injectFlightBaggageSelector() {
+    if (document.getElementById('nadlan-flight-baggage-box-v31')) return;
+
+    const target = findFlightCreationTarget();
+    const listEl = document.getElementById('cust-itinerary-list');
+    if (!target && !listEl) return;
+
+    const currentVal = loadSelectedBaggage();
+    const box = document.createElement('div');
+    box.id = 'nadlan-flight-baggage-box-v31';
+    box.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;padding:12px 14px;border-radius:14px;background:#f8fafc;border:1px solid #cbd5e1;direction:rtl;';
+
+    const optsHtml = BAGGAGE_OPTIONS.map(
+      (opt) => `<option value="${opt}" ${currentVal === opt ? 'selected' : ''}>${opt}</option>`
+    ).join('');
+
+    box.innerHTML = `
+      <label for="nadlan-flight-baggage-select-v31" style="font-size:13px;font-weight:800;color:#0f172a;">
+        الحقائب (الطيران):
+      </label>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <select id="nadlan-flight-baggage-select-v31" style="padding:8px 12px;border-radius:10px;border:1px solid #94a3b8;background:#fff;color:#0f172a;font-size:13px;font-weight:800;cursor:pointer;">
+          ${optsHtml}
+        </select>
+        <input id="nadlan-flight-baggage-custom-v31" type="text" placeholder="أو اكتب وزن/نوع آخر..." style="padding:8px 10px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-size:12px;font-weight:700;width:150px;" />
+      </div>
+    `;
+
+    if (target && target.anchorEl && target.anchorEl.parentElement) {
+      if (target.anchorEl.nextSibling) {
+        target.anchorEl.parentElement.insertBefore(box, target.anchorEl.nextSibling);
+      } else {
+        target.anchorEl.parentElement.appendChild(box);
+      }
+    } else if (listEl && listEl.parentElement) {
+      listEl.parentElement.insertBefore(box, listEl);
+    }
+
+    const sel = document.getElementById('nadlan-flight-baggage-select-v31');
+    const customInp = document.getElementById('nadlan-flight-baggage-custom-v31');
+
+    if (sel) {
+      sel.addEventListener('change', function () {
+        saveSelectedBaggage(sel.value);
+        runEnhancer();
+      });
+    }
+    if (customInp) {
+      customInp.addEventListener('input', function () {
+        const typed = normText(customInp.value);
+        if (typed) {
+          saveSelectedBaggage(typed);
+          runEnhancer();
+        }
+      });
+    }
+  }
+
+  function renderBaggageOnFlightCard(card, txt) {
+    if (!card) return;
+    let bagVal = loadSelectedBaggage();
+
+    // Also check if card text itself mentions baggage
+    const inCardMatch = txt.match(/(?:الحقائب|الوزن|أمتعة|حقائب)\s*[:：]\s*([^|\n]+)/i);
+    if (inCardMatch && inCardMatch[1]) {
+      bagVal = normText(inCardMatch[1]);
+    }
+
+    let tag = card.querySelector('.nadlan-flight-baggage-badge-v31');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'nadlan-flight-baggage-badge-v31';
+      tag.style.cssText = 'background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px;';
+    }
+    tag.textContent = 'الحقائب: ' + bagVal;
+
+    const bar = card.querySelector('.nadlan-flight-bar-v15');
+    if (bar) {
+      if (!bar.contains(tag)) bar.appendChild(tag);
+    } else {
+      card.appendChild(tag);
+    }
+  }
+
   function runEnhancer() {
+    injectFlightBaggageSelector();
     injectEndOfBookingStatusOption();
     syncExistingStatusBadge();
 
@@ -609,6 +747,7 @@
       const currentIndex = fIdx++;
       window.__NADLAN_FLIGHT_ITEMS_V15__[currentIndex] = meta;
       renderCardBar(card, meta, currentIndex);
+      renderBaggageOnFlightCard(card, txt);
     });
   }
 
