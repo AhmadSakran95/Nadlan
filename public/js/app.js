@@ -1179,13 +1179,49 @@ function parseDepartureDateToTimestamp(departureText) {
   if (!departureText) return null;
   const raw = String(departureText).trim();
 
-  // استخراج وقت HH:MM إن وجد
+  const monthsMap = {
+    jan: "01", january: "01",
+    feb: "02", february: "02",
+    mar: "03", march: "03",
+    apr: "04", april: "04",
+    may: "05",
+    jun: "06", june: "06",
+    jul: "07", july: "07",
+    aug: "08", august: "08",
+    sep: "09", sept: "09", september: "09",
+    oct: "10", october: "10",
+    nov: "11", november: "11",
+    dec: "12", december: "12"
+  };
+
+  // استخراج الوقت HH:MM إن وجد
   const timeMatch = raw.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
   const hh = timeMatch ? String(timeMatch[1]).padStart(2, "0") : "09";
   const mm = timeMatch ? String(timeMatch[2]).padStart(2, "0") : "00";
   const ss = timeMatch && timeMatch[3] ? String(timeMatch[3]).padStart(2, "0") : "00";
 
-  // 1) YYYY-MM-DD أو YYYY/MM/DD في أي مكان داخل النص
+  // 1) صيغ مثل: Monday, 21 December 01:00 أو 21 Dec 2026
+  const monthNameMatch = raw.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?\b/);
+  if (monthNameMatch) {
+    const day = String(monthNameMatch[1]).padStart(2, "0");
+    const monthKey = monthNameMatch[2].toLowerCase();
+    const month = monthsMap[monthKey];
+    if (month) {
+      let year = monthNameMatch[3];
+      if (!year) {
+        const now = new Date();
+        year = String(now.getFullYear());
+        const candidate = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`);
+        if (candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000) {
+          year = String(now.getFullYear() + 1);
+        }
+      }
+      const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
+      if (!Number.isNaN(ts)) return ts;
+    }
+  }
+
+  // 2) YYYY-MM-DD أو YYYY/MM/DD
   const ymdMatch = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
   if (ymdMatch) {
     const year = ymdMatch[1];
@@ -1195,7 +1231,7 @@ function parseDepartureDateToTimestamp(departureText) {
     if (!Number.isNaN(ts)) return ts;
   }
 
-  // 2) DD/MM/YYYY أو DD-MM-YYYY في أي مكان داخل النص
+  // 3) DD/MM/YYYY أو DD-MM-YYYY
   const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
   if (dmyMatch) {
     const day = String(dmyMatch[1]).padStart(2, "0");
@@ -1205,11 +1241,8 @@ function parseDepartureDateToTimestamp(departureText) {
     if (!Number.isNaN(ts)) return ts;
   }
 
-  // 3) تجربة Date.parse المباشرة
   const directTs = Date.parse(raw);
-  if (!Number.isNaN(directTs)) return directTs;
-
-  return null;
+  return Number.isNaN(directTs) ? null : directTs;
 }
 
 function renderCheckinAlertBanner(booking) {
@@ -1232,7 +1265,7 @@ function renderCheckinAlertBanner(booking) {
   const depTs = parseDepartureDateToTimestamp(codes.outboundStop?.departureText);
   const hoursLeft = depTs !== null ? (depTs - Date.now()) / (1000 * 3600) : null;
 
-  // 24 ساعة أو أقل -> فتح الشيك إن
+  // يفتح الشيك إن فقط إذا تبقى 24 ساعة أو أقل
   if (hoursLeft !== null && hoursLeft <= 24) {
     banner.classList.remove("hidden");
     banner.className = "bg-gradient-to-l from-amber-400 via-amber-300 to-yellow-300 text-slate-950 rounded-3xl p-4 sm:p-5 shadow-lg border-2 border-amber-500 flex flex-wrap items-center justify-between gap-4";
@@ -1263,7 +1296,7 @@ function renderCheckinAlertBanner(booking) {
     return;
   }
 
-  // أكثر من 24 ساعة -> عرض كم يوم متبقي
+  // أكثر من 24 ساعة -> يعرض كم يوم متبقي فقط ولا يفتح الشيك إن
   if (hoursLeft !== null && hoursLeft > 24) {
     const daysLeft = Math.max(1, Math.ceil(hoursLeft / 24));
     const dayWord = daysLeft === 1 ? "يوم" : daysLeft <= 10 ? "أيام" : "يوماً";
@@ -1289,20 +1322,8 @@ function renderCheckinAlertBanner(booking) {
     return;
   }
 
-  // إذا تعذر قراءة التاريخ
-  banner.classList.remove("hidden");
-  banner.className = "bg-gradient-to-l from-brand-800 via-brand-700 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md border border-brand-600 flex flex-wrap items-center justify-between gap-4";
-  if (badgeEl) badgeEl.textContent = "✈️ تفاصيل الرحلة";
-  if (titleEl) titleEl.textContent = `رحلتك إلى ${booking.destination} مؤكدة!`;
-  if (descEl) descEl.textContent = "سيُفتح الشيك إن قبل موعد إقلاع الرحلة بـ 24 ساعة أو أقل.";
-  if (codesEl) {
-    codesEl.innerHTML = `<span class="px-3 py-1 rounded-xl bg-white/15 text-amber-300 border border-white/20">الوجهة: ${escapeHtml(booking.destination)}</span>`;
-  }
-  if (copyCheckinBtn) copyCheckinBtn.classList.add("hidden");
-  if (checkinLinkBtn) {
-    checkinLinkBtn.classList.add("hidden");
-    checkinLinkBtn.classList.remove("inline-flex");
-  }
+  // إذا تعذر تحديد موعد الإقلاع لا نعرض شيك إن
+  banner.classList.add("hidden");
 }
 
 function copyCheckinCodesInfo() {
