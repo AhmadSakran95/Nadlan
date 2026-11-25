@@ -7,6 +7,8 @@
     let s = normText(nameStr);
     const stopMarkers = [
       /\s+تحميل\s+ملف\s+الطيران.*$/i,
+      /\s+تحميل\s+ملف\s+الفندق.*$/i,
+      /\s+تحميل\s+الفاوتشر.*$/i,
       /\s+E-?ticket\s+Confirmation.*$/i,
       /\s+(?:Airline\s*booking\s*reference|PNR|Flight)\s*[:：#\-]?.*$/i,
       /\s+المسافرون\s*\(?\d*\)?.*$/i,
@@ -173,17 +175,20 @@
     return false;
   }
 
-  function enforcePdfOnlyDownloadOnFlightCard(card) {
+  // Applies to ALL itinerary cards (flights, hotels, vouchers, etc.) in customer view
+  // Upload inputs (<input type="file">) are untouched so admin can still upload images or PDFs freely
+  function enforcePdfOnlyDownloadOnCard(card) {
     if (!card) return;
-    // Target download links/buttons inside flight cards: show ONLY if PDF, hide if image or non-PDF
     const candidates = card.querySelectorAll('a[download], a[href^="data:"], a[href^="blob:"], button, a');
     candidates.forEach((el) => {
       if (el.closest('.nadlan-flight-bar-v15') || el.closest('#nadlan-pax-modal-v15')) return;
+      if (el.tagName === 'INPUT' && el.type === 'file') return;
+
       const txt = normText(el.innerText || el.textContent || '');
       const isDownloadControl =
         el.hasAttribute('download') ||
-        /تحميل\s*(ملف\s*)?(الطيران|التذكرة|الفاوتشر|الملف)?/i.test(txt) ||
-        /e-?ticket|confirmation|download/i.test(txt);
+        /تحميل\s*(ملف\s*)?(الطيران|التذكرة|الفاوتشر|الفندق|الحجز|الملف)?/i.test(txt) ||
+        /voucher|e-?ticket|confirmation|download/i.test(txt);
 
       if (!isDownloadControl) return;
 
@@ -194,7 +199,7 @@
         el.style.display = '';
         el.dataset.nadlanPdfAllowed = '1';
       } else {
-        // Hide download option when flight attachment is an image or not confirmed as PDF
+        // Hide download option when attachment is an image or not confirmed as PDF
         el.style.display = 'none';
         el.dataset.nadlanPdfAllowed = '0';
       }
@@ -204,7 +209,7 @@
   function triggerMobileFriendlyDownload(linkEl) {
     if (!linkEl || linkEl.dataset.nadlanPdfAllowed === '0') return;
     const href = linkEl.getAttribute('href') || '';
-    const dlName = linkEl.getAttribute('download') || 'flight-ticket.pdf';
+    const dlName = linkEl.getAttribute('download') || 'voucher.pdf';
 
     if (href.startsWith('data:')) {
       try {
@@ -326,6 +331,11 @@
 
     directChildren.forEach((card) => {
       if (!card || card.id === 'nadlan-pax-modal-v15') return;
+
+      // Enforce PDF-only download on every card (hotels, flights, vouchers) in customer itinerary view
+      enforcePdfOnlyDownloadOnCard(card);
+      fixMobileLinks(card);
+
       const txt = getCardSourceText(card);
       const isFlight =
         txt.indexOf('طيران:') !== -1 ||
@@ -335,9 +345,6 @@
         Boolean(card.querySelector('.fa-plane, .fa-plane-departure'));
 
       if (!isFlight) return;
-
-      enforcePdfOnlyDownloadOnFlightCard(card);
-      fixMobileLinks(card);
 
       const meta = parseFlightText(txt);
       const currentIndex = fIdx++;
