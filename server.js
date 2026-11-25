@@ -461,6 +461,32 @@ app.post('/api/ai/extract-voucher', async (req, res) => {
   }
 });
 
+// ==================== DEFAULT BOOKING TERMS SETTINGS ====================
+db.run(`CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value TEXT NOT NULL)`);
+
+app.get('/api/settings/default-terms', (req, res) => {
+  db.get(`SELECT setting_value FROM app_settings WHERE setting_key = 'default_terms'`, [], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ defaultTerms: row ? row.setting_value : '' });
+  });
+});
+
+app.put('/api/settings/default-terms', (req, res) => {
+  const { defaultTerms } = req.body;
+  if (typeof defaultTerms !== 'string') {
+    return res.status(400).json({ error: 'نص الشروط غير صالح' });
+  }
+  db.run(
+    `INSERT INTO app_settings (setting_key, setting_value) VALUES ('default_terms', ?)
+     ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value`,
+    [defaultTerms],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, defaultTerms });
+    }
+  );
+});
+
 // ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
 app.post('/api/ai/chat', async (req, res) => {
   const { message, booking, weatherSummary, history } = req.body;
