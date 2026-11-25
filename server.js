@@ -873,15 +873,14 @@ app.delete('/api/bookings/:pnr', (req, res) => {
 });
 
 
-// ==================== AUTO-CLEANUP EXPIRED RETURN FLIGHTS ====================
-const FLIGHT_TIMEZONE = process.env.FLIGHT_TIMEZONE || 'Asia/Jerusalem';
+// ==================== AUTO-CLEANUP EXPIRED FLIGHTS (+1 DAY AFTER DEPARTURE OR RETURN) ====================
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseFlightDateTime(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return null;
   const trimmed = dateStr.trim();
   if (!trimmed) return null;
 
-  // Normalize Arabic AM/PM indicators if present
   const normalized = trimmed
     .replace(/صباحاً|صباحا|ص/g, 'AM')
     .replace(/مساءً|مساءا|م/g, 'PM')
@@ -890,12 +889,10 @@ function parseFlightDateTime(dateStr) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Extract YYYY-MM-DD
   const dateMatch = normalized.match(/(\d{4}-\d{2}-\d{2})/);
   if (!dateMatch) return null;
   const ymd = dateMatch[1];
 
-  // Extract optional HH:MM (with optional AM/PM)
   const timeMatch = normalized.match(/(\d{1,2}:\d{2})(?:\s*(AM|PM))?/i);
   let hh = 23;
   let mm = 59;
@@ -916,17 +913,19 @@ function parseFlightDateTime(dateStr) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function getLastFlightDate(steps) {
+function getExpirationDeadline(steps) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
   const flightSteps = steps.filter((s) => s.step_type === 'flight' && s.travel_date);
   if (flightSteps.length === 0) return null;
 
-  // Prefer the last flight step in the itinerary (typically the return flight)
-  for (let i = flightSteps.length - 1; i >= 0; i--) {
-    const dt = parseFlightDateTime(flightSteps[i].travel_date);
-    if (dt) return dt;
-  }
-  return null;
+  // For one-way flight, target flight is the single flight (first);
+  // for round-trip (multiple flights), target flight is the return flight (last).
+  const targetFlight = flightSteps.length === 1 ? flightSteps[0] : flightSteps[flightSteps.length - 1];
+  const targetDt = parseFlightDateTime(targetFlight.travel_date);
+  if (!targetDt) return null;
+
+  // Delete 1 full day (24 hours) after the one-way flight date or return flight date
+  return new Date(targetDt.getTime() + ONE_DAY_MS);
 }
 
 function cleanupExpiredBookings(callback) {
@@ -954,8 +953,8 @@ function cleanupExpiredBookings(callback) {
 
       for (const b of bookingRows) {
         const steps = (allSteps || []).filter((s) => s.booking_id === b.id);
-        const lastFlightDt = getLastFlightDate(steps);
-        if (lastFlightDt && lastFlightDt.getTime() < now.getTime()) {
+        const deadlineDt = getExpirationDeadline(steps);
+        if (deadlineDt && deadlineDt.getTime() < now.getTime()) {
           expiredIds.push(b.id);
           expiredPnrs.push(b.pnr);
         }
@@ -977,7 +976,7 @@ function cleanupExpiredBookings(callback) {
             if (callback) callback(delBookErr);
             return;
           }
-          console.log(`🧹 Auto-deleted ${this.changes} expired booking(s) and their flight attachments: ${expiredPnrs.join(', ')}`);
+          console.log(`🧹 Auto-deleted ${this.changes} expired booking(s) (+1 day after flight/return) and all PDFs/vouchers: ${expiredPnrs.join(', ')}`);
           if (callback) callback(null, this.changes);
         });
       });
