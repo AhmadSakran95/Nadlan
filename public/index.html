@@ -588,7 +588,7 @@
           const isFlight = flightIndices.includes(i);
           if (!isFlight) return;
           const dateMatch = txt.match(/((?:\d{1,2}:\d{2}\s*\|\s*)?(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4})(?:\s*\|\s*\d{1,2}:\d{2})?)/i);
-          const pnrMatch = txt.match(/PNR[:\s]+([A-Z0-9]{4,8})/i);
+          const pnrMatch = txt.match(/(?:PNR(?:\s*الطيران)?|رمز\s*الحجز)[:\s#-]*([A-Z0-9]{4,8})/i);
           const routeMatch = txt.match(/([^•\n]+?)\s*(?:➔|->|إلى)\s*([^•\n]+)/);
           const isReturn = flightIndices.length > 1 && i === flightIndices[flightIndices.length - 1] && /عودة|return/i.test(txt) || (flightIndices.length > 1 && i === flightIndices[flightIndices.length - 1]);
           steps.push({

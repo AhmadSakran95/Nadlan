@@ -110,7 +110,6 @@
       }
     }
 
-    // Fallback: dynamic Google search for the airline's official online check-in page using airline name from ticket
     const queryAirline = rawAirline || combinedText.split('|')[0].trim() || 'airline';
     return {
       url: `https://www.google.com/search?q=${encodeURIComponent(queryAirline + ' official online check-in')}`,
@@ -118,14 +117,13 @@
     };
   }
 
-  // Strictly extract PNR from the uploaded flight ticket data (never system booking PNR fallback)
   function extractTicketPnr(step) {
     if (!step) return '';
     if (step.flightPnr && String(step.flightPnr).trim()) {
       return String(step.flightPnr).trim().toUpperCase();
     }
     const text = String(step.notes || '');
-    const explicit = text.match(/(?:PNR|Booking\s*Ref(?:erence)?|رمز\s*الحجز)[:\s#-]*([A-Z0-9]{5,7})\b/i);
+    const explicit = text.match(/(?:PNR|Booking\s*Ref(?:erence)?|رمز\s*الحجز|رقم\s*حجز\s*الطيران)[:\s#-]*([A-Z0-9]{5,7})\b/i);
     if (explicit) return explicit[1].toUpperCase();
     return '';
   }
@@ -207,41 +205,68 @@
     } catch (_) {}
   }
 
-  function triggerAlert(index) {
-    const alerts = window.__NADLAN_CHECKIN_ALERTS__ || [];
-    const item = alerts[index] || alerts[0];
-    if (!item) return;
+  function executeCheckInAction(index) {
+    const alerts = Array.isArray(window.__NADLAN_CHECKIN_ALERTS__) ? window.__NADLAN_CHECKIN_ALERTS__ : [];
+    const item = alerts[index] || alerts[0] || {
+      legLabel: 'الطيران',
+      airlineName: 'شركة الطيران',
+      checkInUrl: 'https://www.google.com/search?q=airline+online+check-in',
+      pnr: '',
+      lastName: ''
+    };
 
     const targetUrl = buildCheckInUrlWithParams(
-      item.checkInUrl || 'https://www.google.com/search?q=' + encodeURIComponent((item.airlineName || 'airline') + ' online check-in'),
+      item.checkInUrl || ('https://www.google.com/search?q=' + encodeURIComponent((item.airlineName || 'airline') + ' online check-in')),
       item.pnr,
       item.lastName
     );
 
-    // Open tab immediately inside direct user click handler
-    const win = window.open(targetUrl, '_blank');
-    if (!win) {
-      window.location.href = targetUrl;
-    }
-
     const copyPayload = [item.pnr, item.lastName].filter(Boolean).join(' ');
     if (copyPayload) {
+      fallbackCopy(copyPayload);
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(copyPayload).catch(() => fallbackCopy(copyPayload));
-      } else {
-        fallbackCopy(copyPayload);
+        navigator.clipboard.writeText(copyPayload).catch(() => {});
       }
     }
 
     const toast = document.getElementById('checkin-copy-toast');
+    const infoParts = [];
+    if (item.pnr) infoParts.push(`PNR: ${item.pnr}`);
+    if (item.lastName) infoParts.push(`العائلة: ${item.lastName}`);
+    const statusMsg = infoParts.length > 0
+      ? `تم نسخ بيانات الكرت (${infoParts.join(' | ')}) وتمريرها لصفحة شيك إن ${item.airlineName || ''}...`
+      : `جاري فتح صفحة شيك إن ${item.airlineName || ''}...`;
+
     if (toast) {
-      const infoParts = [];
-      if (item.pnr) infoParts.push(`PNR: ${item.pnr}`);
-      if (item.lastName) infoParts.push(`الاسم: ${item.lastName}`);
-      toast.textContent = infoParts.length > 0
-        ? `تم نسخ بيانات الكرت (${infoParts.join(' | ')}) وتمريرها لصفحة شيك إن ${item.airlineName || ''}...`
-        : `جاري فتح صفحة شيك إن ${item.airlineName || ''}...`;
+      toast.textContent = statusMsg;
       toast.classList.remove('hidden');
+    }
+
+    // Open in new tab; if blocked by popup blocker, show clickable direct link & navigate safely
+    let openedWin = null;
+    try {
+      openedWin = window.open(targetUrl, '_blank');
+    } catch (_) {
+      openedWin = null;
+    }
+
+    if (!openedWin || openedWin.closed) {
+      const box = document.getElementById('nadlan-checkin-container');
+      if (box) {
+        let linkBar = document.getElementById('checkin-direct-link-bar');
+        if (!linkBar) {
+          linkBar = document.createElement('div');
+          linkBar.id = 'checkin-direct-link-bar';
+          linkBar.className = 'bg-slate-900 text-white text-xs sm:text-sm font-bold px-4 py-3 rounded-2xl flex items-center justify-between gap-3 flex-wrap shadow';
+          box.appendChild(linkBar);
+        }
+        linkBar.innerHTML = `
+          <span>${statusMsg}</span>
+          <a href="${targetUrl}" target="_blank" rel="noopener noreferrer" class="bg-amber-400 text-slate-950 font-extrabold px-4 py-1.5 rounded-xl hover:bg-amber-300 transition">
+            فتح صفحة الشيك إن الآن ↗
+          </a>
+        `;
+      }
     }
   }
 
@@ -269,7 +294,7 @@
               ${hypeSentence}
             </p>
           </div>
-          <button type="button" data-checkin-index="${index}" onclick="window.NadlanCheckIn.triggerAlert(${index}); return false;" class="w-full sm:w-auto bg-slate-950 hover:bg-slate-800 text-amber-400 font-extrabold px-6 py-3 rounded-2xl text-sm shadow-lg transition flex items-center justify-center gap-2 shrink-0">
+          <button type="button" data-checkin-index="${index}" class="nadlan-checkin-btn w-full sm:w-auto bg-slate-950 hover:bg-slate-800 text-amber-400 font-extrabold px-6 py-3 rounded-2xl text-sm shadow-lg transition flex items-center justify-center gap-2 shrink-0 cursor-pointer">
             <i class="fa-solid fa-check-to-slot"></i>
             <span>شيك إن</span>
           </button>
@@ -285,18 +310,21 @@
     `;
   }
 
+  // Capture phase listener so no parent/overlay handler ever swallows the click
   document.addEventListener('click', function (e) {
-    const btn = e.target && e.target.closest ? e.target.closest('[data-checkin-index]') : null;
+    const target = e.target;
+    const btn = target && target.closest ? target.closest('[data-checkin-index], .nadlan-checkin-btn') : null;
     if (!btn) return;
     e.preventDefault();
     e.stopPropagation();
-    const idx = parseInt(btn.getAttribute('data-checkin-index'), 10);
-    triggerAlert(Number.isNaN(idx) ? 0 : idx);
-  });
+    const attrVal = btn.getAttribute('data-checkin-index');
+    const idx = attrVal !== null ? parseInt(attrVal, 10) : 0;
+    executeCheckInAction(Number.isNaN(idx) ? 0 : idx);
+  }, true);
 
   window.NadlanCheckIn = {
     renderCheckInBanner,
     getActiveCheckInFlights,
-    triggerAlert
+    triggerAlert: executeCheckInAction
   };
 })();
