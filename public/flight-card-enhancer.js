@@ -20,7 +20,7 @@
 
   function isValidPassengerName(n) {
     if (!n || n.length < 2 || n.length > 70) return false;
-    if (/^(?:PNR|Flight|Airline\s*booking\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
+    if (/^(?:PNR|Flight|Airline\s*booking\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz|EL\s*AL)/i.test(n)) return false;
     if (/\.pdf\b/i.test(n)) return false;
     return true;
   }
@@ -28,7 +28,8 @@
   function extractAirlineBookingRef(str) {
     const s = normText(str);
     if (!s) return '';
-    const m1 = s.match(/Airline\s*booking\s*reference\s*[:：#\-]?\s*([A-Z0-9]{4,12})/i);
+    // Supports formats like "Airline booking reference: LY/ZYPVW3" or "Airline booking reference: KV13VE"
+    const m1 = s.match(/Airline\s*booking\s*reference\s*[:：#\-]?\s*([A-Z0-9/_-]{4,18})/i);
     if (m1 && m1[1]) return m1[1].trim().toUpperCase();
     return '';
   }
@@ -99,9 +100,10 @@
   function parseFlightText(raw) {
     const t = normText(raw);
 
+    // Always prioritize "Airline booking reference:" over system "PNR:"
     let pnr = extractAirlineBookingRef(t);
     if (!pnr) {
-      const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#-]?\s*([A-Z0-9]{5,10})/i);
+      const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#-]?\s*([A-Z0-9/_-]{5,14})/i);
       if (pnrMatch && pnrMatch[1]) {
         pnr = pnrMatch[1].trim().toUpperCase();
       }
