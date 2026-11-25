@@ -327,14 +327,6 @@ app.post('/api/ai/extract-flight', async (req, res) => {
       else if (low.includes('qatar')) checkInUrl = 'https://www.qatarairways.com/en/hia-online-check-in.html';
     }
     const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
-    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
-    const checkInUrl = String(parsed.checkInUrl || '').trim();
-    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
-
-        const airlineName = String(parsed.airlineName || '').trim();
-    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
-    const checkInUrl = String(parsed.checkInUrl || '').trim();
-    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
 
     res.json({
       passengers,
