@@ -143,19 +143,76 @@
     return normText(clone.innerText || clone.textContent || '');
   }
 
-  function triggerMobileFriendlyDownload(linkEl) {
-    if (!linkEl) return;
-    const href = linkEl.getAttribute('href') || '';
-    const dlName = linkEl.getAttribute('download') || 'voucher.pdf';
+  function isPdfAttachment(el) {
+    if (!el) return false;
+    const href = String(el.getAttribute('href') || '').trim();
+    const dlName = String(el.getAttribute('download') || '').trim();
+    const txt = normText(el.innerText || el.textContent || '');
+    const dataMime = String(el.getAttribute('data-mime') || el.getAttribute('type') || '').toLowerCase();
 
-    // Convert base64 data URI to Blob URL so mobile browsers (iOS Safari / Android Chrome) don't block large data: downloads
+    if (/^data:application\/pdf\b/i.test(href)) return true;
+    if (/\.pdf(\?|#|$)/i.test(href)) return true;
+    if (/\.pdf$/i.test(dlName)) return true;
+    if (/\.pdf\b/i.test(txt)) return true;
+    if (dataMime.indexOf('pdf') !== -1) return true;
+
+    return false;
+  }
+
+  function isImageAttachment(el) {
+    if (!el) return false;
+    const href = String(el.getAttribute('href') || '').trim();
+    const dlName = String(el.getAttribute('download') || '').trim();
+    const dataMime = String(el.getAttribute('data-mime') || el.getAttribute('type') || '').toLowerCase();
+
+    if (/^data:image\//i.test(href)) return true;
+    if (/\.(png|jpe?g|webp|gif|bmp|heic)(\?|#|$)/i.test(href)) return true;
+    if (/\.(png|jpe?g|webp|gif|bmp|heic)$/i.test(dlName)) return true;
+    if (dataMime.indexOf('image/') !== -1) return true;
+
+    return false;
+  }
+
+  function enforcePdfOnlyDownloadOnFlightCard(card) {
+    if (!card) return;
+    // Target download links/buttons inside flight cards: show ONLY if PDF, hide if image or non-PDF
+    const candidates = card.querySelectorAll('a[download], a[href^="data:"], a[href^="blob:"], button, a');
+    candidates.forEach((el) => {
+      if (el.closest('.nadlan-flight-bar-v15') || el.closest('#nadlan-pax-modal-v15')) return;
+      const txt = normText(el.innerText || el.textContent || '');
+      const isDownloadControl =
+        el.hasAttribute('download') ||
+        /تحميل\s*(ملف\s*)?(الطيران|التذكرة|الفاوتشر|الملف)?/i.test(txt) ||
+        /e-?ticket|confirmation|download/i.test(txt);
+
+      if (!isDownloadControl) return;
+
+      const pdfOk = isPdfAttachment(el);
+      const imgDetected = isImageAttachment(el);
+
+      if (pdfOk && !imgDetected) {
+        el.style.display = '';
+        el.dataset.nadlanPdfAllowed = '1';
+      } else {
+        // Hide download option when flight attachment is an image or not confirmed as PDF
+        el.style.display = 'none';
+        el.dataset.nadlanPdfAllowed = '0';
+      }
+    });
+  }
+
+  function triggerMobileFriendlyDownload(linkEl) {
+    if (!linkEl || linkEl.dataset.nadlanPdfAllowed === '0') return;
+    const href = linkEl.getAttribute('href') || '';
+    const dlName = linkEl.getAttribute('download') || 'flight-ticket.pdf';
+
     if (href.startsWith('data:')) {
       try {
         const commaIdx = href.indexOf(',');
         if (commaIdx !== -1) {
           const meta = href.slice(5, commaIdx);
           const payload = href.slice(commaIdx + 1);
-          const mime = (meta.split(';')[0] || 'application/octet-stream').trim();
+          const mime = (meta.split(';')[0] || 'application/pdf').trim();
           let bytes;
           if (meta.indexOf('base64') !== -1) {
             const bin = atob(payload);
@@ -169,7 +226,7 @@
           const blobUrl = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = blobUrl;
-          a.download = dlName;
+          a.download = dlName.toLowerCase().endsWith('.pdf') ? dlName : dlName + '.pdf';
           a.target = '_blank';
           a.rel = 'noopener noreferrer';
           document.body.appendChild(a);
@@ -188,9 +245,9 @@
     }
   }
 
-  function fixMobileLinks(rootEl) {
-    if (!rootEl) return;
-    const links = rootEl.querySelectorAll('a[download], a[href^="data:"]');
+  function fixMobileLinks(card) {
+    if (!card) return;
+    const links = card.querySelectorAll('a[download], a[href^="data:"]');
     links.forEach((a) => {
       if (a.dataset.nadlanMobileFixed === '1') return;
       a.dataset.nadlanMobileFixed = '1';
@@ -198,6 +255,11 @@
       a.addEventListener(
         'click',
         function (e) {
+          if (a.dataset.nadlanPdfAllowed === '0') {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
           const href = a.getAttribute('href') || '';
           if (href.startsWith('data:')) {
             e.preventDefault();
@@ -258,15 +320,12 @@
     const container = document.getElementById('cust-itinerary-list');
     if (!container) return;
 
-    fixMobileLinks(container);
-
     const directChildren = Array.from(container.children || []);
     window.__NADLAN_FLIGHT_ITEMS_V15__ = [];
     let fIdx = 0;
 
     directChildren.forEach((card) => {
       if (!card || card.id === 'nadlan-pax-modal-v15') return;
-      fixMobileLinks(card);
       const txt = getCardSourceText(card);
       const isFlight =
         txt.indexOf('طيران:') !== -1 ||
@@ -276,6 +335,9 @@
         Boolean(card.querySelector('.fa-plane, .fa-plane-departure'));
 
       if (!isFlight) return;
+
+      enforcePdfOnlyDownloadOnFlightCard(card);
+      fixMobileLinks(card);
 
       const meta = parseFlightText(txt);
       const currentIndex = fIdx++;
