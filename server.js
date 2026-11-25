@@ -27,6 +27,76 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
+// ==================== AUTOMATIC RETRY FOR GEMINI TRANSIENT ERRORS ====================
+function isTransientGeminiError(status, message) {
+  const msg = String(message || '').toLowerCase();
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded') ||
+    msg.includes('temporarily') ||
+    msg.includes('rate limit') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('unavailable') ||
+    msg.includes('fetch failed') ||
+    msg.includes('network') ||
+    msg.includes('timed out')
+  );
+}
+
+async function callGeminiGenerateContent(payload, { maxRetries = 3, baseDelayMs = 1000, label = 'Gemini API' } = {}) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+  let lastError = null;
+  let lastStatus = 502;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        return { ok: true, data };
+      }
+
+      lastStatus = response.status;
+      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
+      lastError = new Error(apiErrMsg);
+
+      if (!isTransientGeminiError(response.status, apiErrMsg) || attempt === maxRetries) {
+        return { ok: false, status: response.status, errorMessage: apiErrMsg, data };
+      }
+
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.warn(`⚠️ [${label}] Transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${apiErrMsg}. Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    } catch (err) {
+      lastError = err;
+      const errMsg = err?.message || String(err);
+      if (!isTransientGeminiError(503, errMsg) || attempt === maxRetries) {
+        throw err;
+      }
+
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.warn(`⚠️ [${label}] Network/fetch error (attempt ${attempt + 1}/${maxRetries + 1}): ${errMsg}. Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  return {
+    ok: false,
+    status: lastStatus,
+    errorMessage: lastError?.message || 'خطأ من خدمة الذكاء الاصطناعي'
+  };
+}
+
 function ensureFlightFileColumns(callback) {
   db.all('PRAGMA table_info(itinerary_steps)', [], (err, cols) => {
     if (err) return callback(err);
@@ -244,40 +314,35 @@ app.post('/api/ai/extract-flight', async (req, res) => {
 - إذا كانت التذكرة ذهاباً وعودة (أو تحتوي على رحلة عودة)، اجعل "hasReturn": true واملأ حقول "returnFlight" بدقة. إذا كانت ذهاباً فقط اجعل "hasReturn": false.`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+    const aiResult = await callGeminiGenerateContent(
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64Data
-                  }
-                },
-                { text: prompt }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 1200
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data
+                }
+              },
+              { text: prompt }
+            ]
           }
-        })
-      }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1200
+        }
+      },
+      { maxRetries: 3, baseDelayMs: 1000, label: 'Extract Flight' }
     );
 
-    const data = await response.json();
-    if (!response.ok) {
-      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
-      return res.status(502).json({ error: `تعذر قراءة ملف الطيران: ${apiErrMsg}` });
+    if (!aiResult.ok) {
+      return res.status(502).json({ error: `تعذر قراءة ملف الطيران: ${aiResult.errorMessage}` });
     }
 
+    const data = aiResult.data;
     const rawText =
       data?.candidates?.[0]?.content?.parts
         ?.map((p) => p.text || '')
@@ -399,40 +464,35 @@ app.post('/api/ai/extract-voucher', async (req, res) => {
 }`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+    const aiResult = await callGeminiGenerateContent(
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64Data
-                  }
-                },
-                { text: prompt }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 1000
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data
+                }
+              },
+              { text: prompt }
+            ]
           }
-        })
-      }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1000
+        }
+      },
+      { maxRetries: 3, baseDelayMs: 1000, label: 'Extract Voucher' }
     );
 
-    const data = await response.json();
-    if (!response.ok) {
-      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
-      return res.status(502).json({ error: `تعذر قراءة ملف الفاوشر: ${apiErrMsg}` });
+    if (!aiResult.ok) {
+      return res.status(502).json({ error: `تعذر قراءة ملف الفاوشر: ${aiResult.errorMessage}` });
     }
 
+    const data = aiResult.data;
     const rawText =
       data?.candidates?.[0]?.content?.parts
         ?.map((p) => p.text || '')
@@ -520,7 +580,7 @@ app.put('/api/settings/default-terms', (req, res) => {
   );
 });
 
-// ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
+// ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API WITH AUTO RETRY) ====================
 app.post('/api/ai/chat', async (req, res) => {
   const { message, booking, weatherSummary, history } = req.body;
 
@@ -601,30 +661,25 @@ ${weatherContext}`;
   });
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+    const aiResult = await callGeminiGenerateContent(
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstruction }]
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 1500
-          }
-        })
-      }
+        systemInstruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents,
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 1500
+        }
+      },
+      { maxRetries: 3, baseDelayMs: 1000, label: 'AI Chat' }
     );
 
-    const data = await response.json();
-    if (!response.ok) {
-      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
-      return res.status(502).json({ error: `تعذر الحصول على رد من Gemini API: ${apiErrMsg}` });
+    if (!aiResult.ok) {
+      return res.status(502).json({ error: `تعذر الحصول على رد من Gemini API: ${aiResult.errorMessage}` });
     }
 
+    const data = aiResult.data;
     const replyText =
       data?.candidates?.[0]?.content?.parts
         ?.map((p) => p.text || '')
@@ -672,184 +727,6 @@ app.post('/api/customer/login', (req, res) => {
       }
     );
   });
-});
-
-// ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
-app.post('/api/ai/chat', async (req, res) => {
-  const { message, booking, weatherSummary, history } = req.body;
-
-  if (!message || typeof message !== 'string') {
-    return res.status(400).json({ error: 'يرجى إرسال نص السؤال' });
-  }
-
-  if (!GEMINI_API_KEY) {
-    return res.status(200).json({
-      reply: `⚠️ لم يتم ضبط مفتاح الذكاء الاصطناعي **GEMINI_API_KEY** على Railway بعد.
-
-ل تفعيل الذكاء الاصطناعي الحقيقي الذي يجيب على أي سؤال عن السفر:
-1. احصل على مفتاح API مجاني أو مدفوع من Google AI Studio.
-2. في لوحة تحكم **Railway**، اذهب إلى تبويب **Variables**.
-3. أضف متغير جديد باسم \`GEMINI_API_KEY\` وقيمته مفتاحك.
-4. أعد النشر (Redeploy) وسيعمل المساعد الذكي بكامل طاقته على جميع أسئلة السفر!`,
-      usedRealAI: false
-    });
-  }
-
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-
-  const cleanItinerary = Array.isArray(booking?.itinerary)
-    ? booking.itinerary.map(({ flightFileData, voucherFileData, ...rest }) => rest)
-    : [];
-
-  const bookingContext = booking
-    ? JSON.stringify(
-        {
-          pnr: booking.pnr,
-          passenger: `${booking.firstName} ${booking.lastName}`,
-          destinationCity: booking.city,
-          currentDate: today,
-          totalPrice: `${booking.price} ${booking.currency}`,
-          terms: booking.terms,
-          itinerary: cleanItinerary
-        },
-        null,
-        2
-      )
-    : 'لا يوجد حجز محدد حالياً.';
-
-  const weatherContext =
-    Array.isArray(weatherSummary) && weatherSummary.length > 0
-      ? weatherSummary.join('\n')
-      : 'غير متوفر حالياً.';
-
-  const systemInstruction = `أنت مساعد سفر ذكي وخبير سياحي متكامل لوكالة "Nadlantours" (ندلان تورز).
-تاريخ اليوم الفعلي هو: ${today}.
-مهمتك مساعدة المسافر في **أي شيء يتعلق بالسفر** بأسلوب ودود، عملي، ودقيق باللغة العربية:
-- اعتمد على تاريخ اليوم الفعلي (${today}) فقط عند حساب عدد الأيام المتبقية للرحلة أو الإجابة عن أي سؤال يتعلق بالوقت والتواريخ.
-- قراءة وفهم تفاصيل حجز المسافر من قاعدة البيانات (الرحلات، الفنادق، التوصيلات، الجولات، السعر، الشروط).
-- بناء جداول يومية مخصصة حسب اهتمامات المسافر (عائلات، أزواج، تسوق، طبيعة، أطفال، ميزانية).
-- عند السؤال عن مطاعم حلال أو مقاهي أو أماكن سياحية: اذكر فقط أسماء مطاعم حقيقية ومشهورة ومؤكدة الوجود فعلياً في مدينة الوجهة (${booking?.city || ''})، ويُمنع منعاً باتاً اختراع أو تخمين أي اسم مطعم غير موجود أو غير متأكد من وجوده الحقيقي. اذكر اسم المطعم الحقيقي، نوع الطعام، والحي أو المنطقة، وأضف رابط بحث خرائط جوجل بصيغة: https://www.google.com/maps/search/?api=1&query=اسم+المطعم+اسم+المدينة
-- اقتراح وسائل مواصلات (مترو، تاكسي، أوبر، قطارات، استئجار سيارة)، رحلات قريبة من الوجهة، نصائح السفر، التأشيرات/الجمارك العامة، الحقائب، العملات، التحويلات، لغة التواصل السريعة، وفيوز الكهرباء.
-- الإجابة بوضوح وبدون تقييد بأسئلة جاهزة. إذا سأل المسافر عن شيء خارج بيانات الحجز، أجب بمعرفتك السياحية الواسعة والعملية.
-
-بيانات حجز المسافر الحالية:
-${bookingContext}
-
-توقعات الطقس الحالية للوجهة:
-${weatherContext}`;
-
-  const contents = [];
-  if (Array.isArray(history)) {
-    for (const turn of history.slice(-8)) {
-      if (turn && (turn.role === 'user' || turn.role === 'model') && turn.text) {
-        contents.push({
-          role: turn.role,
-          parts: [{ text: String(turn.text) }]
-        });
-      }
-    }
-  }
-  contents.push({
-    role: 'user',
-    parts: [{ text: message }]
-  });
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstruction }]
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 1500
-          }
-        })
-      }
-    );
-
-    const data = await response.json();
-    if (!response.ok) {
-      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
-      return res.status(502).json({ error: `تعذر الحصول على رد من Gemini API: ${apiErrMsg}` });
-    }
-
-    const replyText =
-      data?.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text || '')
-        .join('')
-        .trim() || 'عذراً، لم أتمكن من صياغة رد واضح الآن. جرّب إعادة صياغة سؤالك.';
-
-    res.json({ reply: replyText, usedRealAI: true });
-  } catch (err) {
-    console.error('Gemini API error:', err);
-    res.status(500).json({ error: 'حدث خطأ أثناء الاتصال بواجهة الذكاء الاصطناعي.' });
-  }
-});
-
-app.post('/api/admin/login', (req, res) => {
-  const { password } = req.body;
-  if (password === '300795') {
-    res.json({ success: true, token: 'nadlan-admin-session-2026' });
-  } else {
-    res.status(401).json({ success: false, message: 'رمز المرور غير صحيح' });
-  }
-});
-
-app.post('/api/customer/login', (req, res) => {
-  const { pnr, lastName } = req.body;
-  if (!pnr || !lastName) {
-    return res.status(400).json({ error: 'يرجى إدخال رقم PNR واسم العائلة' });
-  }
-
-  cleanupExpiredBookings(() => {
-    db.get(
-      `SELECT * FROM bookings WHERE UPPER(pnr) = UPPER(?) AND TRIM(last_name) = TRIM(?)`,
-      [pnr.trim(), lastName.trim()],
-      (err, bookingRow) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!bookingRow) return res.status(404).json({ error: 'لم يتم العثور على حجز مطابق' });
-
-        db.all(
-          `SELECT * FROM itinerary_steps WHERE booking_id = ? ORDER BY step_order ASC`,
-          [bookingRow.id],
-          (err2, stepRows) => {
-            if (err2) return res.status(500).json({ error: err2.message });
-            res.json(formatBookingRow(bookingRow, stepRows));
-          }
-        );
-      }
-    );
-  });
-});
-
-app.post('/api/customer/login-legacy-unused', (req, res) => {
-  if (!pnr || !lastName) {
-    return res.status(400).json({ error: 'يرجى إدخال رقم PNR واسم العائلة' });
-  }
-
-  db.get(
-    `SELECT * FROM bookings WHERE UPPER(pnr) = UPPER(?) AND TRIM(last_name) = TRIM(?)`,
-    [pnr.trim(), lastName.trim()],
-    (err, bookingRow) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!bookingRow) return res.status(404).json({ error: 'لم يتم العثور على حجز مطابق' });
-
-      db.all(
-        `SELECT * FROM itinerary_steps WHERE booking_id = ? ORDER BY step_order ASC`,
-        [bookingRow.id],
-        (err2, stepRows) => {
-          if (err2) return res.status(500).json({ error: err2.message });
-          res.json(formatBookingRow(bookingRow, stepRows));
-        }
-      );
-    }
-  );
 });
 
 app.get('/api/bookings', (req, res) => {
