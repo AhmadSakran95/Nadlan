@@ -571,40 +571,68 @@
 
   <script>
     (function () {
+      function parseStepsFromDom(lastName) {
+        const steps = [];
+        const listEl = document.getElementById('cust-itinerary-list');
+        if (!listEl) return steps;
+        const children = Array.from(listEl.children || []);
+        const flightIndices = [];
+        children.forEach((el, i) => {
+          const txt = el.textContent || '';
+          if (txt.includes('طيران') || txt.includes('مطار') || txt.includes('✈️') || txt.includes('إقلاع')) {
+            flightIndices.push(i);
+          }
+        });
+        children.forEach((el, i) => {
+          const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          const isFlight = flightIndices.includes(i);
+          if (!isFlight) return;
+          const dateMatch = txt.match(/(\d{4}-\d{2}-\d{2}(?:\s*\|\s*[^•\n]+)?)/);
+          const pnrMatch = txt.match(/PNR[:\s]+([A-Z0-9]{4,8})/i);
+          const routeMatch = txt.match(/([^•\n]+?)\s*(?:➔|->|إلى)\s*([^•\n]+)/);
+          const isReturn = flightIndices.length > 1 && i === flightIndices[flightIndices.length - 1] && /عودة|return/i.test(txt) || (flightIndices.length > 1 && i === flightIndices[flightIndices.length - 1]);
+          steps.push({
+            type: 'flight',
+            legType: isReturn ? 'return' : 'outbound',
+            from: routeMatch ? routeMatch[1].trim() : '',
+            to: routeMatch ? routeMatch[2].trim() : '',
+            date: dateMatch ? dateMatch[1].trim() : '',
+            notes: txt,
+            flightPnr: pnrMatch ? pnrMatch[1].trim().toUpperCase() : '',
+            passengerLastName: lastName
+          });
+        });
+        return steps;
+      }
+
       function tryRenderCheckIn() {
         if (!window.NadlanCheckIn || typeof window.NadlanCheckIn.renderCheckInBanner !== 'function') return;
         const pnrText = (document.getElementById('cust-pnr-badge')?.textContent || '').replace(/PNR:\s*/i, '').trim();
         const lastName = (document.getElementById('login-lastname')?.value || '').trim();
         const city = (document.getElementById('cust-city')?.textContent || '').trim();
-        const steps = [];
-        document.querySelectorAll('#cust-itinerary-list > div').forEach((el) => {
-          const txt = el.textContent || '';
-          const dateMatch = txt.match(/(\d{4}-\d{2}-\d{2}[^\n]*)/);
-          const pnrMatch = txt.match(/PNR[:\s]+([A-Z0-9]{4,8})/i);
-          const isFlight = txt.includes('طيران') || txt.includes('مطار') || txt.includes('✈️');
-          if (isFlight) {
-            steps.push({
-              type: 'flight',
-              date: dateMatch ? dateMatch[1].trim() : '',
-              flightPnr: pnrMatch ? pnrMatch[1].trim().toUpperCase() : '',
-              passengerLastName: lastName
-            });
-          }
-        });
-        const bookingObj = window.__NADLAN_CURRENT_BOOKING__ || {
+        const domSteps = parseStepsFromDom(lastName);
+        const baseBooking = window.__NADLAN_CURRENT_BOOKING__ || {
           pnr: pnrText,
           lastName: lastName,
           city: city,
-          itinerary: steps
+          itinerary: []
         };
-        window.NadlanCheckIn.renderCheckInBanner(bookingObj, 'nadlan-checkin-container');
+        const merged = {
+          ...baseBooking,
+          lastName: baseBooking.lastName || lastName,
+          itinerary: (Array.isArray(baseBooking.itinerary) && baseBooking.itinerary.length > 0)
+            ? baseBooking.itinerary
+            : domSteps
+        };
+        window.NadlanCheckIn.renderCheckInBanner(merged, 'nadlan-checkin-container');
       }
 
       const dashEl = document.getElementById('customer-dashboard-view');
       if (dashEl && typeof MutationObserver !== 'undefined') {
-        const obs = new MutationObserver(() => setTimeout(tryRenderCheckIn, 60));
+        const obs = new MutationObserver(() => setTimeout(tryRenderCheckIn, 70));
         obs.observe(dashEl, { attributes: true, childList: true, subtree: true });
       }
+      setInterval(tryRenderCheckIn, 60000);
       window.addEventListener('DOMContentLoaded', () => setTimeout(tryRenderCheckIn, 200));
     })();
   </script>
