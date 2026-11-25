@@ -1149,6 +1149,7 @@ function openBookingInCustomerPortal(bookingId) {
   document.getElementById("customer-dashboard").classList.remove("hidden");
 
   renderCustomerDashboard(found);
+  renderCustomerNotesCard(found);
   initAiChatForBooking(found);
   fetchDestinationIntelligence(found.destination);
 }
@@ -1370,6 +1371,23 @@ function copyCheckinCodesInfo() {
   copyTextToClipboard(lines.join("\n"), "تم نسخ بيانات الشيك إن");
 }
 
+function renderCustomerNotesCard(booking) {
+  const notesCard = document.getElementById("customer-notes-card");
+  const notesTextEl = document.getElementById("customer-notes-text");
+  if (!notesCard || !notesTextEl) return;
+
+  const cleanNotes = String((booking && booking.notes) || "").trim();
+  if (cleanNotes) {
+    notesTextEl.textContent = cleanNotes;
+    notesCard.classList.remove("hidden");
+    notesCard.classList.add("block");
+  } else {
+    notesTextEl.textContent = "";
+    notesCard.classList.add("hidden");
+    notesCard.classList.remove("block");
+  }
+}
+
 function renderCustomerDashboard(booking) {
   document.getElementById("customer-welcome-name").textContent = `${booking.firstName} ${booking.lastName}`;
   document.getElementById("customer-pnr-badge").textContent = `PNR: ${booking.pnr}`;
@@ -1383,6 +1401,20 @@ function renderCustomerDashboard(booking) {
   `;
 
   renderCheckinAlertBanner(booking);
+  renderCustomerNotesCard(booking);
+
+  const notesCard = document.getElementById("customer-notes-card");
+  const notesTextEl = document.getElementById("customer-notes-text");
+  if (notesCard && notesTextEl) {
+    const cleanNotes = String(booking.notes || "").trim();
+    if (cleanNotes) {
+      notesTextEl.textContent = cleanNotes;
+      notesCard.classList.remove("hidden");
+    } else {
+      notesTextEl.textContent = "";
+      notesCard.classList.add("hidden");
+    }
+  }
 
   const stagesList = document.getElementById("customer-stages-list");
   const countEl = document.getElementById("customer-stages-count");
@@ -1593,17 +1625,6 @@ async function fetchDestinationIntelligence(city) {
 
   document.getElementById("weather-city-label").textContent = cleanCity;
 
-  const cacheKey = DEST_CACHE_PREFIX + cleanCity.toLowerCase();
-  try {
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      const parsedCache = JSON.parse(cached);
-      if (parsedCache && parsedCache.data) {
-        renderDestinationSections(cleanCity, parsedCache.data);
-      }
-    }
-  } catch (_) {}
-
   const todayStr = getTodayFormatted();
   const prompt = `ابحث عن معلومات دقيقة ومحدثة لمدينة "${cleanCity}" بدءاً من تاريخ اليوم (${todayStr}) وأرجع JSON فقط بالشكل التالي:
 {
@@ -1611,10 +1632,10 @@ async function fetchDestinationIntelligence(city) {
     { "day": "اليوم / التاريخ", "temp": "درجة الحرارة مثل 18°C", "condition": "حالة الطقس بالعربية", "icon": "☀️ أو ⛅ أو 🌧️" }
   ],
   "attractions4": [
-    { "name": "اسم المنطقة السياحية", "desc": "وصف مختصر مفيد بالعربية" }
+    { "name": "اسم المنطقة السياحية الحقيقية في ${cleanCity}", "desc": "وصف مختصر مفيد بالعربية" }
   ],
   "halalRestaurants5": [
-    { "name": "اسم المطعم الحلال", "rating": "التقييم مثل 4.7 ★", "cuisine": "نوع الأكل أو المنطقة" }
+    { "name": "اسم المطعم الحلال الحقيقي في ${cleanCity}", "rating": "التقييم مثل 4.7 ★", "cuisine": "نوع الأكل أو المنطقة" }
   ],
   "power": {
     "voltage": "الجهد والتردد مثل 230V / 50Hz",
@@ -1626,22 +1647,33 @@ async function fetchDestinationIntelligence(city) {
 تأكد أن weather5Days تحتوي 5 أيام، و attractions4 تحتوي 4 مناطق، و halalRestaurants5 تحتوي 5 مطاعم.`;
 
   try {
-    const payload = {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: {
-        responseMimeType: "application/json"
-      }
-    };
-    const result = await callGeminiApi(payload);
-    const rawText = extractGeminiText(result);
-    const parsed = parseJsonLoose(rawText);
+    // 1) المحاولة مع تفعيل البحث المباشر (google_search)
+    let parsed = null;
+    try {
+      const searchResult = await callGeminiApi({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }]
+      });
+      parsed = parseJsonLoose(extractGeminiText(searchResult));
+    } catch (_) {
+      parsed = null;
+    }
+
+    // 2) إذا لم يرجع JSON مع البحث، نطلب JSON مباشر من Gemini بدون البحث أو responseMimeType متعارض
+    if (!parsed) {
+      const directResult = await callGeminiApi({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      });
+      parsed = parseJsonLoose(extractGeminiText(directResult));
+    }
 
     if (parsed) {
       renderDestinationSections(cleanCity, parsed);
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: parsed }));
-      } catch (_) {}
+    } else {
+      renderFallbackDestinationSections(cleanCity);
     }
   } catch (_) {
     renderFallbackDestinationSections(cleanCity);
@@ -1946,6 +1978,7 @@ async function handleAiChatSubmit(event) {
 - الوجهة: **${activeCustomerBooking.destination}**
 - PNR الذهاب: **${codes.outboundPnr}**${codes.returnPnr ? `، PNR العودة: **${codes.returnPnr}**` : ""}
 - المسافرون: ${(activeCustomerBooking.passengers || []).join("، ")}
+- ملاحظات الحجز: ${activeCustomerBooking.notes || "لا توجد"}
 - المحطات: ${stationsSummary}
 
 قواعد الإجابة:
