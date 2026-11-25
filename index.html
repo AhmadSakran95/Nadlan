@@ -5,18 +5,1673 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ندلان تورز — نظام إدارة وتجربة الرحلات</title>
   <script src="https://cdn.tailwindcss.com"><\/script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Cairo', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef7f6',
+              100: '#d5ece9',
+              500: '#0f766e',
+              600: '#0d5f59',
+              700: '#114a46',
+              800: '#0b3633',
+              900: '#072422',
+            },
+            gold: {
+              400: '#fbbf24',
+              500: '#d97706',
+              600: '#b45309',
+            }
+          }
+        }
+      }
+    };
+  <\/script>
   <style>
-    body { font-family: 'Cairo', sans-serif; background-color: #f4f7f7; color: #0f172a; }
+    body {
+      font-family: 'Cairo', sans-serif;
+      background-color: #f4f7f7;
+      color: #0f172a;
+    }
+    .glass-card {
+      background: #ffffff;
+      border: 1px solid rgba(15, 118, 110, 0.12);
+      box-shadow: 0 10px 30px -12px rgba(7, 36, 34, 0.12);
+    }
+    @keyframes pulseDot {
+      0%, 80%, 100% { transform: scale(0.45); opacity: 0.35; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    .loading-dots span {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin: 0 2px;
+      border-radius: 9999px;
+      background-color: currentColor;
+      animation: pulseDot 1.2s infinite ease-in-out both;
+    }
+    .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
   </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-6">
-  <div class="max-w-xl w-full bg-white rounded-3xl p-6 shadow-lg border border-slate-200 text-center space-y-3">
-    <h1 class="text-xl font-black text-teal-900">ندلان تورز — Nadlantours</h1>
-    <p class="text-sm text-slate-600">تم تجهيز ملف النشر للعمل عبر خادم Node.js على Railway.</p>
+<body class="min-h-screen flex flex-col">
+  <div id="toast-box" class="fixed bottom-5 left-5 z-50 hidden max-w-sm rounded-2xl bg-brand-900 text-white px-4 py-3 shadow-2xl border border-brand-600/40 flex items-center justify-between gap-3">
+    <span id="toast-message" class="text-sm font-bold"></span>
+    <button type="button" onclick="hideToast()" class="text-xs bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg cursor-pointer">إغلاق</button>
   </div>
-<script>
-  console.log("Nadlantours loaded cleanly");
-<\/script>
+
+  <header class="bg-gradient-to-l from-brand-900 via-brand-800 to-brand-700 text-white shadow-lg sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gold-500/20 border border-gold-400/50 flex items-center justify-center text-2xl">
+          ✈️
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">ندلان تورز — Nadlantours</h1>
+            <span id="cloud-status-badge" class="text-[11px] bg-white/15 px-2.5 py-0.5 rounded-full font-semibold">☁️ مزامنة محلية</span>
+          </div>
+          <p class="text-xs text-brand-100">نظام إدارة الحجوزات وبوابة المسافر الذكية</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 bg-brand-950/40 p-1 rounded-2xl border border-white/15">
+        <button id="tab-admin" type="button" onclick="switchPortal('admin')" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-white text-brand-900 shadow transition cursor-pointer">
+          🛠️ قسم الإدارة
+        </button>
+        <button id="tab-customer" type="button" onclick="switchPortal('customer')" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-white hover:bg-white/10 transition cursor-pointer">
+          🧳 بوابة الزبون
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
+    <section id="admin-section" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div class="lg:col-span-7 glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <h2 id="form-mode-title" class="text-lg font-black text-brand-900">➕ إضافة حجز جديد</h2>
+              <p class="text-xs text-slate-500">أدخل بيانات الحجز أو ارفع ملف/صورة لاستخراج التفاصيل تلقائياً بالذكاء الاصطناعي</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="applyStandardTemplate()" class="px-3 py-2 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 text-xs font-extrabold border border-brand-200 transition cursor-pointer">
+                ⚡ قالب قياسي (طيران + فندق + توصيل)
+              </button>
+              <button id="cancel-edit-btn" type="button" onclick="cancelEditBooking()" class="hidden px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-extrabold border border-rose-200 transition cursor-pointer">
+                ✕ إلغاء التعديل
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-2xl bg-gradient-to-l from-amber-50 to-brand-50/60 border border-amber-200/80 p-4 flex flex-wrap items-center justify-between gap-3">
+            <div class="space-y-0.5">
+              <div class="text-xs sm:text-sm font-black text-brand-900">🤖 استخراج تلقائي من تذكرة طيران أو حجز فندق أو توصيل</div>
+              <div class="text-[11px] text-slate-600">يدعم الصور (PNG, JPG, WEBP) والملفات النصية / PDF</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="extract-file-input" type="file" accept="image/*,.txt,.pdf,.csv,.json" class="hidden" onchange="handleExtractFileSelected(event)" />
+              <button type="button" onclick="triggerExtract()" class="px-4 py-2.5 rounded-xl bg-gold-600 hover:bg-gold-500 text-white text-xs font-black shadow transition cursor-pointer">
+                📎 رفع واستخراج
+              </button>
+            </div>
+          </div>
+          <div id="extract-status-box" class="hidden rounded-xl bg-brand-900 text-white px-4 py-2.5 text-xs font-bold flex items-center gap-2">
+            <span class="loading-dots"><span><\/span><span><\/span><span><\/span><\/span>
+            <span id="extract-status-text">جاري تحليل الملف واستخراج بيانات الرحلة...</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">رمز الحجز (PNR)</label>
+              <input id="inp-pnr" type="text" placeholder="مثال: NDL10" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold uppercase focus:outline-none focus:border-brand-600" />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">الاسم الشخصي</label>
+              <input id="inp-first-name" type="text" placeholder="مثال: أحمد" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-brand-600" />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">اسم العائلة</label>
+              <input id="inp-last-name" type="text" placeholder="مثال: محاجنة" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-brand-600" />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">المدينة / الوجهة</label>
+              <input id="inp-destination" type="text" placeholder="مثال: دبي أو باتومي" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-brand-600" />
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-xs font-extrabold text-slate-700">أسماء المسافرين (كل اسم في سطر أو مفصول بفاصلة)</label>
+            <textarea id="inp-passengers" rows="2" placeholder="أحمد محاجنة&#10;سارة محاجنة" class="w-full rounded-2xl border border-slate-200 px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:border-brand-600"></textarea>
+          </div>
+
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-black text-brand-900">🗺️ محطات الرحلة</h3>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="addStation('flight')" class="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-extrabold border border-sky-200 cursor-pointer">+ طيران</button>
+                <button type="button" onclick="addStation('hotel')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-extrabold border border-amber-200 cursor-pointer">+ فندق</button>
+                <button type="button" onclick="addStation('transfer')" class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-extrabold border border-emerald-200 cursor-pointer">+ توصيل</button>
+                <button type="button" onclick="addStation('tour')" class="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 text-xs font-extrabold border border-purple-200 cursor-pointer">+ جولة</button>
+              </div>
+            </div>
+            <div id="stations-editor-container" class="space-y-3"></div>
+          </div>
+
+          <div class="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <button type="button" onclick="saveBooking()" class="px-6 py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-black shadow-md transition cursor-pointer">
+              💾 حفظ الحجز وتوليد الرسالة
+            </button>
+            <span id="editor-status-note" class="text-xs text-slate-400">يتم الحفظ تلقائياً في قاعدة البيانات والذاكرة المحلية</span>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 space-y-6">
+          <div class="glass-card rounded-3xl p-5 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-base font-black text-brand-900">📩 رسالة الحجز الجاهزة للزبون</h3>
+              <button type="button" onclick="copyGeneratedMessage()" class="px-3 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold cursor-pointer">
+                📋 نسخ الرسالة
+              </button>
+            </div>
+            <textarea id="generated-message-box" rows="9" readonly class="w-full rounded-2xl bg-slate-50 border border-slate-200 p-3.5 text-xs sm:text-sm leading-relaxed font-semibold text-slate-800 focus:outline-none"></textarea>
+          </div>
+
+          <div class="glass-card rounded-3xl p-5 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-base font-black text-brand-900">👥 قائمة الزبائن والحجوزات</h3>
+              <span id="bookings-count-badge" class="text-xs font-extrabold bg-brand-100 text-brand-800 px-2.5 py-1 rounded-full">0 حجز</span>
+            </div>
+            <div id="bookings-list-container" class="space-y-3 max-h-[540px] overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="customer-section" class="hidden space-y-6">
+      <div id="customer-login-card" class="max-w-xl mx-auto glass-card rounded-3xl p-6 sm:p-8 space-y-5 text-center">
+        <div class="w-16 h-16 mx-auto rounded-3xl bg-brand-100 text-brand-800 flex items-center justify-center text-3xl">
+          🧳
+        </div>
+        <div class="space-y-1">
+          <h2 class="text-xl sm:text-2xl font-black text-brand-900">أهلاً بك في بوابة ندلان تورز</h2>
+          <p class="text-xs sm:text-sm text-slate-500">أدخل رمز الحجز (PNR) واسم العائلة للاطلاع على تفاصيل رحلتك ومساعدك الذكي</p>
+        </div>
+
+        <form onsubmit="loginCustomerPortal(event)" class="space-y-3 text-right">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">رمز الحجز (PNR)</label>
+              <input id="login-pnr" type="text" required placeholder="مثال: NDL10" class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-bold uppercase focus:outline-none focus:border-brand-600" />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">اسم العائلة</label>
+              <input id="login-lastname" type="text" required placeholder="مثال: محاجنة" class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-bold focus:outline-none focus:border-brand-600" />
+            </div>
+          </div>
+          <button type="submit" class="w-full py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-black shadow-md transition cursor-pointer">
+            🚀 فتح ملف الرحلة
+          </button>
+        </form>
+
+        <div class="pt-3 border-t border-slate-100 space-y-2 text-right">
+          <div class="text-xs font-extrabold text-slate-500">دخول سريع لحجوزات محفوظة:</div>
+          <div id="quick-demo-bookings" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <div id="customer-dashboard" class="hidden space-y-6">
+        <div id="checkin-alert-banner" class="hidden"></div>
+
+        <div class="glass-card rounded-3xl p-5 sm:p-6 bg-gradient-to-l from-brand-900 to-brand-700 text-white">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="space-y-1.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <span id="cust-destination-badge" class="inline-flex items-center gap-1.5 text-xs font-extrabold bg-white/15 px-3 py-1 rounded-full">
+                  الوجهة: <span id="cust-destination-text">-<\/span>
+                </span>
+                <span id="cust-pnr-badge" class="text-xs font-black bg-gold-500 text-brand-950 px-3 py-1 rounded-full">
+                  PNR: -
+                </span>
+              </div>
+              <h2 id="cust-welcome-title" class="text-xl sm:text-2xl font-black">مرحباً بك</h2>
+              <p id="cust-subtitle" class="text-xs sm:text-sm text-brand-100"></p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="openPassengersModal()" class="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold border border-white/20 transition cursor-pointer">
+                👨‍👩‍👧‍👦 المسافرون (<span id="cust-passengers-count">0<\/span>)
+              </button>
+              <button type="button" onclick="logoutCustomerPortal()" class="px-4 py-2.5 rounded-xl bg-rose-500/90 hover:bg-rose-600 text-white text-xs font-extrabold transition cursor-pointer">
+                خروج
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div class="lg:col-span-7 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-black text-brand-900">🗓️ جدول رحلتك ومحطاتها</h3>
+              <span id="cust-stations-count" class="text-xs font-extrabold bg-brand-100 text-brand-800 px-3 py-1 rounded-full">0 محطات</span>
+            </div>
+            <div id="cust-stations-container" class="space-y-4"></div>
+          </div>
+
+          <div class="lg:col-span-5 glass-card rounded-3xl p-5 flex flex-col h-[580px]">
+            <div class="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2.5">
+                <div class="w-10 h-10 rounded-2xl bg-brand-100 text-brand-800 flex items-center justify-center text-xl">🤖</div>
+                <div>
+                  <h3 class="text-sm sm:text-base font-black text-brand-900">مساعد ندلان تورز الذكي</h3>
+                  <p class="text-[11px] text-slate-500">يجيبك حسب تفاصيل رحلتك ووجهتك</p>
+                </div>
+              </div>
+              <button type="button" onclick="resetAiChat()" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer">
+                🔄 محادثة جديدة
+              </button>
+            </div>
+
+            <div id="ai-chat-messages" class="flex-1 overflow-y-auto py-3 space-y-3"></div>
+
+            <div class="pt-2 pb-2 border-t border-slate-100">
+              <div class="text-[11px] font-extrabold text-slate-500 mb-1.5">أسئلة سريعة جاهزة:</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="sendQuickAiQuestion('لخص لي تفاصيل رحلتي ورقم الحجز والعودة')" class="px-2.5 py-1 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 text-[11px] font-extrabold border border-brand-200 cursor-pointer">
+                  ✈️ ملخص الرحلة والـ PNR
+                </button>
+                <button type="button" onclick="sendQuickAiQuestion('ما هي مواعيد الفندق والحقائب المسموحة؟')" class="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-extrabold border border-amber-200 cursor-pointer">
+                  🏨 الفندق والحقائب
+                </button>
+                <button type="button" onclick="sendQuickAiQuestion('اعطني أهم نصائح السفر والملابس لهذه الوجهة')" class="px-2.5 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-[11px] font-extrabold border border-sky-200 cursor-pointer">
+                  💡 نصائح الوجهة
+                </button>
+              </div>
+            </div>
+
+            <form onsubmit="handleAiChatSubmit(event)" class="flex items-center gap-2 pt-1">
+              <input id="ai-chat-input" type="text" placeholder="اكتب سؤالك هنا..." class="flex-1 rounded-2xl border border-slate-200 px-3.5 py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:border-brand-600" />
+              <button type="submit" class="px-4 py-2.5 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-xs sm:text-sm font-black cursor-pointer">
+                إرسال
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="space-y-6 pt-2">
+          <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-4">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-base sm:text-lg font-black text-brand-900">🌤️ توقعات الطقس لـ 5 أيام</h3>
+              <span id="weather-city-label" class="text-xs font-extrabold text-brand-700 bg-brand-50 px-3 py-1 rounded-full"></span>
+            </div>
+            <div id="weather-5days-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3"></div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div class="lg:col-span-6 glass-card rounded-3xl p-5 sm:p-6 space-y-4">
+              <h3 class="text-base sm:text-lg font-black text-brand-900">🏛️ أبرز 4 مناطق سياحية</h3>
+              <div id="attractions-4-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+            </div>
+
+            <div class="lg:col-span-6 glass-card rounded-3xl p-5 sm:p-6 space-y-4">
+              <h3 class="text-base sm:text-lg font-black text-brand-900">🍽️ أفضل 5 مطاعم حلال</h3>
+              <div id="halal-5-container" class="space-y-2.5"></div>
+            </div>
+          </div>
+
+          <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-4">
+            <h3 class="text-base sm:text-lg font-black text-brand-900">🔌 دليل فيوز الكهرباء والجهد</h3>
+            <div id="plugs-guide-container"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="passengers-modal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-base font-black text-brand-900">👨‍👩‍👧‍👦 قائمة المسافرين في الحجز</h3>
+        <button type="button" onclick="closePassengersModal()" class="text-slate-400 hover:text-slate-700 text-lg font-black cursor-pointer">✕</button>
+      </div>
+      <ul id="passengers-modal-list" class="space-y-2 max-h-64 overflow-y-auto"></ul>
+      <button type="button" onclick="closePassengersModal()" class="w-full py-2.5 rounded-xl bg-brand-700 text-white text-xs font-black cursor-pointer">إغلاق</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const GEMINI_MODEL = "gemini-3-flash-preview";
+    const STORAGE_KEY = "nadlantours_bookings_v1";
+
+    let bookings = [];
+    let editingBookingId = null;
+    let draftStations = [];
+    let activeCustomerBooking = null;
+    let aiChatHistory = [];
+    let db = null;
+    let currentUser = null;
+    let cloudUnsubscribe = null;
+    const cityGuideCache = {};
+
+    const DEMO_BOOKINGS = [
+      {
+        id: "b-demo-1",
+        pnr: "NDL10",
+        firstName: "أحمد",
+        lastName: "محاجنة",
+        destination: "باتومي",
+        passengers: ["أحمد محاجنة", "سارة محاجنة"],
+        stations: [
+          {
+            id: "st-1",
+            type: "flight",
+            fromAirport: "TLV",
+            toAirport: "BUS",
+            flightNumber: "KL 462",
+            airlinePnr: "KLM789",
+            baggage: "حقيبة شحن 23 كجم + حقيبة يد",
+            departureText: "2026-11-26 10:30",
+            notes: "رحلة الذهاب"
+          },
+          {
+            id: "st-2",
+            type: "hotel",
+            hotelName: "فندق هيلتون باتومي",
+            hotelStars: "5 نجوم",
+            checkIn: "2026-11-26",
+            checkOut: "2026-12-03",
+            nights: "7 ليالي",
+            notes: "إفطار مشمول • غرفة مطلة على البحر"
+          },
+          {
+            id: "st-3",
+            type: "transfer",
+            fromLocation: "مطار باتومي BUS",
+            toLocation: "فندق هيلتون باتومي",
+            pickupTime: "استقبال عند الوصول",
+            notes: "سيارة خاصة"
+          },
+          {
+            id: "st-4",
+            type: "flight",
+            fromAirport: "BUS",
+            toAirport: "TLV",
+            flightNumber: "TK 391",
+            airlinePnr: "TK4421",
+            baggage: "حقيبة شحن 23 كجم + حقيبة يد",
+            departureText: "2026-12-03 18:15",
+            notes: "رحلة العودة"
+          }
+        ],
+        updatedAt: Date.now()
+      }
+    ];
+
+    const AIRLINE_PORTALS = {
+      KL: { name: "KLM الخطوط الملكية الهولندية", url: "https://www.klm.com/check-in" },
+      TK: { name: "الخطوط الجوية التركية Turkish Airlines", url: "https://www.turkishairlines.com/en-int/flights/manage-booking/" },
+      EK: { name: "طيران الإمارات Emirates", url: "https://www.emirates.com/ae/arabic/manage-booking/online-check-in/" },
+      QR: { name: "الخطوط الجوية القطرية Qatar Airways", url: "https://www.qatarairways.com/en/on-departure/check-in.html" },
+      LY: { name: "العال El Al", url: "https://www.elal.com/ar/Passengers-Info/Before-Departure/Check-in/Pages/default.aspx" },
+      IZ: { name: "أركيا Arkia", url: "https://www.arkia.co.il/check-in" },
+      "6H": { name: "يسرائير Israir", url: "https://www.israir.co.il/check-in" },
+      LH: { name: "لوفتهانزا Lufthansa", url: "https://www.lufthansa.com/xx/en/check-in" },
+      BA: { name: "الخطوط الجوية البريطانية British Airways", url: "https://www.britishairways.com/travel/olci/public/en_gb" },
+      AF: { name: "الخطوط الجوية الفرنسية Air France", url: "https://www.airfrance.com/check-in" },
+      FZ: { name: "فلاي دبي flydubai", url: "https://www.flydubai.com/en/flying-with-us/check-in" },
+      EY: { name: "الاتحاد للطيران Etihad", url: "https://www.etihad.com/en/manage/check-in" },
+      RJ: { name: "الملكية الأردنية Royal Jordanian", url: "https://www.rj.com/en/info-and-services/before-you-fly/check-in" },
+      W6: { name: "ويز إير Wizz Air", url: "https://wizzair.com/en-gb/information-and-services/booking-information/check-in-and-boarding" }
+    };
+
+    const AIRPORT_TO_CITY = {
+      DXB: "دبي",
+      DWC: "دبي",
+      SHJ: "الشارقة",
+      AUH: "أبوظبي",
+      BUS: "باتومي",
+      TBS: "تبليسي",
+      IST: "إسطنبول",
+      SAW: "إسطنبول",
+      AYT: "أنطاليا",
+      LHR: "لندن",
+      LGW: "لندن",
+      CDG: "باريس",
+      FCO: "روما",
+      MXP: "ميلانو",
+      JFK: "نيويورك",
+      LAX: "لوس أنجلوس",
+      AMM: "عمّان",
+      CAI: "القاهرة"
+    };
+
+    function showToast(msg) {
+      const box = document.getElementById("toast-box");
+      const text = document.getElementById("toast-message");
+      if (!box || !text) return;
+      text.textContent = msg;
+      box.classList.remove("hidden");
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => hideToast(), 3800);
+    }
+
+    function hideToast() {
+      const box = document.getElementById("toast-box");
+      if (box) box.classList.add("hidden");
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function formatRichText(raw) {
+      const safe = escapeHtml(raw || "");
+      const bolded = safe.replace(/\*\*(.+?)\*\*/g, '<strong class="font-black text-brand-900">$1<\/strong>');
+      return bolded
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          if (line.startsWith("- ") || line.startsWith("• ")) {
+            return `<div class="flex items-start gap-2 my-1"><span class="text-brand-600 font-black">•<\/span><span>${line.slice(2)}<\/span><\/div>`;
+          }
+          return `<p class="my-1 leading-relaxed">${line}<\/p>`;
+        })
+        .join("");
+    }
+
+    function copyTextToClipboard(text, successMsg = "تم النسخ بنجاح") {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showToast(successMsg);
+      } catch (err) {
+        showToast("تعذر النسخ تلقائياً");
+      }
+    }
+
+    async function callGeminiApi(payload, maxRetries = 3) {
+      const apiKey = "";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) {
+            if (attempt < maxRetries && (res.status === 429 || res.status >= 500)) {
+              await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+              continue;
+            }
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return await res.json();
+        } catch (err) {
+          if (attempt === maxRetries) throw err;
+          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        }
+      }
+    }
+
+    function loadBookings() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            bookings = parsed;
+            return;
+          }
+        }
+      } catch (e) {}
+      bookings = [...DEMO_BOOKINGS];
+      saveBookingsLocal();
+    }
+
+    function saveBookingsLocal() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
+      } catch (e) {}
+    }
+
+    async function initCloudDatabase() {
+      try {
+        if (typeof __firebase_config === "undefined" || !__firebase_config) return;
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== "undefined" ? __app_id : "nadlantours-app";
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        db = getFirestore(app);
+
+        if (typeof __initial_auth_token !== "undefined" && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+        currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        const badge = document.getElementById("cloud-status-badge");
+        if (badge) badge.textContent = "☁️ متصل بالسحابة";
+
+        const colRef = collection(db, "artifacts", appId, "public", "data", "bookings");
+        cloudUnsubscribe = onSnapshot(
+          colRef,
+          (snap) => {
+            const remoteList = [];
+            snap.forEach((docSnap) => {
+              const data = docSnap.data();
+              if (data && data.pnr) remoteList.push({ ...data, id: data.id || docSnap.id });
+            });
+            if (remoteList.length > 0) {
+              remoteList.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+              bookings = remoteList;
+              saveBookingsLocal();
+              renderBookingsList();
+              renderQuickDemoBookings();
+              if (activeCustomerBooking) {
+                const refreshed = bookings.find(
+                  (b) => b.id === activeCustomerBooking.id || b.pnr.toUpperCase() === activeCustomerBooking.pnr.toUpperCase()
+                );
+                if (refreshed) renderCustomerDashboard(refreshed);
+              }
+            } else {
+              bookings.forEach((b) => syncBookingToCloud(b));
+            }
+          },
+          () => {
+            if (badge) badge.textContent = "💾 وضع محلي";
+          }
+        );
+      } catch (e) {}
+    }
+
+    async function syncBookingToCloud(booking) {
+      if (!db || !currentUser || !booking || !booking.id) return;
+      try {
+        const appId = typeof __app_id !== "undefined" ? __app_id : "nadlantours-app";
+        const docRef = doc(db, "artifacts", appId, "public", "data", "bookings", booking.id);
+        await setDoc(docRef, booking);
+      } catch (e) {}
+    }
+
+    async function deleteBookingFromCloud(bookingId) {
+      if (!db || !currentUser || !bookingId) return;
+      try {
+        const appId = typeof __app_id !== "undefined" ? __app_id : "nadlantours-app";
+        const docRef = doc(db, "artifacts", appId, "public", "data", "bookings", bookingId);
+        await deleteDoc(docRef);
+      } catch (e) {}
+    }
+
+    function switchPortal(portal) {
+      const adminSec = document.getElementById("admin-section");
+      const custSec = document.getElementById("customer-section");
+      const tabAdmin = document.getElementById("tab-admin");
+      const tabCust = document.getElementById("tab-customer");
+
+      if (portal === "customer") {
+        adminSec.classList.add("hidden");
+        custSec.classList.remove("hidden");
+        tabCust.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-white text-brand-900 shadow transition cursor-pointer";
+        tabAdmin.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-white hover:bg-white/10 transition cursor-pointer";
+      } else {
+        custSec.classList.add("hidden");
+        adminSec.classList.remove("hidden");
+        tabAdmin.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-white text-brand-900 shadow transition cursor-pointer";
+        tabCust.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-white hover:bg-white/10 transition cursor-pointer";
+      }
+    }
+
+    function createEmptyStation(type = "flight") {
+      const id = "st-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+      if (type === "flight") {
+        return { id, type: "flight", fromAirport: "TLV", toAirport: "", flightNumber: "", airlinePnr: "", baggage: "حقيبة شحن 23 كجم + حقيبة يد", departureText: "", notes: "" };
+      }
+      if (type === "hotel") {
+        return { id, type: "hotel", hotelName: "", hotelStars: "5 نجوم", checkIn: "", checkOut: "", nights: "", notes: "" };
+      }
+      if (type === "transfer") {
+        return { id, type: "transfer", fromLocation: "", toLocation: "", pickupTime: "", notes: "" };
+      }
+      return { id, type: "tour", tourTitle: "", tourDate: "", notes: "" };
+    }
+
+    function applyStandardTemplate() {
+      draftStations = [
+        createEmptyStation("flight"),
+        createEmptyStation("hotel"),
+        createEmptyStation("transfer")
+      ];
+      renderStationsEditor();
+      showToast("تم تطبيق القالب القياسي (طيران + فندق + توصيل)");
+    }
+
+    function addStation(type) {
+      draftStations.push(createEmptyStation(type));
+      renderStationsEditor();
+    }
+
+    function removeStation(id) {
+      draftStations = draftStations.filter((s) => s.id !== id);
+      renderStationsEditor();
+    }
+
+    function moveStation(index, delta) {
+      const target = index + delta;
+      if (target < 0 || target >= draftStations.length) return;
+      const copy = [...draftStations];
+      const [item] = copy.splice(index, 1);
+      copy.splice(target, 0, item);
+      draftStations = copy;
+      renderStationsEditor();
+    }
+
+    function onFlightToAirportChange(stationId, val) {
+      const st = draftStations.find((s) => s.id === stationId);
+      if (st) st.toAirport = val.toUpperCase();
+      const city = AIRPORT_TO_CITY[(val || "").trim().toUpperCase()];
+      const destInput = document.getElementById("inp-destination");
+      if (city && destInput && !destInput.value.trim()) {
+        destInput.value = city;
+      }
+    }
+
+    function renderStationsEditor() {
+      const container = document.getElementById("stations-editor-container");
+      if (!container) return;
+      if (draftStations.length === 0) {
+        container.innerHTML = `<div class="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400">لا توجد محطات بعد. أضف محطة طيران أو فندق أو توصيل أو جولة.<\/div>`;
+        return;
+      }
+
+      container.innerHTML = draftStations
+        .map((st, idx) => {
+          let fieldsHtml = "";
+          if (st.type === "flight") {
+            fieldsHtml = `
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">من مطار<\/label>
+                  <input type="text" value="${escapeHtml(st.fromAirport)}" oninput="updateStationField('${st.id}','fromAirport',this.value)" placeholder="TLV" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold uppercase" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">إلى مطار<\/label>
+                  <input type="text" value="${escapeHtml(st.toAirport)}" oninput="onFlightToAirportChange('${st.id}',this.value)" placeholder="DXB / BUS" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold uppercase" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">رقم الرحلة<\/label>
+                  <input type="text" value="${escapeHtml(st.flightNumber)}" oninput="updateStationField('${st.id}','flightNumber',this.value)" placeholder="KL 462" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold uppercase" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">رمز طيران / PNR<\/label>
+                  <input type="text" value="${escapeHtml(st.airlinePnr)}" oninput="updateStationField('${st.id}','airlinePnr',this.value)" placeholder="KLM789" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold uppercase" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">موعد الإقلاع<\/label>
+                  <input type="text" value="${escapeHtml(st.departureText)}" oninput="updateStationField('${st.id}','departureText',this.value)" placeholder="2026-11-26 10:30" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">الحقائب<\/label>
+                  <input type="text" value="${escapeHtml(st.baggage)}" oninput="updateStationField('${st.id}','baggage',this.value)" placeholder="23 كجم + حقيبة يد" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+              <\/div>
+            `;
+          } else if (st.type === "hotel") {
+            fieldsHtml = `
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">اسم الفندق<\/label>
+                  <input type="text" value="${escapeHtml(st.hotelName)}" oninput="updateStationField('${st.id}','hotelName',this.value)" placeholder="فندق أتلانتس" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">تصنيف النجوم<\/label>
+                  <select onchange="updateStationField('${st.id}','hotelStars',this.value)" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold bg-white">
+                    <option value="3 نجوم" ${st.hotelStars === "3 نجوم" ? "selected" : ""}>3 نجوم<\/option>
+                    <option value="4 نجوم" ${st.hotelStars === "4 نجوم" ? "selected" : ""}>4 نجوم<\/option>
+                    <option value="5 نجوم" ${!st.hotelStars || st.hotelStars === "5 نجوم" ? "selected" : ""}>5 نجوم<\/option>
+                  <\/select>
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">عدد الليالي<\/label>
+                  <input type="text" value="${escapeHtml(st.nights)}" oninput="updateStationField('${st.id}','nights',this.value)" placeholder="5 ليالي" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">تاريخ الدخول<\/label>
+                  <input type="text" value="${escapeHtml(st.checkIn)}" oninput="updateStationField('${st.id}','checkIn',this.value)" placeholder="2026-11-26" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">تاريخ الخروج<\/label>
+                  <input type="text" value="${escapeHtml(st.checkOut)}" oninput="updateStationField('${st.id}','checkOut',this.value)" placeholder="2026-12-01" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+              <\/div>
+            `;
+          } else if (st.type === "transfer") {
+            fieldsHtml = `
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">نقطة الانطلاق<\/label>
+                  <input type="text" value="${escapeHtml(st.fromLocation)}" oninput="updateStationField('${st.id}','fromLocation',this.value)" placeholder="المطار" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">الوجهة<\/label>
+                  <input type="text" value="${escapeHtml(st.toLocation)}" oninput="updateStationField('${st.id}','toLocation',this.value)" placeholder="الفندق" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">موعد الاستقبال<\/label>
+                  <input type="text" value="${escapeHtml(st.pickupTime)}" oninput="updateStationField('${st.id}','pickupTime',this.value)" placeholder="عند الوصول" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+              <\/div>
+            `;
+          } else {
+            fieldsHtml = `
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">عنوان الجولة / النشاط<\/label>
+                  <input type="text" value="${escapeHtml(st.tourTitle)}" oninput="updateStationField('${st.id}','tourTitle',this.value)" placeholder="جولة بحرية" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-bold" />
+                <\/div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 mb-1">التاريخ / الموعد<\/label>
+                  <input type="text" value="${escapeHtml(st.tourDate)}" oninput="updateStationField('${st.id}','tourDate',this.value)" placeholder="2026-11-28" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold" />
+                <\/div>
+              <\/div>
+            `;
+          }
+
+          const typeLabelMap = { flight: "✈️ طيران", hotel: "🏨 فندق", transfer: "🚗 توصيل", tour: "🎟️ جولة" };
+          return `
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-black text-brand-900">${idx + 1}. ${typeLabelMap[st.type] || st.type}<\/span>
+                <div class="flex items-center gap-1">
+                  <button type="button" onclick="moveStation(${idx},-1)" class="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs hover:bg-slate-100 cursor-pointer">↑<\/button>
+                  <button type="button" onclick="moveStation(${idx},1)" class="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs hover:bg-slate-100 cursor-pointer">↓<\/button>
+                  <button type="button" onclick="removeStation('${st.id}')" class="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold hover:bg-rose-100 cursor-pointer">حذف<\/button>
+                <\/div>
+              <\/div>
+              ${fieldsHtml}
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">ملاحظات<\/label>
+                <input type="text" value="${escapeHtml(st.notes)}" oninput="updateStationField('${st.id}','notes',this.value)" placeholder="أي تفاصيل إضافية..." class="w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs bg-white" />
+              <\/div>
+            <\/div>
+          `;
+        })
+        .join("");
+    }
+
+    function updateStationField(id, field, value) {
+      const st = draftStations.find((s) => s.id === id);
+      if (st) st[field] = value;
+    }
+
+    function parsePassengersInput(raw) {
+      return (raw || "")
+        .split(/[\n،,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    function buildBookingMessage(b) {
+      const lines = [
+        `مرحباً ${b.firstName} ${b.lastName}، أهلاً بك في ندلان تورز (Nadlantours) ✨`,
+        `رمز الحجز (PNR): ${b.pnr}`,
+        `الوجهة: ${b.destination}`,
+        `عدد المسافرين: ${(b.passengers || []).length}`
+      ];
+      (b.stations || []).forEach((st, i) => {
+        if (st.type === "flight") {
+          lines.push(`${i + 1}) طيران ${st.flightNumber || ""} (${st.fromAirport || ""} ➔ ${st.toAirport || ""}) • الموعد: ${st.departureText || "حسب التذكرة"} • PNR: ${st.airlinePnr || b.pnr}`);
+        } else if (st.type === "hotel") {
+          lines.push(`${i + 1}) فندق ${st.hotelName || ""} (${st.hotelStars || ""}) • الدخول: ${st.checkIn || "-"} • الخروج: ${st.checkOut || "-"}`);
+        } else if (st.type === "transfer") {
+          lines.push(`${i + 1}) توصيل من ${st.fromLocation || ""} إلى ${st.toLocation || ""} • ${st.pickupTime || ""}`);
+        } else {
+          lines.push(`${i + 1}) جولة: ${st.tourTitle || ""} • ${st.tourDate || ""}`);
+        }
+      });
+      return lines.join("\n");
+    }
+
+    function saveBooking() {
+      const pnr = (document.getElementById("inp-pnr").value || "").trim().toUpperCase();
+      const firstName = (document.getElementById("inp-first-name").value || "").trim();
+      const lastName = (document.getElementById("inp-last-name").value || "").trim();
+      const destination = (document.getElementById("inp-destination").value || "").trim();
+      let passengers = parsePassengersInput(document.getElementById("inp-passengers").value);
+
+      if (!pnr || !firstName || !lastName || !destination) {
+        showToast("يرجى تعبئة رمز PNR والاسم الشخصي واسم العائلة والوجهة");
+        return;
+      }
+
+      const fullMainName = `${firstName} ${lastName}`.trim();
+      if (passengers.length === 0) {
+        passengers = [fullMainName];
+      } else if (!passengers.includes(fullMainName)) {
+        passengers.unshift(fullMainName);
+      }
+
+      const bookingObj = {
+        id: editingBookingId || "b-" + Date.now(),
+        pnr,
+        firstName,
+        lastName,
+        destination,
+        passengers,
+        stations: JSON.parse(JSON.stringify(draftStations)),
+        updatedAt: Date.now()
+      };
+
+      if (editingBookingId) {
+        bookings = bookings.map((item) => (item.id === editingBookingId ? bookingObj : item));
+      } else {
+        bookings.unshift(bookingObj);
+      }
+
+      saveBookingsLocal();
+      syncBookingToCloud(bookingObj);
+      renderBookingsList();
+      renderQuickDemoBookings();
+      document.getElementById("generated-message-box").value = buildBookingMessage(bookingObj);
+      showToast(editingBookingId ? "تم تحديث الحجز بنجاح" : "تم حفظ الحجز بنجاح");
+      cancelEditBooking();
+    }
+
+    function editBooking(id) {
+      const b = bookings.find((item) => item.id === id);
+      if (!b) return;
+      editingBookingId = b.id;
+      document.getElementById("form-mode-title").textContent = `✏️ تعديل الحجز (${b.pnr})`;
+      document.getElementById("cancel-edit-btn").classList.remove("hidden");
+      document.getElementById("inp-pnr").value = b.pnr || "";
+      document.getElementById("inp-first-name").value = b.firstName || "";
+      document.getElementById("inp-last-name").value = b.lastName || "";
+      document.getElementById("inp-destination").value = b.destination || "";
+      document.getElementById("inp-passengers").value = (b.passengers || []).join("\n");
+      draftStations = JSON.parse(JSON.stringify(b.stations || []));
+      renderStationsEditor();
+      document.getElementById("generated-message-box").value = buildBookingMessage(b);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function cancelEditBooking() {
+      editingBookingId = null;
+      document.getElementById("form-mode-title").textContent = "➕ إضافة حجز جديد";
+      document.getElementById("cancel-edit-btn").classList.add("hidden");
+      document.getElementById("inp-pnr").value = "";
+      document.getElementById("inp-first-name").value = "";
+      document.getElementById("inp-last-name").value = "";
+      document.getElementById("inp-destination").value = "";
+      document.getElementById("inp-passengers").value = "";
+      draftStations = [];
+      renderStationsEditor();
+    }
+
+    function deleteBooking(id) {
+      bookings = bookings.filter((item) => item.id !== id);
+      saveBookingsLocal();
+      deleteBookingFromCloud(id);
+      renderBookingsList();
+      renderQuickDemoBookings();
+      if (editingBookingId === id) cancelEditBooking();
+      showToast("تم حذف الحجز");
+    }
+
+    function copyGeneratedMessage() {
+      const val = document.getElementById("generated-message-box").value;
+      if (!val) {
+        showToast("لا توجد رسالة لنسخها");
+        return;
+      }
+      copyTextToClipboard(val, "تم نسخ رسالة الحجز للزبون");
+    }
+
+    function renderBookingsList() {
+      const container = document.getElementById("bookings-list-container");
+      const badge = document.getElementById("bookings-count-badge");
+      if (!container) return;
+      if (badge) badge.textContent = `${bookings.length} حجز`;
+
+      if (bookings.length === 0) {
+        container.innerHTML = `<div class="text-center text-xs text-slate-400 py-8">لا توجد حجوزات محفوظة حالياً.<\/div>`;
+        return;
+      }
+
+      container.innerHTML = bookings
+        .map(
+          (b) => `
+          <div class="rounded-2xl border border-slate-200 p-3.5 bg-white hover:border-brand-300 transition space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-black text-brand-900">${escapeHtml(b.firstName)} ${escapeHtml(b.lastName)}<\/span>
+                  <span class="text-[11px] font-black bg-brand-100 text-brand-800 px-2 py-0.5 rounded-full">${escapeHtml(b.pnr)}<\/span>
+                <\/div>
+                <div class="text-xs text-slate-500 mt-0.5">📍 الوجهة: <strong class="text-slate-700">${escapeHtml(b.destination)}<\/strong> • ${escapeHtml((b.stations || []).length)} محطات<\/div>
+              <\/div>
+            <\/div>
+            <div class="flex flex-wrap items-center gap-1.5 pt-1">
+              <button type="button" onclick="openBookingInCustomerPortal('${b.id}')" class="px-3 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold cursor-pointer">
+                👁️ فتح بوابة الزبون
+              <\/button>
+              <button type="button" onclick="editBooking('${b.id}')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-extrabold cursor-pointer">
+                ✏️ تعديل الحجز
+              <\/button>
+              <button type="button" onclick="deleteBooking('${b.id}')" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold cursor-pointer">
+                حذف
+              <\/button>
+            <\/div>
+          <\/div>
+        `
+        )
+        .join("");
+    }
+
+    function renderQuickDemoBookings() {
+      const container = document.getElementById("quick-demo-bookings");
+      if (!container) return;
+      container.innerHTML = bookings
+        .slice(0, 4)
+        .map(
+          (b) => `
+          <button type="button" onclick="openBookingInCustomerPortal('${b.id}')" class="px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 text-xs font-extrabold border border-brand-200 cursor-pointer">
+            ${escapeHtml(b.pnr)} • ${escapeHtml(b.lastName)} (${escapeHtml(b.destination)})
+          <\/button>
+        `
+        )
+        .join("");
+    }
+
+    function triggerExtract() {
+      const inp = document.getElementById("extract-file-input");
+      if (inp) inp.click();
+    }
+
+    function handleExtractFileSelected(event) {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      const statusBox = document.getElementById("extract-status-box");
+      const statusText = document.getElementById("extract-status-text");
+      statusBox.classList.remove("hidden");
+      statusText.textContent = `جاري تحليل "${file.name}" واستخراج تفاصيل الحجز...`;
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Full = String(reader.result || "");
+          const base64Data = base64Full.includes(",") ? base64Full.split(",")[1] : base64Full;
+          const mimeType = file.type || "text/plain";
+
+          const parts = [
+            {
+              text: `استخرج بيانات الحجز من هذا المستند/الصورة وأعد JSON فقط بالشكل التالي بدون أي نص إضافي:
+{
+  "pnr": "",
+  "firstName": "",
+  "lastName": "",
+  "destination": "",
+  "passengers": [],
+  "stations": [
+    {
+      "type": "flight|hotel|transfer|tour",
+      "fromAirport": "",
+      "toAirport": "",
+      "flightNumber": "",
+      "airlinePnr": "",
+      "baggage": "",
+      "departureText": "",
+      "hotelName": "",
+      "hotelStars": "5 نجوم",
+      "checkIn": "",
+      "checkOut": "",
+      "nights": "",
+      "fromLocation": "",
+      "toLocation": "",
+      "pickupTime": "",
+      "tourTitle": "",
+      "tourDate": "",
+      "notes": ""
+    }
+  ]
+}`
+            }
+          ];
+
+          if (mimeType.startsWith("image/") || mimeType === "application/pdf") {
+            parts.push({ inlineData: { mimeType, data: base64Data } });
+          } else {
+            const decodedText = atob(base64Data || "");
+            parts[0].text += `\n\nمحتوى الملف:\n${decodedText.slice(0, 6000)}`;
+          }
+
+          const result = await callGeminiApi({
+            contents: [{ role: "user", parts }],
+            generationConfig: { responseMimeType: "application/json" }
+          });
+
+          const rawJson = result?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+          const cleaned = rawJson.replace(/```json|```/gi, "").trim();
+          const parsed = JSON.parse(cleaned);
+
+          if (parsed.pnr) document.getElementById("inp-pnr").value = parsed.pnr.toUpperCase();
+          if (parsed.firstName) document.getElementById("inp-first-name").value = parsed.firstName;
+          if (parsed.lastName) document.getElementById("inp-last-name").value = parsed.lastName;
+          if (parsed.destination) document.getElementById("inp-destination").value = parsed.destination;
+          if (Array.isArray(parsed.passengers) && parsed.passengers.length > 0) {
+            document.getElementById("inp-passengers").value = parsed.passengers.join("\n");
+          }
+          if (Array.isArray(parsed.stations) && parsed.stations.length > 0) {
+            draftStations = parsed.stations.map((s) => ({
+              ...createEmptyStation(s.type || "flight"),
+              ...s,
+              id: "st-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6)
+            }));
+            renderStationsEditor();
+          }
+
+          statusBox.classList.add("hidden");
+          showToast("تم استخراج بيانات الحجز بنجاح");
+        } catch (err) {
+          statusBox.classList.add("hidden");
+          showToast("تعذر استخراج البيانات تلقائياً، يمكنك إدخالها يدوياً");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function loginCustomerPortal(e) {
+      e.preventDefault();
+      const pnr = (document.getElementById("login-pnr").value || "").trim().toUpperCase();
+      const lastName = (document.getElementById("login-lastname").value || "").trim();
+      const found = bookings.find(
+        (b) => b.pnr.toUpperCase() === pnr && b.lastName.trim().toLowerCase() === lastName.toLowerCase()
+      );
+      if (!found) {
+        showToast("لم يتم العثور على حجز مطابق لرمز PNR واسم العائلة");
+        return;
+      }
+      renderCustomerDashboard(found);
+    }
+
+    function openBookingInCustomerPortal(id) {
+      const found = bookings.find((b) => b.id === id);
+      if (!found) return;
+      switchPortal("customer");
+      renderCustomerDashboard(found);
+    }
+
+    function logoutCustomerPortal() {
+      activeCustomerBooking = null;
+      document.getElementById("customer-dashboard").classList.add("hidden");
+      document.getElementById("customer-login-card").classList.remove("hidden");
+    }
+
+    function detectAirlineFromFlightNumber(flightNumber) {
+      const clean = (flightNumber || "").trim().toUpperCase();
+      const match = clean.match(/^([A-Z0-9]{2})/);
+      const code = match ? match[1] : "";
+      if (code && AIRLINE_PORTALS[code]) {
+        return { code, ...AIRLINE_PORTALS[code] };
+      }
+      return null;
+    }
+
+    function parseDepartureDate(str) {
+      if (!str) return null;
+      const normalized = String(str).trim().replace(" ", "T");
+      const dt = new Date(normalized);
+      if (!isNaN(dt.getTime())) return dt;
+      const dateOnly = new Date(String(str).trim());
+      if (!isNaN(dateOnly.getTime())) return dateOnly;
+      return null;
+    }
+
+    function renderCheckinOrCountdownBanner(booking) {
+      const banner = document.getElementById("checkin-alert-banner");
+      if (!banner) return;
+
+      const flights = (booking.stations || []).filter((s) => s.type === "flight");
+      const firstFlight = flights[0];
+      const lastFlight = flights.length > 1 ? flights[flights.length - 1] : null;
+
+      let hoursLeft = null;
+      if (firstFlight && firstFlight.departureText) {
+        const depDate = parseDepartureDate(firstFlight.departureText);
+        if (depDate) {
+          hoursLeft = (depDate.getTime() - Date.now()) / (1000 * 60 * 60);
+        }
+      }
+
+      if (hoursLeft !== null && hoursLeft <= 24) {
+        const mainPnr = firstFlight?.airlinePnr || booking.pnr;
+        const returnPnr = lastFlight?.airlinePnr && lastFlight.airlinePnr !== mainPnr ? lastFlight.airlinePnr : "";
+        const airlineInfo = detectAirlineFromFlightNumber(firstFlight?.flightNumber || "");
+
+        banner.className = "rounded-3xl bg-gradient-to-l from-amber-500 via-gold-500 to-amber-600 text-brand-950 p-5 shadow-xl border border-amber-300";
+        banner.classList.remove("hidden");
+        banner.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="space-y-1">
+              <div class="text-base sm:text-lg font-black">🔥 فتح الشيك إن (Check-in) الآن! استعد لرحلتك إلى ${escapeHtml(booking.destination)}<\/div>
+              <div class="text-xs sm:text-sm font-extrabold">
+                رمز PNR: <span class="bg-white/80 px-2 py-0.5 rounded-lg">${escapeHtml(mainPnr)}<\/span>
+                • اسم العائلة: <span class="bg-white/80 px-2 py-0.5 rounded-lg">${escapeHtml(booking.lastName)}<\/span>
+                ${returnPnr ? `• PNR العودة: <span class="bg-white/80 px-2 py-0.5 rounded-lg">${escapeHtml(returnPnr)}<\/span>` : ""}
+              <\/div>
+            <\/div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="copyCheckinCodesInfo('${escapeHtml(mainPnr)}','${escapeHtml(booking.lastName)}','${escapeHtml(returnPnr)}')" class="px-3.5 py-2 rounded-xl bg-brand-950 text-white text-xs font-black cursor-pointer">
+                📋 نسخ بيانات الشيك إن
+              <\/button>
+              ${
+                airlineInfo
+                  ? `<a href="${escapeHtml(airlineInfo.url)}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-xl bg-white text-brand-950 hover:bg-brand-50 text-xs font-black shadow cursor-pointer">
+                      ✈️ شيك إن (${escapeHtml(airlineInfo.code)})
+                    <\/a>`
+                  : ""
+              }
+            <\/div>
+          <\/div>
+        `;
+      } else if (hoursLeft !== null && hoursLeft > 24) {
+        const daysLeft = Math.max(1, Math.ceil(hoursLeft / 24));
+        banner.className = "rounded-3xl bg-brand-50 border border-brand-200 text-brand-900 p-4 sm:p-5 shadow-xs";
+        banner.classList.remove("hidden");
+        banner.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">⏳<\/span>
+              <div>
+                <div class="text-sm sm:text-base font-black">متبقي على رحلتك إلى ${escapeHtml(booking.destination)}: <span class="text-brand-700 underline">${daysLeft} ${daysLeft === 1 ? "يوم" : "أيام"}<\/span><\/div>
+                <div class="text-xs text-slate-600">سيظهر إشعار فتح الشيك إن تلقائياً عندما يتبقى 24 ساعة أو أقل على موعد الرحلة<\/div>
+              <\/div>
+            <\/div>
+          <\/div>
+        `;
+      } else {
+        banner.classList.add("hidden");
+        banner.innerHTML = "";
+      }
+    }
+
+    function copyCheckinCodesInfo(mainPnr, lastName, returnPnr) {
+      const txt = `PNR: ${mainPnr}\nاسم العائلة: ${lastName}${returnPnr ? `\nPNR العودة: ${returnPnr}` : ""}`;
+      copyTextToClipboard(txt, "تم نسخ بيانات الشيك إن");
+    }
+
+    function renderCustomerDashboard(booking) {
+      activeCustomerBooking = booking;
+      document.getElementById("customer-login-card").classList.add("hidden");
+      document.getElementById("customer-dashboard").classList.remove("hidden");
+
+      document.getElementById("cust-destination-text").textContent = booking.destination;
+      document.getElementById("cust-pnr-badge").textContent = `PNR: ${booking.pnr}`;
+      document.getElementById("cust-welcome-title").textContent = `أهلاً بك ${booking.firstName} ${booking.lastName}`;
+      document.getElementById("cust-subtitle").textContent = `رحلتك إلى ${booking.destination} • ندلان تورز تتمنى لك سفراً سعيداً`;
+      document.getElementById("cust-passengers-count").textContent = (booking.passengers || []).length;
+      document.getElementById("cust-stations-count").textContent = `${(booking.stations || []).length} محطات`;
+
+      renderCheckinOrCountdownBanner(booking);
+      renderCustomerStations(booking);
+      resetAiChat();
+      loadCitySmartGuide(booking.destination);
+    }
+
+    function renderCustomerStations(booking) {
+      const container = document.getElementById("cust-stations-container");
+      if (!container) return;
+      const stations = booking.stations || [];
+      if (stations.length === 0) {
+        container.innerHTML = `<div class="glass-card rounded-2xl p-6 text-center text-xs text-slate-400">لا توجد محطات مضافة لهذا الحجز بعد.<\/div>`;
+        return;
+      }
+
+      container.innerHTML = stations
+        .map((st, idx) => {
+          if (st.type === "flight") {
+            const airline = detectAirlineFromFlightNumber(st.flightNumber || "");
+            return `
+              <div class="glass-card rounded-3xl p-5 space-y-3 border-r-4 border-r-sky-600">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xl">✈️<\/span>
+                    <h4 class="text-sm sm:text-base font-black text-brand-900">محطة ${idx + 1}: رحلة طيران ${escapeHtml(st.flightNumber || "")}<\/h4>
+                  <\/div>
+                  <div class="flex items-center gap-2">
+                    ${
+                      airline
+                        ? `<a href="${escapeHtml(airline.url)}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-black cursor-pointer">
+                            شيك إن (${escapeHtml(airline.code)})
+                          <\/a>`
+                        : ""
+                    }
+                  <\/div>
+                <\/div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 rounded-2xl p-3 text-xs">
+                  <div><span class="text-slate-400 block font-bold">المسار<\/span><strong class="text-slate-800">${escapeHtml(st.fromAirport || "-")} ➔ ${escapeHtml(st.toAirport || "-")}<\/strong><\/div>
+                  <div><span class="text-slate-400 block font-bold">الموعد<\/span><strong class="text-slate-800">${escapeHtml(st.departureText || "حسب التذكرة")}<\/strong><\/div>
+                  <div><span class="text-slate-400 block font-bold">رمز الطيران / PNR<\/span><strong class="text-slate-800">${escapeHtml(st.airlinePnr || booking.pnr)}<\/strong><\/div>
+                  <div class="col-span-2 sm:col-span-3"><span class="text-slate-400 block font-bold">الحقائب المسموحة<\/span><strong class="text-slate-800">${escapeHtml(st.baggage || "حسب شروط التذكرة")}<\/strong><\/div>
+                <\/div>
+                ${st.notes ? `<p class="text-xs text-slate-600 font-semibold">📌 ${escapeHtml(st.notes)}<\/p>` : ""}
+              <\/div>
+            `;
+          }
+
+          if (st.type === "hotel") {
+            return `
+              <div class="glass-card rounded-3xl p-5 space-y-3 border-r-4 border-r-amber-500">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xl">🏨<\/span>
+                    <h4 class="text-sm sm:text-base font-black text-brand-900">محطة ${idx + 1}: ${escapeHtml(st.hotelName || "فندق الإقامة")}<\/h4>
+                  <\/div>
+                  <span class="text-xs font-black bg-amber-100 text-amber-800 px-3 py-1 rounded-full">⭐ ${escapeHtml(st.hotelStars || "5 نجوم")}<\/span>
+                <\/div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 rounded-2xl p-3 text-xs">
+                  <div><span class="text-slate-400 block font-bold">تاريخ الدخول<\/span><strong class="text-slate-800">${escapeHtml(st.checkIn || "-")}<\/strong><\/div>
+                  <div><span class="text-slate-400 block font-bold">تاريخ الخروج<\/span><strong class="text-slate-800">${escapeHtml(st.checkOut || "-")}<\/strong><\/div>
+                  <div><span class="text-slate-400 block font-bold">مدة الإقامة<\/span><strong class="text-slate-800">${escapeHtml(st.nights || "-")}<\/strong><\/div>
+                <\/div>
+                ${st.notes ? `<p class="text-xs text-slate-600 font-semibold">📌 ${escapeHtml(st.notes)}<\/p>` : ""}
+              <\/div>
+            `;
+          }
+
+          if (st.type === "transfer") {
+            return `
+              <div class="glass-card rounded-3xl p-5 space-y-2.5 border-r-4 border-r-emerald-600">
+                <div class="flex items-center gap-2">
+                  <span class="text-xl">🚗<\/span>
+                  <h4 class="text-sm sm:text-base font-black text-brand-900">محطة ${idx + 1}: توصيل (${escapeHtml(st.fromLocation || "")} ➔ ${escapeHtml(st.toLocation || "")})<\/h4>
+                <\/div>
+                <div class="text-xs text-slate-700 font-semibold">⏰ موعد الاستقبال: <strong>${escapeHtml(st.pickupTime || "عند الوصول")}<\/strong><\/div>
+                ${st.notes ? `<p class="text-xs text-slate-600">📌 ${escapeHtml(st.notes)}<\/p>` : ""}
+              <\/div>
+            `;
+          }
+
+          return `
+            <div class="glass-card rounded-3xl p-5 space-y-2.5 border-r-4 border-r-purple-600">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">🎟️<\/span>
+                <h4 class="text-sm sm:text-base font-black text-brand-900">محطة ${idx + 1}: ${escapeHtml(st.tourTitle || "جولة سياحية")}<\/h4>
+              <\/div>
+              <div class="text-xs text-slate-700 font-semibold">📅 الموعد: <strong>${escapeHtml(st.tourDate || "-")}<\/strong><\/div>
+              ${st.notes ? `<p class="text-xs text-slate-600">📌 ${escapeHtml(st.notes)}<\/p>` : ""}
+            <\/div>
+          `;
+        })
+        .join("");
+    }
+
+    function openPassengersModal() {
+      if (!activeCustomerBooking) return;
+      const list = document.getElementById("passengers-modal-list");
+      const pax = activeCustomerBooking.passengers || [];
+      list.innerHTML = pax
+        .map(
+          (name, i) =>
+            `<li class="rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between">
+              <span>${i + 1}. ${escapeHtml(name)}<\/span>
+              ${i === 0 ? `<span class="text-[11px] bg-brand-100 text-brand-800 px-2 py-0.5 rounded-full font-black">رئيسي<\/span>` : ""}
+            <\/li>`
+        )
+        .join("");
+      document.getElementById("passengers-modal").classList.remove("hidden");
+    }
+
+    function closePassengersModal() {
+      document.getElementById("passengers-modal").classList.add("hidden");
+    }
+
+    function resetAiChat() {
+      aiChatHistory = [];
+      const container = document.getElementById("ai-chat-messages");
+      if (!container || !activeCustomerBooking) return;
+      container.innerHTML = `
+        <div class="rounded-2xl bg-brand-50 border border-brand-100 p-3.5 text-xs sm:text-sm text-slate-800">
+          أهلاً بك <strong class="font-black text-brand-900">${escapeHtml(activeCustomerBooking.firstName)} ${escapeHtml(activeCustomerBooking.lastName)}<\/strong> في <strong class="font-black text-brand-900">ندلان تورز<\/strong>! اسألني عن رحلتك إلى <strong class="font-black text-brand-900">${escapeHtml(activeCustomerBooking.destination)}<\/strong> أو اختر سؤالاً جاهزاً بالأسفل.
+        <\/div>
+      `;
+    }
+
+    function appendChatBubble(role, htmlContent) {
+      const container = document.getElementById("ai-chat-messages");
+      if (!container) return;
+      const div = document.createElement("div");
+      if (role === "user") {
+        div.className = "rounded-2xl bg-brand-700 text-white p-3 text-xs sm:text-sm font-bold mr-8";
+        div.textContent = htmlContent;
+      } else {
+        div.className = "rounded-2xl bg-slate-100 text-slate-800 p-3.5 text-xs sm:text-sm ml-6 space-y-1";
+        div.innerHTML = htmlContent;
+      }
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      return div;
+    }
+
+    async function sendQuickAiQuestion(questionText) {
+      if (!activeCustomerBooking) return;
+      await askAiAssistant(questionText);
+    }
+
+    async function handleAiChatSubmit(e) {
+      e.preventDefault();
+      const inp = document.getElementById("ai-chat-input");
+      const text = (inp.value || "").trim();
+      if (!text || !activeCustomerBooking) return;
+      inp.value = "";
+      await askAiAssistant(text);
+    }
+
+    async function askAiAssistant(question) {
+      appendChatBubble("user", question);
+      const typingBubble = appendChatBubble("bot", `<span class="loading-dots"><span><\/span><span><\/span><span><\/span><\/span>`);
+
+      const systemPrompt = `أنت مساعد السفر الذكي لمكتب ندلان تورز (Nadlantours).
+أجب بالعربية بوضوح وإيجاز منظم بنقاط عند الحاجة.
+اجعل الكلمات المهمة جداً (مثل اسم الزبون، اسم المكتب ندلان تورز، رمز PNR، الوجهة، الفنادق، أرقام الرحلات، والمواعيد) بخط عريض **هكذا**.
+بيانات حجز الزبون الحالية:
+${JSON.stringify(activeCustomerBooking)}`;
+
+      aiChatHistory.push({ role: "user", parts: [{ text: question }] });
+
+      try {
+        const res = await callGeminiApi({
+          contents: aiChatHistory,
+          systemInstruction: { parts: [{ text: systemPrompt }] }
+        });
+        const reply = res?.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أتمكن من الإجابة الآن.";
+        aiChatHistory.push({ role: "model", parts: [{ text: reply }] });
+        typingBubble.innerHTML = formatRichText(reply);
+      } catch (err) {
+        typingBubble.innerHTML = `<span class="text-rose-700 font-bold">تعذر الاتصال بالمساعد الذكي حالياً، حاول مرة أخرى.<\/span>`;
+      }
+    }
+
+    function renderPlugSvg(plugType) {
+      const t = (plugType || "").toUpperCase();
+      if (t.includes("G")) {
+        return `
+          <div class="grid grid-cols-2 gap-3 bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div class="flex flex-col items-center gap-1.5">
+              <span class="text-[11px] font-black text-slate-700">الفيش الحائطي (Type G)<\/span>
+              <svg viewBox="0 0 100 100" class="w-20 h-20">
+                <rect x="18" y="14" width="64" height="72" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+                <rect x="46" y="24" width="8" height="16" rx="2" fill="#0f766e"/>
+                <rect x="28" y="54" width="14" height="7" rx="2" fill="#0f766e"/>
+                <rect x="58" y="54" width="14" height="7" rx="2" fill="#0f766e"/>
+              <\/svg>
+            <\/div>
+            <div class="flex flex-col items-center gap-1.5">
+              <span class="text-[11px] font-black text-slate-700">رأس القابس والفيوز<\/span>
+              <svg viewBox="0 0 100 100" class="w-20 h-20">
+                <rect x="20" y="18" width="60" height="64" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="3"/>
+                <rect x="46" y="6" width="8" height="14" rx="2" fill="#475569"/>
+                <rect x="8" y="46" width="14" height="8" rx="2" fill="#475569"/>
+                <rect x="78" y="46" width="14" height="8" rx="2" fill="#475569"/>
+                <rect x="34" y="44" width="32" height="12" rx="3" fill="#ffffff" stroke="#b45309" stroke-width="2"/>
+                <text x="50" y="53" text-anchor="middle" font-size="8" font-weight="bold" fill="#b45309">FUSE<\/text>
+              <\/svg>
+            <\/div>
+          <\/div>
+        `;
+      }
+      if (t.includes("A") || t.includes("B")) {
+        return `
+          <div class="grid grid-cols-2 gap-3 bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div class="flex flex-col items-center gap-1.5">
+              <span class="text-[11px] font-black text-slate-700">الفيش الحائطي (Type A/B)<\/span>
+              <svg viewBox="0 0 100 100" class="w-20 h-20">
+                <rect x="20" y="16" width="60" height="68" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+                <rect x="34" y="34" width="7" height="20" rx="2" fill="#0f766e"/>
+                <rect x="59" y="34" width="7" height="20" rx="2" fill="#0f766e"/>
+                <circle cx="50" cy="66" r="6" fill="#0f766e"/>
+              <\/svg>
+            <\/div>
+            <div class="flex flex-col items-center gap-1.5">
+              <span class="text-[11px] font-black text-slate-700">رأس القابس المسطح<\/span>
+              <svg viewBox="0 0 100 100" class="w-20 h-20">
+                <rect x="24" y="32" width="52" height="44" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="3"/>
+                <rect x="34" y="14" width="7" height="20" rx="2" fill="#475569"/>
+                <rect x="59" y="14" width="7" height="20" rx="2" fill="#475569"/>
+                <circle cx="50" cy="54" r="5" fill="#0284c7"/>
+              <\/svg>
+            <\/div>
+          <\/div>
+        `;
+      }
+      return `
+        <div class="grid grid-cols-2 gap-3 bg-slate-50 rounded-2xl p-4 border border-slate-200">
+          <div class="flex flex-col items-center gap-1.5">
+            <span class="text-[11px] font-black text-slate-700">الفيش الحائطي (Type C/F)<\/span>
+            <svg viewBox="0 0 100 100" class="w-20 h-20">
+              <circle cx="50" cy="50" r="34" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+              <circle cx="38" cy="50" r="6" fill="#0f766e"/>
+              <circle cx="62" cy="50" r="6" fill="#0f766e"/>
+            <\/svg>
+          <\/div>
+          <div class="flex flex-col items-center gap-1.5">
+            <span class="text-[11px] font-black text-slate-700">رأس القابس الأوروبي<\/span>
+            <svg viewBox="0 0 100 100" class="w-20 h-20">
+              <circle cx="50" cy="58" r="26" fill="#ecfdf5" stroke="#059669" stroke-width="3"/>
+              <rect x="35" y="12" width="6" height="22" rx="3" fill="#475569"/>
+              <rect x="59" y="12" width="6" height="22" rx="3" fill="#475569"/>
+            <\/svg>
+          <\/div>
+        <\/div>
+      `;
+    }
+
+    async function loadCitySmartGuide(city) {
+      const cleanCity = (city || "").trim();
+      if (!cleanCity) return;
+
+      document.getElementById("weather-city-label").textContent = cleanCity;
+
+      const loadingCard = `<div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-center text-xs font-bold text-slate-500"><span class="loading-dots"><span><\/span><span><\/span><span><\/span><\/span><\/div>`;
+      document.getElementById("weather-5days-container").innerHTML = loadingCard.repeat(5);
+      document.getElementById("attractions-4-container").innerHTML = loadingCard.repeat(4);
+      document.getElementById("halal-5-container").innerHTML = loadingCard.repeat(3);
+      document.getElementById("plugs-guide-container").innerHTML = loadingCard;
+
+      if (cityGuideCache[cleanCity]) {
+        renderCitySmartGuideData(cleanCity, cityGuideCache[cleanCity]);
+        return;
+      }
+
+      try {
+        const prompt = `ابحث عن مدينة "${cleanCity}" وأعد JSON فقط (بدون أي نص خارج JSON) بالبنية التالية:
+{
+  "weather5Days": [
+    {"day": "اليوم/التاريخ", "icon": "☀️", "tempHigh": "26°", "tempLow": "18°", "condition": "مشمس"}
+  ],
+  "attractions4": [
+    {"name": "اسم المنطقة السياحية", "desc": "وصف مختصر في سطر واحد"}
+  ],
+  "halalRestaurants5": [
+    {"name": "اسم المطعم الحلال", "rating": "4.8★", "area": "المنطقة / الحي"}
+  ],
+  "plugInfo": {
+    "plugType": "Type G أو Type C/F أو Type A/B",
+    "voltage": "مثال: 230V / 50Hz",
+    "note": "ملاحظة مختصرة للمسافر حول المحول أو الفيش"
+  }
+}
+تأكد أن weather5Days يحتوي 5 أيام، و attractions4 يحتوي 4 مناطق، و halalRestaurants5 يحتوي 5 مطاعم حلال.`;
+
+        const res = await callGeminiApi({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          tools: [{ google_search: {} }],
+          generationConfig: { responseMimeType: "application/json" }
+        });
+
+        const rawText = res?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const cleaned = rawText.replace(/```json|```/gi, "").trim();
+        const data = JSON.parse(cleaned);
+        cityGuideCache[cleanCity] = data;
+        renderCitySmartGuideData(cleanCity, data);
+      } catch (err) {
+        const fallback = {
+          weather5Days: [
+            { day: "اليوم 1", icon: "☀️", tempHigh: "25°", tempLow: "17°", condition: "معتدل" },
+            { day: "اليوم 2", icon: "⛅", tempHigh: "24°", tempLow: "16°", condition: "غائم جزئياً" },
+            { day: "اليوم 3", icon: "☀️", tempHigh: "26°", tempLow: "18°", condition: "مشمس" },
+            { day: "اليوم 4", icon: "🌤️", tempHigh: "23°", tempLow: "15°", condition: "لطيف" },
+            { day: "اليوم 5", icon: "☀️", tempHigh: "25°", tempLow: "17°", condition: "مستقر" }
+          ],
+          attractions4: [
+            { name: `وسط مدينة ${cleanCity}`, desc: "الأسواق والواجهات الحيوية الرئيسية." },
+            { name: "الكورنيش والحدائق", desc: "أماكن مثالية للمشي والاسترخاء." },
+            { name: "المعالم التاريخية", desc: "أبرز المواقع الثقافية والتراثية." },
+            { name: "الإطلالات البانورامية", desc: "نقاط مشاهدة مميزة للمدينة." }
+          ],
+          halalRestaurants5: [
+            { name: `مطعم حلال مركزي - ${cleanCity}`, rating: "4.7★", area: "وسط المدينة" },
+            { name: "مشاوي الشرق الحلال", rating: "4.6★", area: "الحي السياحي" },
+            { name: "بيت الشام والمأكولات", rating: "4.8★", area: "قرب المركز" },
+            { name: "مطبخ الواحة الحلال", rating: "4.5★", area: "الكورنيش" },
+            { name: "سفرة المسافر الحلال", rating: "4.7★", area: "المدينة القديمة" }
+          ],
+          plugInfo: {
+            plugType: "Type C / F",
+            voltage: "230V / 50Hz",
+            note: "يُنصح باصطحاب محول سفر عالمي (Universal Adapter) للأمان."
+          }
+        };
+        renderCitySmartGuideData(cleanCity, fallback);
+      }
+    }
+
+    function renderCitySmartGuideData(city, data) {
+      const wList = Array.isArray(data?.weather5Days) ? data.weather5Days.slice(0, 5) : [];
+      document.getElementById("weather-5days-container").innerHTML = wList
+        .map(
+          (w) => `
+          <div class="rounded-2xl bg-brand-50/70 border border-brand-100 p-3.5 text-center space-y-1">
+            <div class="text-xs font-black text-brand-900">${escapeHtml(w.day || "")}<\/div>
+            <div class="text-2xl my-1">${escapeHtml(w.icon || "☀️")}<\/div>
+            <div class="text-sm font-black text-slate-900">${escapeHtml(w.tempHigh || "")} <span class="text-xs text-slate-400">/ ${escapeHtml(w.tempLow || "")}<\/span><\/div>
+            <div class="text-[11px] font-bold text-slate-600">${escapeHtml(w.condition || "")}<\/div>
+          <\/div>
+        `
+        )
+        .join("");
+
+      const aList = Array.isArray(data?.attractions4) ? data.attractions4.slice(0, 4) : [];
+      document.getElementById("attractions-4-container").innerHTML = aList
+        .map(
+          (a, i) => `
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-1">
+            <div class="text-xs sm:text-sm font-black text-brand-900">${i + 1}. ${escapeHtml(a.name || "")}<\/div>
+            <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(a.desc || "")}<\/p>
+          <\/div>
+        `
+        )
+        .join("");
+
+      const hList = Array.isArray(data?.halalRestaurants5) ? data.halalRestaurants5.slice(0, 5) : [];
+      document.getElementById("halal-5-container").innerHTML = hList
+        .map(
+          (r, i) => `
+          <div class="rounded-2xl bg-emerald-50/50 border border-emerald-100 px-3.5 py-2.5 flex items-center justify-between gap-2">
+            <div>
+              <div class="text-xs sm:text-sm font-black text-slate-900">${i + 1}. ${escapeHtml(r.name || "")}<\/div>
+              <div class="text-[11px] text-slate-500 font-semibold">${escapeHtml(r.area || city)}<\/div>
+            <\/div>
+            <span class="text-xs font-black bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">${escapeHtml(r.rating || "4.7★")}<\/span>
+          <\/div>
+        `
+        )
+        .join("");
+
+      const plug = data?.plugInfo || {};
+      document.getElementById("plugs-guide-container").innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+          <div class="md:col-span-5">
+            ${renderPlugSvg(plug.plugType || "Type C/F")}
+          <\/div>
+          <div class="md:col-span-7 space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs font-black bg-brand-100 text-brand-900 px-3 py-1 rounded-full">نوع الفيش: ${escapeHtml(plug.plugType || "Type C/F")}<\/span>
+              <span class="text-xs font-black bg-amber-100 text-amber-900 px-3 py-1 rounded-full">الجهد والتردد: ${escapeHtml(plug.voltage || "230V / 50Hz")}<\/span>
+            <\/div>
+            <p class="text-xs sm:text-sm text-slate-700 font-semibold leading-relaxed">${escapeHtml(plug.note || "")}<\/p>
+          <\/div>
+        <\/div>
+      `;
+    }
+
+    Object.assign(window, {
+      hideToast,
+      switchPortal,
+      applyStandardTemplate,
+      addStation,
+      removeStation,
+      moveStation,
+      updateStationField,
+      onFlightToAirportChange,
+      saveBooking,
+      editBooking,
+      cancelEditBooking,
+      deleteBooking,
+      copyGeneratedMessage,
+      renderBookingsList,
+      renderQuickDemoBookings,
+      triggerExtract,
+      handleExtractFileSelected,
+      loginCustomerPortal,
+      openBookingInCustomerPortal,
+      logoutCustomerPortal,
+      copyCheckinCodesInfo,
+      openPassengersModal,
+      closePassengersModal,
+      resetAiChat,
+      sendQuickAiQuestion,
+      handleAiChatSubmit
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadBookings();
+      renderStationsEditor();
+      renderBookingsList();
+      renderQuickDemoBookings();
+      if (bookings[0]) {
+        document.getElementById("generated-message-box").value = buildBookingMessage(bookings[0]);
+      }
+      initCloudDatabase();
+    });
+  <\/script>
 </body>
 </html>
