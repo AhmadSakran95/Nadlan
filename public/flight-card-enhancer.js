@@ -28,79 +28,14 @@
   function extractAirlineBookingRef(str) {
     const s = normText(str);
     if (!s) return '';
-    // Supports formats like "Airline booking reference: LY/ZYPVW3" or "Airline booking reference: KV13VE"
     const m1 = s.match(/Airline\s*booking\s*reference\s*[:：#\-]?\s*([A-Z0-9/_-]{4,18})/i);
     if (m1 && m1[1]) return m1[1].trim().toUpperCase();
-    return '';
-  }
-
-  function extractTextFromPdfBytes(bytes) {
-    try {
-      let raw = '';
-      for (let i = 0; i < bytes.length; i++) {
-        raw += String.fromCharCode(bytes[i]);
-      }
-      const directRef = extractAirlineBookingRef(raw);
-      if (directRef) return directRef;
-
-      const textParts = [];
-      const parenMatches = raw.match(/\(([^()\\]{1,120})\)/g) || [];
-      for (const p of parenMatches) {
-        textParts.push(p.slice(1, -1));
-      }
-      const joined = normText(textParts.join(' '));
-      return extractAirlineBookingRef(joined);
-    } catch (_) {
-      return '';
-    }
-  }
-
-  async function extractRefFromCardFile(card) {
-    const link = card.querySelector('a[href], a[download], input[type="file"]');
-    if (!link) return '';
-
-    const href = link.getAttribute('href') || '';
-    if (href.startsWith('data:')) {
-      try {
-        const commaIdx = href.indexOf(',');
-        if (commaIdx !== -1) {
-          const meta = href.slice(5, commaIdx);
-          const payload = href.slice(commaIdx + 1);
-          if (meta.indexOf('base64') !== -1) {
-            const binStr = atob(payload);
-            const bytes = new Uint8Array(binStr.length);
-            for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-            const fromPdf = extractTextFromPdfBytes(bytes);
-            if (fromPdf) return fromPdf;
-            return extractAirlineBookingRef(binStr);
-          } else {
-            return extractAirlineBookingRef(decodeURIComponent(payload));
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (href.startsWith('blob:') || href.startsWith('http') || href.startsWith('/')) {
-      try {
-        const resp = await fetch(href);
-        if (resp && resp.ok) {
-          const buf = await resp.arrayBuffer();
-          const bytes = new Uint8Array(buf);
-          const fromPdf = extractTextFromPdfBytes(bytes);
-          if (fromPdf) return fromPdf;
-          const dec = new TextDecoder('latin1').decode(bytes);
-          return extractAirlineBookingRef(dec);
-        }
-      } catch (_) {}
-    }
-
     return '';
   }
 
   function parseFlightText(raw) {
     const t = normText(raw);
 
-    // Always prioritize "Airline booking reference:" over system "PNR:"
     let pnr = extractAirlineBookingRef(t);
     if (!pnr) {
       const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#-]?\s*([A-Z0-9/_-]{5,14})/i);
@@ -141,7 +76,7 @@
 
     popup = document.createElement('div');
     popup.id = 'nadlan-pax-modal-v15';
-    popup.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.72);backdrop-filter:blur(2px);z-index:99999;display:none;align-items:center;justify-content:center;padding:16px;';
+    popup.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.72);backdrop-filter:blur(2px);z-index:999999;display:none;align-items:center;justify-content:center;padding:16px;touch-action:manipulation;';
     popup.innerHTML = `
       <div style="background:#fff;border-radius:24px;max-width:440px;width:100%;padding:24px;box-shadow:0 24px 48px rgba(0,0,0,0.35);">
         <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
@@ -149,19 +84,23 @@
             <div style="font-size:18px;font-weight:800;color:#0f172a;">قائمة المسافرون</div>
             <div id="nadlan-pax-sub-v15" style="font-size:12px;color:#64748b;margin-top:4px;"></div>
           </div>
-          <button id="nadlan-pax-x-v15" type="button" style="width:34px;height:34px;border-radius:10px;border:none;background:#f1f5f9;color:#0f172a;font-weight:800;cursor:pointer;">✕</button>
+          <button id="nadlan-pax-x-v15" type="button" style="width:38px;height:38px;border-radius:10px;border:none;background:#f1f5f9;color:#0f172a;font-weight:800;cursor:pointer;touch-action:manipulation;">✕</button>
         </div>
         <div id="nadlan-pax-list-v15" style="display:flex;flex-direction:column;gap:10px;max-height:260px;overflow-y:auto;"></div>
-        <button id="nadlan-pax-close-v15" type="button" style="margin-top:18px;width:100%;padding:12px;border-radius:14px;border:none;background:#0f172a;color:#fff;font-weight:800;font-size:14px;cursor:pointer;">إغلاق</button>
+        <button id="nadlan-pax-close-v15" type="button" style="margin-top:18px;width:100%;padding:12px;border-radius:14px;border:none;background:#0f172a;color:#fff;font-weight:800;font-size:14px;cursor:pointer;touch-action:manipulation;">إغلاق</button>
       </div>
     `;
     document.body.appendChild(popup);
 
-    const close = () => {
+    const close = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       popup.style.display = 'none';
     };
     popup.addEventListener('click', (e) => {
-      if (e.target === popup) close();
+      if (e.target === popup) close(e);
     });
     document.getElementById('nadlan-pax-x-v15').addEventListener('click', close);
     document.getElementById('nadlan-pax-close-v15').addEventListener('click', close);
@@ -204,12 +143,79 @@
     return normText(clone.innerText || clone.textContent || '');
   }
 
+  function triggerMobileFriendlyDownload(linkEl) {
+    if (!linkEl) return;
+    const href = linkEl.getAttribute('href') || '';
+    const dlName = linkEl.getAttribute('download') || 'voucher.pdf';
+
+    // Convert base64 data URI to Blob URL so mobile browsers (iOS Safari / Android Chrome) don't block large data: downloads
+    if (href.startsWith('data:')) {
+      try {
+        const commaIdx = href.indexOf(',');
+        if (commaIdx !== -1) {
+          const meta = href.slice(5, commaIdx);
+          const payload = href.slice(commaIdx + 1);
+          const mime = (meta.split(';')[0] || 'application/octet-stream').trim();
+          let bytes;
+          if (meta.indexOf('base64') !== -1) {
+            const bin = atob(payload);
+            bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          } else {
+            const decoded = decodeURIComponent(payload);
+            bytes = new TextEncoder().encode(decoded);
+          }
+          const blob = new Blob([bytes], { type: mime });
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = dlName;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            a.remove();
+          }, 4000);
+          return;
+        }
+      } catch (_) {}
+    }
+
+    if (href) {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  function fixMobileLinks(rootEl) {
+    if (!rootEl) return;
+    const links = rootEl.querySelectorAll('a[download], a[href^="data:"]');
+    links.forEach((a) => {
+      if (a.dataset.nadlanMobileFixed === '1') return;
+      a.dataset.nadlanMobileFixed = '1';
+      a.style.touchAction = 'manipulation';
+      a.addEventListener(
+        'click',
+        function (e) {
+          const href = a.getAttribute('href') || '';
+          if (href.startsWith('data:')) {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerMobileFriendlyDownload(a);
+          }
+        },
+        true
+      );
+    });
+  }
+
   function renderCardBar(card, meta, currentIndex) {
     let bar = card.querySelector('.nadlan-flight-bar-v15');
     if (!bar) {
       bar = document.createElement('div');
       bar.className = 'nadlan-flight-bar-v15';
-      bar.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;margin-bottom:8px;';
+      bar.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;margin-bottom:8px;position:relative;z-index:5;touch-action:manipulation;';
 
       const dl = card.querySelector('a[download], a[href^="data:"], a[href^="blob:"]');
       if (dl && dl.parentElement) {
@@ -237,13 +243,14 @@
 
     const paxBtn = document.createElement('button');
     paxBtn.type = 'button';
-    paxBtn.style.cssText = 'background:#f59e0b;color:#0f172a;border:none;padding:7px 14px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;';
+    paxBtn.style.cssText = 'background:#f59e0b;color:#0f172a;border:none;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;touch-action:manipulation;position:relative;z-index:6;';
     paxBtn.textContent = 'المسافرون' + (meta.passengers.length ? ' (' + meta.passengers.length + ')' : '');
-    paxBtn.addEventListener('click', function (e) {
+    const onOpen = function (e) {
       e.preventDefault();
       e.stopPropagation();
       window.openNadlanPaxPopup(currentIndex);
-    });
+    };
+    paxBtn.addEventListener('click', onOpen);
     bar.appendChild(paxBtn);
   }
 
@@ -251,12 +258,15 @@
     const container = document.getElementById('cust-itinerary-list');
     if (!container) return;
 
+    fixMobileLinks(container);
+
     const directChildren = Array.from(container.children || []);
     window.__NADLAN_FLIGHT_ITEMS_V15__ = [];
     let fIdx = 0;
 
     directChildren.forEach((card) => {
       if (!card || card.id === 'nadlan-pax-modal-v15') return;
+      fixMobileLinks(card);
       const txt = getCardSourceText(card);
       const isFlight =
         txt.indexOf('طيران:') !== -1 ||
@@ -271,14 +281,6 @@
       const currentIndex = fIdx++;
       window.__NADLAN_FLIGHT_ITEMS_V15__[currentIndex] = meta;
       renderCardBar(card, meta, currentIndex);
-
-      extractRefFromCardFile(card).then((fileRef) => {
-        if (fileRef && fileRef !== meta.pnr) {
-          meta.pnr = fileRef;
-          window.__NADLAN_FLIGHT_ITEMS_V15__[currentIndex] = meta;
-          renderCardBar(card, meta, currentIndex);
-        }
-      });
     });
   }
 
