@@ -1,46 +1,66 @@
 (function () {
-  function parseFlightDetailsFromText(rawText) {
+  function extractFlightDetailsFromText(rawText) {
     const txt = String(rawText || '').replace(/\s+/g, ' ').trim();
 
-    // Extract PNR (e.g., PNR: KV13VE or PNR الطيران: KV13VE)
+    // 1. PNR: matches PNR: KV13VE, PNR الطيران: KV13VE, Booking Ref: KV13VE, رمز الحجز: KV13VE
     let pnr = '';
-    const pnrMatch = txt.match(/(?:PNR(?:\s*الطيران)?|رمز\s*الحجز)[:\s#-]*([A-Z0-9]{5,8})/i);
-    if (pnrMatch) {
-      pnr = pnrMatch[1].trim().toUpperCase();
+    const pnrPatterns = [
+      /(?:PNR(?:\s*الطيران)?|Booking\s*Ref(?:erence)?|رمز\s*الحجز|رقم\s*حجز\s*الطيران)[:\s#-]*([A-Z0-9]{5,8})/i,
+      /PNR\s*[:\-]?\s*([A-Z0-9]{5,8})/i
+    ];
+    for (const re of pnrPatterns) {
+      const m = txt.match(re);
+      if (m && m[1]) {
+        pnr = m[1].trim().toUpperCase();
+        break;
+      }
     }
 
-    // Extract Flight Number (e.g., Flight: W4 6406 or رقم الرحلة: TK815)
+    // 2. Flight Number: matches Flight: W4 6406, Flight No: W46406, رقم الرحلة: TK815, etc.
     let flightNumber = '';
-    const fnMatch = txt.match(/(?:Flight(?:\s*No\.?|Number)?|رقم\s*(?:الرحلة|الطيران))[:\s#-]*([A-Z]{1,3}\s*\d{2,4})/i);
-    if (fnMatch) {
-      flightNumber = fnMatch[1].replace(/\s+/g, ' ').trim().toUpperCase();
+    const fnPatterns = [
+      /(?:Flight(?:\s*No\.?|Number)?|رقم\s*(?:الرحلة|الطيران))[:\s#-]*([A-Z0-9]{2,3}\s*\d{2,4})/i,
+      /Flight\s*[:\-]?\s*([A-Z0-9]{2,3}\s*\d{2,4})/i
+    ];
+    for (const re of fnPatterns) {
+      const m = txt.match(re);
+      if (m && m[1]) {
+        flightNumber = m[1].replace(/\s+/g, ' ').trim().toUpperCase();
+        break;
+      }
     }
 
-    // Extract Passengers list (after "المسافرون:")
+    // 3. Passengers: look after "المسافرون:" or "Passengers:" up to "|" or end of string
     let passengers = [];
-    const paxMatch = txt.match(/المسافرون:\s*([^|]+?)(?=\s*\||$)/);
-    if (paxMatch) {
+    const paxMatch = txt.match(/(?:المسافرون|Passengers?)\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
+    if (paxMatch && paxMatch[1]) {
       passengers = paxMatch[1]
-        .split(/،|,/)
+        .split(/،|,|\/|
+/)
+        .map((s) => s.replace(/^(?:MR\.?|MRS\.?|MS\.?|MISS\.?|DR\.?)\s+/i, '').trim())
         .map((s) => s.trim())
-        .filter(Boolean);
+        .filter((s) => s.length > 1 && !/^(?:PNR|Flight|الطيران|تحميل)/i.test(s));
     }
 
-    // Clean notes text so raw PNR / Flight / المسافرون don't look messy if desired, while keeping other notes
-    let cleanNotes = txt
-      .replace(/(?:PNR(?:\s*الطيران)?|رمز\s*الحجز)[:\s#-]*[A-Z0-9]{5,8}/gi, '')
-      .replace(/(?:Flight(?:\s*No\.?|Number)?|رقم\s*(?:الرحلة|الطيران))[:\s#-]*[A-Z]{1,3}\s*\d{2,4}/gi, '')
-      .replace(/المسافرون:\s*[^|]+/g, '')
-      .replace(/\|\s*\|/g, '|')
-      .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
-      .trim();
+    // Fallback: if no explicit label, look for comma/Arabic-comma separated capitalized names after "الطيران:"
+    if (passengers.length === 0) {
+      const afterAirline = txt.match(/الطيران:\s*[^|]+(?:\|\s*([^|]+))?/);
+      if (afterAirline && afterAirline[1]) {
+        const candidate = afterAirline[1].trim();
+        if ((candidate.includes('،') || candidate.includes(',')) && !/PNR|Flight/i.test(candidate)) {
+          passengers = candidate.split(/،|,/).map((s) => s.trim()).filter(Boolean);
+        }
+      }
+    }
 
-    return { pnr, flightNumber, passengers, cleanNotes };
+    return { pnr, flightNumber, passengers };
   }
 
   function ensurePassengersModal() {
-    if (document.getElementById('nadlan-passengers-modal')) return;
-    const modal = document.createElement('div');
+    let modal = document.getElementById('nadlan-passengers-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
     modal.id = 'nadlan-passengers-modal';
     modal.className = 'fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden items-center justify-center p-4';
     modal.innerHTML = `
@@ -55,12 +75,12 @@
               <p id="pax-modal-subtitle" class="text-xs text-slate-500"></p>
             </div>
           </div>
-          <button type="button" id="pax-modal-close-x" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition">
+          <button type="button" id="pax-modal-close-x" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition cursor-pointer">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
         <div id="pax-modal-list" class="space-y-2.5 max-h-72 overflow-y-auto"></div>
-        <button type="button" id="pax-modal-close-btn" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-3 rounded-xl text-sm transition">
+        <button type="button" id="pax-modal-close-btn" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-3 rounded-xl text-sm transition cursor-pointer">
           إغلاق
         </button>
       </div>
@@ -77,13 +97,21 @@
     });
     document.getElementById('pax-modal-close-x').addEventListener('click', hideModal);
     document.getElementById('pax-modal-close-btn').addEventListener('click', hideModal);
+    return modal;
+  }
+
+  function getMetaForFlight(flightIdx) {
+    const store = window.__NADLAN_FLIGHT_META__ || [];
+    if (store[flightIdx]) return store[flightIdx];
+
+    // Re-scan DOM on demand in case window store wasn't populated yet
+    enhanceFlightCards(true);
+    return (window.__NADLAN_FLIGHT_META__ || [])[flightIdx] || { flightNumber: '', pnr: '', passengers: [] };
   }
 
   window.openFlightPassengersPopup = function (flightIdx) {
-    ensurePassengersModal();
-    const store = window.__NADLAN_FLIGHT_META__ || [];
-    const meta = store[flightIdx] || { flightNumber: '', pnr: '', passengers: [] };
-    const modal = document.getElementById('nadlan-passengers-modal');
+    const modal = ensurePassengersModal();
+    const meta = getMetaForFlight(flightIdx || 0);
     const titleEl = document.getElementById('pax-modal-title');
     const subEl = document.getElementById('pax-modal-subtitle');
     const listEl = document.getElementById('pax-modal-list');
@@ -92,19 +120,22 @@
     const subParts = [];
     if (meta.flightNumber) subParts.push(`Flight: ${meta.flightNumber}`);
     if (meta.pnr) subParts.push(`PNR: ${meta.pnr}`);
-    subEl.textContent = subParts.length > 0 ? subParts.join('  •  ') : `عدد المسافرين: ${meta.passengers.length}`;
+    subEl.textContent = subParts.length > 0
+      ? subParts.join('  •  ')
+      : `عدد المسافرين: ${(meta.passengers || []).length}`;
 
-    if (!meta.passengers || meta.passengers.length === 0) {
+    const paxList = Array.isArray(meta.passengers) ? meta.passengers : [];
+    if (paxList.length === 0) {
       listEl.innerHTML = `
         <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center text-sm text-slate-500">
           لا توجد أسماء مسافرين مسجلة في هذه الرحلة.
         </div>
       `;
     } else {
-      listEl.innerHTML = meta.passengers
+      listEl.innerHTML = paxList
         .map(
           (name, idx) => `
-          <div class="flex items-center justify-between bg-slate-50 hover:bg-blue-50/60 border border-slate-200/80 rounded-2xl px-4 py-3 transition">
+          <div class="flex items-center justify-between bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 rounded-2xl px-4 py-3 transition">
             <div class="flex items-center gap-3">
               <span class="w-7 h-7 rounded-xl bg-slate-900 text-amber-400 font-mono text-xs font-extrabold flex items-center justify-center">${idx + 1}</span>
               <span class="text-sm font-extrabold text-slate-900">${name}</span>
@@ -120,7 +151,36 @@
     modal.classList.add('flex');
   };
 
-  function enhanceFlightCards() {
+  function buildFlightInfoBar(parsed, flightIdx) {
+    const bar = document.createElement('div');
+    bar.className = 'nadlan-flight-info-bar mt-3 mb-2 flex flex-wrap items-center gap-2.5';
+
+    if (parsed.pnr) {
+      const pnrChip = document.createElement('div');
+      pnrChip.className = 'inline-flex items-center gap-2 bg-slate-900 text-amber-400 px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-sm';
+      pnrChip.innerHTML = `<i class="fa-solid fa-ticket"></i><span>PNR:</span><span class="font-mono tracking-wider text-white">${parsed.pnr}</span>`;
+      bar.appendChild(pnrChip);
+    }
+
+    if (parsed.flightNumber) {
+      const fnChip = document.createElement('div');
+      fnChip.className = 'inline-flex items-center gap-2 bg-blue-50 text-blue-950 border border-blue-200 px-3.5 py-2 rounded-xl text-xs font-extrabold';
+      fnChip.innerHTML = `<i class="fa-solid fa-plane text-blue-600"></i><span>Flight:</span><span class="font-mono">${parsed.flightNumber}</span>`;
+      bar.appendChild(fnChip);
+    }
+
+    const paxBtn = document.createElement('button');
+    paxBtn.type = 'button';
+    paxBtn.setAttribute('data-pax-flight-index', String(flightIdx));
+    paxBtn.className = 'nadlan-pax-btn inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-slate-950 px-4 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer shadow-sm';
+    const countText = parsed.passengers.length > 0 ? ` (${parsed.passengers.length})` : '';
+    paxBtn.innerHTML = `<i class="fa-solid fa-users"></i><span>المسافرون${countText}</span>`;
+    bar.appendChild(paxBtn);
+
+    return bar;
+  }
+
+  function enhanceFlightCards(forceReprocess) {
     const listEl = document.getElementById('cust-itinerary-list');
     if (!listEl) return;
 
@@ -129,69 +189,77 @@
     let flightCounter = 0;
 
     children.forEach((card) => {
-      if (card.dataset && card.dataset.nadlanEnhanced === '1') return;
-      const fullText = (card.textContent || '').replace(/\s+/g, ' ').trim();
+      const fullText = (card.innerText || card.textContent || '').replace(/\s+/g, ' ').trim();
       const isFlightCard =
         fullText.includes('طيران:') ||
         fullText.includes('Flight:') ||
-        card.querySelector('.fa-plane, .fa-plane-departure');
+        fullText.includes('PNR') ||
+        Boolean(card.querySelector('.fa-plane, .fa-plane-departure'));
 
       if (!isFlightCard) return;
 
-      const parsed = parseFlightDetailsFromText(fullText);
+      // Merge any booking object data if available
+      const bookingSteps = Array.isArray(window.__NADLAN_CURRENT_BOOKING__?.itinerary)
+        ? window.__NADLAN_CURRENT_BOOKING__.itinerary.filter((s) => s && s.type === 'flight')
+        : [];
+      const matchingStep = bookingSteps[flightCounter] || null;
+
+      let parsed = extractFlightDetailsFromText(fullText);
+
+      if (matchingStep) {
+        if (!parsed.pnr && matchingStep.flightPnr) {
+          parsed.pnr = String(matchingStep.flightPnr).trim().toUpperCase();
+        }
+        if (parsed.passengers.length === 0 && Array.isArray(matchingStep.passengers)) {
+          parsed.passengers = matchingStep.passengers.filter(Boolean);
+        }
+        if (parsed.passengers.length === 0 && matchingStep.notes) {
+          const stepParsed = extractFlightDetailsFromText(matchingStep.notes);
+          if (stepParsed.passengers.length > 0) parsed.passengers = stepParsed.passengers;
+          if (!parsed.pnr && stepParsed.pnr) parsed.pnr = stepParsed.pnr;
+          if (!parsed.flightNumber && stepParsed.flightNumber) parsed.flightNumber = stepParsed.flightNumber;
+        }
+      }
+
       const currentIdx = flightCounter++;
       window.__NADLAN_FLIGHT_META__[currentIdx] = parsed;
 
-      const badgesRow = document.createElement('div');
-      badgesRow.className = 'mt-3 flex flex-wrap items-center gap-2';
+      const existingBar = card.querySelector('.nadlan-flight-info-bar');
+      if (existingBar && !forceReprocess) return;
+      if (existingBar && forceReprocess) existingBar.remove();
 
-      if (parsed.pnr) {
-        const pnrBadge = document.createElement('span');
-        pnrBadge.className = 'inline-flex items-center gap-1.5 bg-slate-900 text-amber-400 font-mono text-xs font-extrabold px-3 py-1.5 rounded-xl shadow-sm';
-        pnrBadge.innerHTML = `<i class="fa-solid fa-ticket"></i><span>PNR: ${parsed.pnr}</span>`;
-        badgesRow.appendChild(pnrBadge);
-      }
-
-      if (parsed.flightNumber) {
-        const fnBadge = document.createElement('span');
-        fnBadge.className = 'inline-flex items-center gap-1.5 bg-blue-50 text-blue-900 border border-blue-200 font-mono text-xs font-extrabold px-3 py-1.5 rounded-xl';
-        fnBadge.innerHTML = `<i class="fa-solid fa-plane text-blue-600"></i><span>Flight: ${parsed.flightNumber}</span>`;
-        badgesRow.appendChild(fnBadge);
-      }
-
-      const paxBtn = document.createElement('button');
-      paxBtn.type = 'button';
-      paxBtn.className = 'inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-slate-900 border border-amber-300 text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition cursor-pointer shadow-sm';
-      const paxCountLabel = parsed.passengers.length > 0 ? ` (${parsed.passengers.length})` : '';
-      paxBtn.innerHTML = `<i class="fa-solid fa-users text-amber-700"></i><span>المسافرون${paxCountLabel}</span>`;
-      paxBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        window.openFlightPassengersPopup(currentIdx);
-      });
-      badgesRow.appendChild(paxBtn);
-
-      // Insert right before the download/action button if present, or at the end of card content
-      const downloadBtn = card.querySelector('a[download], button');
-      if (downloadBtn && downloadBtn.parentElement) {
-        downloadBtn.parentElement.insertBefore(badgesRow, downloadBtn);
+      const bar = buildFlightInfoBar(parsed, currentIdx);
+      const downloadLink = card.querySelector('a[download], a[href^="data:"], button:not(.nadlan-pax-btn)');
+      if (downloadLink && downloadLink.parentElement) {
+        downloadLink.parentElement.insertBefore(bar, downloadLink);
       } else {
-        card.appendChild(badgesRow);
-      }
-
-      if (card.dataset) {
-        card.dataset.nadlanEnhanced = '1';
+        card.appendChild(bar);
       }
     });
   }
+
+  // Capture-phase delegation so clicking "المسافرون" or its icon/text always opens the popup
+  document.addEventListener(
+    'click',
+    function (e) {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-pax-flight-index], .nadlan-pax-btn') : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const idxAttr = btn.getAttribute('data-pax-flight-index');
+      const idx = idxAttr !== null ? parseInt(idxAttr, 10) : 0;
+      window.openFlightPassengersPopup(Number.isNaN(idx) ? 0 : idx);
+    },
+    true
+  );
 
   const listTarget = document.getElementById('cust-itinerary-list');
   if (listTarget && typeof MutationObserver !== 'undefined') {
     const observer = new MutationObserver(() => {
-      setTimeout(enhanceFlightCards, 40);
+      setTimeout(() => enhanceFlightCards(true), 60);
     });
     observer.observe(listTarget, { childList: true, subtree: true });
   }
 
-  window.addEventListener('DOMContentLoaded', () => setTimeout(enhanceFlightCards, 150));
+  window.addEventListener('DOMContentLoaded', () => setTimeout(() => enhanceFlightCards(true), 180));
 })();
