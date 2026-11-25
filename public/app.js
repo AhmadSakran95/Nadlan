@@ -664,62 +664,134 @@ function renderCustomerDashboard(b) {
   initAIChat(b);
 }
 
+const autoGuideCache = {};
+
+function renderRestaurantsCards(restaurants) {
+  document.getElementById("halal-restaurants-list").innerHTML = restaurants.map((r, i) => `
+    <div class="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex items-start justify-between gap-2">
+      <div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">${i + 1}</span>
+          <h5 class="font-extrabold text-slate-900 text-xs sm:text-sm">${escapeHtml(r.name)}</h5>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">${escapeHtml(r.cuisine)} • <span class="text-slate-700 font-semibold">${escapeHtml(r.area)}</span></p>
+      </div>
+      <span class="bg-amber-100 text-amber-900 font-extrabold text-xs px-2 py-1 rounded-lg shrink-0">
+        ⭐ ${escapeHtml(r.rating)}
+      </span>
+    </div>
+  `).join("");
+}
+
+function renderAttractionsCards(attractions) {
+  document.getElementById("attractions-list").innerHTML = attractions.map(a => `
+    <div class="p-3.5 rounded-2xl border border-purple-100 bg-purple-50/40">
+      <h5 class="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+        <i class="fa-solid fa-location-pin text-purple-600"></i> ${escapeHtml(a.name)}
+      </h5>
+      <p class="text-xs text-slate-600 mt-1">${escapeHtml(a.desc)}</p>
+    </div>
+  `).join("");
+}
+
+function extractJsonObjectFromText(text) {
+  if (!text) return null;
+  const cleaned = text.replace(/```json\s*|```/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchAutoDestinationFromAI(cityName) {
+  const prompt = `أعطني معلومات سياحية دقيقة وحقيقية لمدينة "${cityName}" بصيغة JSON فقط بدون أي نص إضافي أو شرح خارج JSON.
+المطلوب:
+- "country": اسم الدولة بالعربية
+- "plugType": نوع الفيش الكهربائي (مثل Type C / Type F أو Type G)
+- "voltage": الجهد والتردد (مثل 230V / 50Hz)
+- "plugNote": ملاحظة مختصرة وعملية عن الفيش والمحول بالعربية
+- "halalRestaurants": مصفوفة من 5 مطاعم حلال حقيقية ومشهورة فعلياً في "${cityName}" (لا تخترع أسماء وهمية، وإن لم تتأكد من مطاعم حلال معروفة فاذكر مطاعم حقيقية ومعروفة في المدينة مع توضيح نوع المطبخ)، كل عنصر يحتوي على: {"name": "...", "rating": "4.8", "cuisine": "...", "area": "..."}
+- "attractions": مصفوفة من 4 معالم أو مناطق سياحية حقيقية ومشهورة في "${cityName}"، كل عنصر يحتوي على: {"name": "...", "desc": "..."}`;
+
+  const res = await fetch(`${API_BASE}/ai/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: prompt,
+      booking: { ...(currentCustomerBooking || {}), city: cityName },
+      weatherSummary: currentWeatherSummary,
+      history: []
+    })
+  });
+
+  if (!res.ok) throw new Error("AI guide request failed");
+  const data = await res.json();
+  const parsed = extractJsonObjectFromText(data?.reply || "");
+  if (!parsed || !Array.isArray(parsed.halalRestaurants) || parsed.halalRestaurants.length === 0) {
+    throw new Error("Invalid AI JSON payload");
+  }
+  return parsed;
+}
+
 async function loadDestinationAutoGuide(cityName) {
   document.getElementById("guide-city-name").textContent = cityName;
   document.getElementById("halal-city-title").textContent = cityName;
 
   const matchedKey = Object.keys(DESTINATION_DB).find(k => cityName.includes(k) || k.includes(cityName));
-  const info = matchedKey ? DESTINATION_DB[matchedKey] : {
+  const baseInfo = matchedKey ? DESTINATION_DB[matchedKey] : {
     lat: null,
     lon: null,
     country: cityName,
     plugType: "Type C / Type F (قياسي دولي)",
     voltage: "220V - 240V / 50Hz",
     plugNote: "يُنصح باصطحاب محول كهرباء عالمي متعدد الرؤوس (Universal Travel Adapter) لضمان توافق جميع الأجهزة.",
-    halalRestaurants: [
-      { name: `مطعم الشرق الحلال - ${cityName}`, rating: "4.9", cuisine: "مأكولات عربية ومشويات", area: "وسط المدينة" },
-      { name: `مطعم السلطان التركي - ${cityName}`, rating: "4.8", cuisine: "كباب ومأكولات تركية", area: "الحي السياحي" },
-      { name: `مطعم الأندلس - ${cityName}`, rating: "4.8", cuisine: "مأكولات متوسطية حلال", area: "المركز" },
-      { name: `مطعم تاج محل الحلال - ${cityName}`, rating: "4.7", cuisine: "مطبخ هندي وباكستاني", area: "شارع التسوق" },
-      { name: `مطعم الشام الذهبي - ${cityName}`, rating: "4.7", cuisine: "شاورما ومقبلات شامية", area: "قرب الفنادق" }
-    ],
-    attractions: [
-      { name: `البلدة القديمة في ${cityName}`, desc: "استكشاف التاريخ والأسواق الشعبية والمباني الأثرية." },
-      { name: `المتحف الوطني في ${cityName}`, desc: "التعرف على ثقافة وتاريخ المنطقة." },
-      { name: `الحديقة المركزية والممشى السياحي`, desc: "أجواء طبيعية رائعة ومقاهي مطلة." },
-      { name: `سوق ${cityName} المركزي`, desc: "أفضل مكان لشراء الهدايا التذكارية والمنتجات المحلية." }
-    ]
+    halalRestaurants: [],
+    attractions: []
   };
 
-  document.getElementById("plug-country").textContent = info.country;
-  document.getElementById("plug-type-badge").textContent = `${info.plugType} | ${info.voltage}`;
-  document.getElementById("plug-details").textContent = info.plugNote;
+  document.getElementById("plug-country").textContent = baseInfo.country;
+  document.getElementById("plug-type-badge").textContent = `${baseInfo.plugType} | ${baseInfo.voltage}`;
+  document.getElementById("plug-details").textContent = baseInfo.plugNote;
 
-  document.getElementById("halal-restaurants-list").innerHTML = info.halalRestaurants.map((r, i) => `
-    <div class="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex items-start justify-between gap-2">
-      <div>
-        <div class="flex items-center gap-1.5">
-          <span class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">${i + 1}</span>
-          <h5 class="font-extrabold text-slate-900 text-xs sm:text-sm">${r.name}</h5>
-        </div>
-        <p class="text-xs text-slate-500 mt-1">${r.cuisine} • <span class="text-slate-700 font-semibold">${r.area}</span></p>
-      </div>
-      <span class="bg-amber-100 text-amber-900 font-extrabold text-xs px-2 py-1 rounded-lg shrink-0">
-        ⭐ ${r.rating}
-      </span>
-    </div>
-  `).join("");
+  const restContainer = document.getElementById("halal-restaurants-list");
+  const attrContainer = document.getElementById("attractions-list");
 
-  document.getElementById("attractions-list").innerHTML = info.attractions.map(a => `
-    <div class="p-3.5 rounded-2xl border border-purple-100 bg-purple-50/40">
-      <h5 class="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-        <i class="fa-solid fa-location-pin text-purple-600"></i> ${a.name}
-      </h5>
-      <p class="text-xs text-slate-600 mt-1">${a.desc}</p>
-    </div>
-  `).join("");
+  if (matchedKey && baseInfo.halalRestaurants.length > 0) {
+    renderRestaurantsCards(baseInfo.halalRestaurants);
+    renderAttractionsCards(baseInfo.attractions);
+  } else if (autoGuideCache[cityName]) {
+    const cached = autoGuideCache[cityName];
+    document.getElementById("plug-country").textContent = cached.country || cityName;
+    document.getElementById("plug-type-badge").textContent = `${cached.plugType || baseInfo.plugType} | ${cached.voltage || baseInfo.voltage}`;
+    document.getElementById("plug-details").textContent = cached.plugNote || baseInfo.plugNote;
+    renderRestaurantsCards(cached.halalRestaurants);
+    renderAttractionsCards(cached.attractions || []);
+  } else {
+    restContainer.innerHTML = `<div class="text-center py-6 text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin ml-2"></i> جاري البحث أوتوماتيكياً عن مطاعم حقيقية في ${escapeHtml(cityName)}...</div>`;
+    attrContainer.innerHTML = `<div class="text-center py-6 text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin ml-2"></i> جاري جلب أبرز المناطق السياحية في ${escapeHtml(cityName)}...</div>`;
 
-  await fetch5DayWeather(cityName, info.lat, info.lon);
+    try {
+      const aiGuide = await fetchAutoDestinationFromAI(cityName);
+      autoGuideCache[cityName] = aiGuide;
+
+      document.getElementById("plug-country").textContent = aiGuide.country || cityName;
+      document.getElementById("plug-type-badge").textContent = `${aiGuide.plugType || baseInfo.plugType} | ${aiGuide.voltage || baseInfo.voltage}`;
+      document.getElementById("plug-details").textContent = aiGuide.plugNote || baseInfo.plugNote;
+
+      renderRestaurantsCards(aiGuide.halalRestaurants.slice(0, 5));
+      renderAttractionsCards((aiGuide.attractions || []).slice(0, 4));
+    } catch (err) {
+      console.warn("Auto AI destination guide fallback:", err);
+      restContainer.innerHTML = `<div class="text-center py-4 text-xs text-slate-500">تعذر جلب قائمة تلقائية لـ ${escapeHtml(cityName)} حالياً. يمكنك سؤال المساعد الذكي مباشرة للحصول على مطاعم مؤكدة.</div>`;
+      attrContainer.innerHTML = `<div class="text-center py-4 text-xs text-slate-500">تعذر جلب المعالم تلقائياً لـ ${escapeHtml(cityName)} حالياً. يمكنك سؤال المساعد الذكي مباشرة.</div>`;
+    }
+  }
+
+  await fetch5DayWeather(cityName, baseInfo.lat, baseInfo.lon);
 }
 
 async function fetch5DayWeather(cityName, lat, lon) {
