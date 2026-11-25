@@ -8,12 +8,57 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODELS = [
-  process.env.GEMINI_MODEL,
+const DEFAULT_GEMINI_MODELS = [
   'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
-  'gemini-1.5-flash'
-].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
+  'gemini-2.0-flash-lite'
+];
+
+let dynamicGeminiModels = null;
+let dynamicModelsFetchedAt = 0;
+
+async function getGeminiModelsList() {
+  const now = Date.now();
+  // Refresh dynamic model list once every 30 minutes if we have an API key
+  if (GEMINI_API_KEY && (!dynamicGeminiModels || now - dynamicModelsFetchedAt > 30 * 60 * 1000)) {
+    try {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}`
+      );
+      if (resp.ok) {
+        const json = await resp.json();
+        const available = (json?.models || [])
+          .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map((m) => String(m.name || '').replace(/^models\//, ''))
+          .filter((name) => Boolean(name) && /flash|pro/i.test(name));
+
+        // Put flash models first, ordered newer/faster first
+        available.sort((a, b) => {
+          const aFlash = /flash/i.test(a) ? 0 : 1;
+          const bFlash = /flash/i.test(b) ? 0 : 1;
+          if (aFlash !== bFlash) return aFlash - bFlash;
+          return b.localeCompare(a);
+        });
+
+        if (available.length > 0) {
+          dynamicGeminiModels = available.slice(0, 6);
+          dynamicModelsFetchedAt = now;
+        }
+      }
+    } catch (_) {
+      // Keep fallback list on network hiccup
+    }
+  }
+
+  const baseList = dynamicGeminiModels && dynamicGeminiModels.length > 0
+    ? dynamicGeminiModels
+    : DEFAULT_GEMINI_MODELS;
+
+  return [process.env.GEMINI_MODEL, ...baseList, ...DEFAULT_GEMINI_MODELS].filter(
+    (m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx
+  );
+}
 
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
@@ -217,8 +262,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function callGeminiWithFallback(payloadBuilder) {
   let lastErrorMsg = 'خطأ من خدمة الذكاء الاصطناعي';
   let lastStatus = 502;
+  const modelsToTry = await getGeminiModelsList();
 
-  for (const model of GEMINI_MODELS) {
+  for (const model of modelsToTry) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
@@ -937,5 +983,7 @@ setInterval(() => cleanupExpiredBookings(), 15 * 60 * 1000);
 
 app.listen(PORT, HOST, () => {
   console.log(`🚀 Nadlantours Railway Server running on http://${HOST}:${PORT}`);
-  console.log(`🤖 Gemini AI models: ${GEMINI_MODELS.join(' -> ')} | Key configured: ${Boolean(GEMINI_API_KEY)}`);
+  getGeminiModelsList().then((mList) => {
+    console.log(`🤖 Gemini AI models: ${mList.join(' -> ')} | Key configured: ${Boolean(GEMINI_API_KEY)}`);
+  });
 });
