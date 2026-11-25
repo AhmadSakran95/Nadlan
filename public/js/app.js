@@ -878,6 +878,8 @@ async function saveBooking() {
     passengers = [mainFullName];
   }
 
+  const notes = document.getElementById("booking-notes-input")?.value.trim() || "";
+
   const editingId = document.getElementById("editing-booking-id")?.value.trim() || "";
   let pnr = document.getElementById("booking-pnr")?.value.trim().toUpperCase() || "";
   if (!pnr) {
@@ -891,6 +893,7 @@ async function saveBooking() {
     lastName,
     destination: destination || "وجهة السفر",
     passengers,
+    notes,
     stations: JSON.parse(JSON.stringify(currentStations))
   };
 
@@ -925,6 +928,8 @@ function editBooking(bookingId) {
   document.getElementById("main-destination").value = b.destination || "";
   document.getElementById("booking-pnr").value = b.pnr || "";
   document.getElementById("passengers-list-input").value = (b.passengers || []).join("\n");
+  const notesInput = document.getElementById("booking-notes-input");
+  if (notesInput) notesInput.value = b.notes || "";
 
   currentStations = JSON.parse(JSON.stringify(b.stations || []));
   renderStationsEditor();
@@ -947,6 +952,8 @@ function resetAdminForm() {
   document.getElementById("main-destination").value = "";
   document.getElementById("booking-pnr").value = "";
   document.getElementById("passengers-list-input").value = "";
+  const notesInput = document.getElementById("booking-notes-input");
+  if (notesInput) notesInput.value = "";
   currentStations = [];
   renderStationsEditor();
   document.getElementById("form-heading").textContent = "إضافة حجز جديد";
@@ -975,7 +982,8 @@ function renderGeneratedMessage(b) {
     `تم تأكيد حجز رحلتك إلى: ${b.destination}`,
     `رمز الدخول / PNR: ${b.pnr}`,
     `اسم العائلة للدخول: ${b.lastName}`,
-    `عدد المسافرين: ${(b.passengers || []).length}`
+    `عدد المسافرين: ${(b.passengers || []).length}`,
+    ...(b.notes ? [`ملاحظات: ${b.notes}`] : [])
   ];
 
   pre.textContent = lines.join("\n");
@@ -991,20 +999,48 @@ function copyGeneratedMessage() {
 function renderBookingsList() {
   const listEl = document.getElementById("bookings-list");
   const badgeEl = document.getElementById("bookings-count-badge");
+  const searchQuery = (document.getElementById("bookings-search-input")?.value || "")
+    .trim()
+    .toLowerCase();
   if (!listEl) return;
 
+  const filtered = searchQuery
+    ? bookings.filter((b) => {
+        const haystack = [
+          b.firstName,
+          b.lastName,
+          `${b.firstName || ""} ${b.lastName || ""}`,
+          b.pnr,
+          b.destination,
+          b.notes
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(searchQuery);
+      })
+    : bookings;
+
   if (badgeEl) {
-    badgeEl.textContent = `${bookings.length} ${bookings.length === 1 ? "حجز" : "حجوزات"}`;
+    badgeEl.textContent = searchQuery
+      ? `${filtered.length} من ${bookings.length}`
+      : `${bookings.length} ${bookings.length === 1 ? "حجز" : "حجوزات"}`;
   }
 
-  if (!bookings.length) {
-    listEl.innerHTML = `<div class="text-xs text-slate-400 text-center py-8 bg-slate-50 rounded-2xl border border-slate-200">لا توجد حجوزات محفوظة حالياً</div>`;
+  if (!filtered.length) {
+    const emptyMsg = searchQuery
+      ? "لا توجد نتائج مطابقة للبحث"
+      : "لا توجد حجوزات محفوظة حالياً";
+    listEl.innerHTML = `<div class="text-xs text-slate-400 text-center py-8 bg-slate-50 rounded-2xl border border-slate-200">${emptyMsg}</div>`;
     return;
   }
 
-  listEl.innerHTML = bookings
+  listEl.innerHTML = filtered
     .map((b) => {
       const paxCount = (b.passengers || []).length;
+      const notesHtml = b.notes
+        ? `<p class="text-xs text-amber-900 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-2 font-bold">📝 ${escapeHtml(b.notes)}</p>`
+        : "";
+
       return `
         <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white transition space-y-3">
           <div class="flex items-start justify-between gap-2">
@@ -1016,6 +1052,7 @@ function renderBookingsList() {
               <p class="text-xs text-slate-600 mt-0.5">الوجهة: <strong class="text-slate-900">${escapeHtml(b.destination)}</strong> • المسافرون: <strong>${paxCount}</strong></p>
             </div>
           </div>
+          ${notesHtml}
           <div class="flex flex-wrap items-center gap-2 pt-1">
             <button
               type="button"
@@ -1194,13 +1231,11 @@ function parseDepartureDateToTimestamp(departureText) {
     dec: "12", december: "12"
   };
 
-  // استخراج الوقت HH:MM إن وجد
   const timeMatch = raw.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
   const hh = timeMatch ? String(timeMatch[1]).padStart(2, "0") : "09";
   const mm = timeMatch ? String(timeMatch[2]).padStart(2, "0") : "00";
   const ss = timeMatch && timeMatch[3] ? String(timeMatch[3]).padStart(2, "0") : "00";
 
-  // 1) صيغ مثل: Monday, 21 December 01:00 أو 21 Dec 2026
   const monthNameMatch = raw.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?\b/);
   if (monthNameMatch) {
     const day = String(monthNameMatch[1]).padStart(2, "0");
@@ -1221,7 +1256,6 @@ function parseDepartureDateToTimestamp(departureText) {
     }
   }
 
-  // 2) YYYY-MM-DD أو YYYY/MM/DD
   const ymdMatch = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
   if (ymdMatch) {
     const year = ymdMatch[1];
@@ -1231,7 +1265,6 @@ function parseDepartureDateToTimestamp(departureText) {
     if (!Number.isNaN(ts)) return ts;
   }
 
-  // 3) DD/MM/YYYY أو DD-MM-YYYY
   const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
   if (dmyMatch) {
     const day = String(dmyMatch[1]).padStart(2, "0");
@@ -1265,7 +1298,6 @@ function renderCheckinAlertBanner(booking) {
   const depTs = parseDepartureDateToTimestamp(codes.outboundStop?.departureText);
   const hoursLeft = depTs !== null ? (depTs - Date.now()) / (1000 * 3600) : null;
 
-  // يفتح الشيك إن فقط إذا تبقى 24 ساعة أو أقل
   if (hoursLeft !== null && hoursLeft <= 24) {
     banner.classList.remove("hidden");
     banner.className = "bg-gradient-to-l from-amber-400 via-amber-300 to-yellow-300 text-slate-950 rounded-3xl p-4 sm:p-5 shadow-lg border-2 border-amber-500 flex flex-wrap items-center justify-between gap-4";
@@ -1296,7 +1328,6 @@ function renderCheckinAlertBanner(booking) {
     return;
   }
 
-  // أكثر من 24 ساعة -> يعرض كم يوم متبقي فقط ولا يفتح الشيك إن
   if (hoursLeft !== null && hoursLeft > 24) {
     const daysLeft = Math.max(1, Math.ceil(hoursLeft / 24));
     const dayWord = daysLeft === 1 ? "يوم" : daysLeft <= 10 ? "أيام" : "يوماً";
@@ -1322,7 +1353,6 @@ function renderCheckinAlertBanner(booking) {
     return;
   }
 
-  // إذا تعذر تحديد موعد الإقلاع لا نعرض شيك إن
   banner.classList.add("hidden");
 }
 
