@@ -84,9 +84,9 @@ async function fetchAllBookingsFromSQL() {
 function loadStandardTemplate() {
   builderSteps = [
     { type: "flight", from: "", to: "", date: "", notes: "", flightFileName: "", flightFileMime: "", flightFileData: "" },
-    { type: "hotel", hotelName: "", stars: "5 نجوم", boardType: "إفطار فقط (BB)", notes: "" },
-    { type: "transfer", from: "", to: "", date: "", notes: "" },
-    { type: "hotel", hotelName: "", stars: "5 نجوم", boardType: "نصف إقامة (HB)", notes: "" },
+    { type: "hotel", hotelName: "", stars: "5 نجوم", boardType: "إفطار فقط (BB)", notes: "", voucherFileName: "", voucherFileMime: "", voucherFileData: "" },
+    { type: "transfer", from: "", to: "", date: "", notes: "", voucherFileName: "", voucherFileMime: "", voucherFileData: "" },
+    { type: "hotel", hotelName: "", stars: "5 نجوم", boardType: "نصف إقامة (HB)", notes: "", voucherFileName: "", voucherFileMime: "", voucherFileData: "" },
     { type: "flight", from: "", to: "", date: "", notes: "", flightFileName: "", flightFileMime: "", flightFileData: "" }
   ];
   renderBuilderSteps();
@@ -96,9 +96,9 @@ function addItineraryStep(type) {
   if (type === "flight") {
     builderSteps.push({ type: "flight", from: "", to: "", date: "", notes: "", flightFileName: "", flightFileMime: "", flightFileData: "" });
   } else if (type === "hotel") {
-    builderSteps.push({ type: "hotel", hotelName: "", stars: "4 نجوم", boardType: "إفطار فقط (BB)", notes: "" });
+    builderSteps.push({ type: "hotel", hotelName: "", stars: "4 نجوم", boardType: "إفطار فقط (BB)", notes: "", voucherFileName: "", voucherFileMime: "", voucherFileData: "" });
   } else if (type === "transfer") {
-    builderSteps.push({ type: "transfer", from: "", to: "", date: "", notes: "" });
+    builderSteps.push({ type: "transfer", from: "", to: "", date: "", notes: "", voucherFileName: "", voucherFileMime: "", voucherFileData: "" });
   } else {
     builderSteps.push({ type: "tour", title: "", date: "", notes: "" });
   }
@@ -175,7 +175,24 @@ function renderBuilderSteps() {
       `;
     } else if (step.type === "hotel") {
       badgeHtml = `<span class="bg-amber-100 text-amber-900 px-2.5 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5"><i class="fa-solid fa-hotel"></i> فندق (محطة ${idx + 1})</span>`;
+      const hotelVoucherBadge = step.voucherFileName
+        ? `<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i> ${escapeHtml(step.voucherFileName)}</span>`
+        : `<span class="text-[11px] text-slate-400">ارفع PDF أو صورة فاوشر الفندق لتعبئة التفاصيل تلقائياً</span>`;
       fieldsHtml = `
+        <div class="mt-3 p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="space-y-0.5">
+            <div class="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles text-amber-600"></i>
+              <span>استخراج تلقائي من ملف PDF أو صورة فاوشر الفندق</span>
+            </div>
+            <div id="voucher-upload-status-${idx}">${hotelVoucherBadge}</div>
+          </div>
+          <label class="cursor-pointer bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shrink-0 shadow-sm">
+            <i class="fa-solid fa-upload"></i>
+            <span>رفع فاوشر الفندق</span>
+            <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleVoucherFileUpload(${idx}, 'hotel', this)" />
+          </label>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
           <div class="sm:col-span-3">
             <label class="block text-[11px] font-bold text-slate-600 mb-1">اسم الفندق *</label>
@@ -208,7 +225,24 @@ function renderBuilderSteps() {
       `;
     } else if (step.type === "transfer") {
       badgeHtml = `<span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5"><i class="fa-solid fa-car"></i> توصيل (محطة ${idx + 1})</span>`;
+      const transferVoucherBadge = step.voucherFileName
+        ? `<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i> ${escapeHtml(step.voucherFileName)}</span>`
+        : `<span class="text-[11px] text-slate-400">ارفع PDF أو صورة فاوشر المواصلات لتعبئة التفاصيل تلقائياً</span>`;
       fieldsHtml = `
+        <div class="mt-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="space-y-0.5">
+            <div class="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles text-emerald-600"></i>
+              <span>استخراج تلقائي من ملف PDF أو صورة فاوشر المواصلات</span>
+            </div>
+            <div id="voucher-upload-status-${idx}">${transferVoucherBadge}</div>
+          </div>
+          <label class="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shrink-0 shadow-sm">
+            <i class="fa-solid fa-upload"></i>
+            <span>رفع فاوشر المواصلات</span>
+            <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleVoucherFileUpload(${idx}, 'transfer', this)" />
+          </label>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
           <div>
             <label class="block text-[11px] font-bold text-slate-600 mb-1">التوصيل من أين *</label>
@@ -538,6 +572,7 @@ function renderCustomerDashboard(b) {
           </span>
         </div>
         ${step.notes ? `<p class="text-xs text-slate-600 mt-2"><i class="fa-solid fa-bed ml-1 text-amber-600"></i> ${escapeHtml(step.notes)}</p>` : ""}
+        ${step.voucherFileData ? `<div class="mt-3"><button type="button" onclick="downloadVoucherAttachment(${idx})" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition inline-flex items-center gap-2 shadow-sm"><i class="fa-solid fa-file-arrow-down"></i><span>تحميل فاوشر الفندق (${escapeHtml(step.voucherFileName || 'voucher-hotel')})</span></button></div>` : ""}
       `;
     } else if (step.type === "transfer") {
       icon = "fa-car";
@@ -558,6 +593,7 @@ function renderCustomerDashboard(b) {
           </div>
         </div>
         ${step.notes ? `<p class="text-xs text-slate-500 mt-2"><i class="fa-solid fa-car-side ml-1 text-emerald-600"></i> ${escapeHtml(step.notes)}</p>` : ""}
+        ${step.voucherFileData ? `<div class="mt-3"><button type="button" onclick="downloadVoucherAttachment(${idx})" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition inline-flex items-center gap-2 shadow-sm"><i class="fa-solid fa-file-arrow-down"></i><span>تحميل فاوشر المواصلات (${escapeHtml(step.voucherFileName || 'voucher-transfer')})</span></button></div>` : ""}
       `;
     } else {
       icon = "fa-map-location-dot";
@@ -1045,6 +1081,84 @@ function downloadFlightAttachment(stepIndex) {
   const link = document.createElement("a");
   link.href = `data:${mime};base64,${step.flightFileData}`;
   link.download = step.flightFileName || (mime.includes("pdf") ? "flight-ticket.pdf" : "flight-ticket.jpg");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+async function handleVoucherFileUpload(stepIndex, voucherType, inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+
+  if (file.size > 10 * 1024 * 1024) {
+    alert("حجم الملف كبير جداً. يُرجى اختيار ملف أصغر من 10MB.");
+    inputEl.value = "";
+    return;
+  }
+
+  const statusEl = document.getElementById(`voucher-upload-status-${stepIndex}`);
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="text-[11px] font-bold text-emerald-700"><i class="fa-solid fa-spinner fa-spin ml-1"></i> جاري قراءة بيانات الفاوشر أوتوماتيكياً...</span>`;
+  }
+
+  try {
+    const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+    const base64Data = await readFileAsBase64(file);
+
+    builderSteps[stepIndex].voucherFileName = file.name;
+    builderSteps[stepIndex].voucherFileMime = mimeType;
+    builderSteps[stepIndex].voucherFileData = base64Data;
+
+    const res = await fetch(`${API_BASE}/ai/extract-voucher`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType,
+        base64Data,
+        voucherType
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.voucher) {
+      const v = data.voucher;
+      if (voucherType === "hotel") {
+        if (v.hotelName) builderSteps[stepIndex].hotelName = v.hotelName;
+        if (v.stars) builderSteps[stepIndex].stars = v.stars;
+        if (v.boardType) builderSteps[stepIndex].boardType = v.boardType;
+        if (v.notes) builderSteps[stepIndex].notes = v.notes;
+      } else {
+        if (v.from) builderSteps[stepIndex].from = v.from;
+        if (v.to) builderSteps[stepIndex].to = v.to;
+        if (v.date) builderSteps[stepIndex].date = v.date;
+        if (v.notes) builderSteps[stepIndex].notes = v.notes;
+      }
+
+      if (Array.isArray(data.passengers) && data.passengers.length > 0) {
+        applyPassengersToBookingForm(data.passengers);
+      }
+
+      renderBuilderSteps();
+    } else {
+      renderBuilderSteps();
+      alert(data.error || "تم حفظ الفاوشر لكن تعذر استخراج التفاصيل تلقائياً، يمكنك تعبئتها يدوياً.");
+    }
+  } catch (err) {
+    console.error("Voucher upload error:", err);
+    renderBuilderSteps();
+    alert("حدث خطأ أثناء رفع ملف الفاوشر.");
+  }
+}
+
+function downloadVoucherAttachment(stepIndex) {
+  const step = currentCustomerBooking?.itinerary?.[stepIndex];
+  if (!step || !step.voucherFileData) return;
+
+  const mime = step.voucherFileMime || "application/pdf";
+  const link = document.createElement("a");
+  link.href = `data:${mime};base64,${step.voucherFileData}`;
+  link.download = step.voucherFileName || (mime.includes("pdf") ? "voucher.pdf" : "voucher.jpg");
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
