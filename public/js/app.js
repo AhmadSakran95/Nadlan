@@ -208,72 +208,51 @@
     }
 
     // =======================================================================
-    // إدارة البيانات والتخزين المحلي
+    // إدارة الحجوزات عبر قاعدة بيانات Railway PostgreSQL
     // =======================================================================
-    function loadBookings() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            bookings = parsed;
-            return;
-          }
+    async function apiRequest(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
         }
-      } catch (err) {
-        // تجاهل خطأ القراءة
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `تعذر الاتصال بالخادم (${response.status})`);
       }
-
-      const tomorrow = new Date(Date.now() + 18 * 3600 * 1000);
-      const depStr = tomorrow.toLocaleDateString("en-CA");
-      bookings = [
-        {
-          id: "b-demo-1",
-          pnr: "NDL10",
-          firstName: "أحمد",
-          lastName: "محاجنة",
-          destination: "باتومي",
-          passengers: ["أحمد محاجنة", "سارة محاجنة"],
-          stations: [
-            {
-              id: "st-1",
-              type: "flight",
-              fromAirport: "TLV",
-              toAirport: "BUS",
-              flightNumber: "KL 462",
-              airlinePnr: "KLM789",
-              baggage: "حقيبة شحن 23 كجم + حقيبة يد",
-              departureText: `${depStr} 10:30`,
-              notes: "ذهاب وعودة • رحلة العودة BUS -> TLV رقم KL 463"
-            },
-            {
-              id: "st-2",
-              type: "hotel",
-              name: "فندق هيلتون باتومي",
-              checkIn: "2026-11-26",
-              checkOut: "2026-12-03",
-              nights: "7 ليالي",
-              notes: "إفطار مشمول • غرفة مطلة على البحر"
-            },
-            {
-              id: "st-3",
-              type: "transfer",
-              fromLocation: "مطار باتومي BUS",
-              toLocation: "فندق هيلتون باتومي",
-              pickupTime: "استقبال عند الوصول",
-              notes: "سيارة خاصة"
-            }
-          ]
-        }
-      ];
-      saveBookingsToStorage();
+      return payload;
     }
 
-    function saveBookingsToStorage() {
+    async function loadBookings() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
+        let result = await apiRequest("/api/bookings");
+        bookings = Array.isArray(result.bookings) ? result.bookings : [];
+
+        // ترحيل حجوزات النسخة القديمة من localStorage مرة واحدة فقط إذا كانت قاعدة البيانات فارغة.
+        const legacyRaw = localStorage.getItem(STORAGE_KEY);
+        if (bookings.length === 0 && legacyRaw) {
+          let legacyBookings = [];
+          try { legacyBookings = JSON.parse(legacyRaw); } catch (_) {}
+          if (Array.isArray(legacyBookings) && legacyBookings.length) {
+            for (const booking of legacyBookings) {
+              await apiRequest("/api/bookings", {
+                method: "POST",
+                body: JSON.stringify(booking)
+              });
+            }
+            result = await apiRequest("/api/bookings");
+            bookings = Array.isArray(result.bookings) ? result.bookings : [];
+          }
+        }
+
+        // بعد نجاح الاتصال والترحيل، لا تبقى نسخة الحجوزات في المتصفح.
+        localStorage.removeItem(STORAGE_KEY);
       } catch (err) {
-        showToast("تعذر حفظ البيانات في المتصفح");
+        bookings = [];
+        console.error("Bookings database load failed:", err);
+        showToast("تعذر تحميل الحجوزات من قاعدة البيانات. تأكدي من ربط PostgreSQL في Railway.");
       }
     }
 
@@ -819,7 +798,7 @@
     // =======================================================================
     // حفظ وتعديل وعرض الحجوزات في قسم الإدارة
     // =======================================================================
-    function saveBooking() {
+    async function saveBooking() {
       syncStationsFromDom();
 
       const firstName = document.getElementById("customer-first-name")?.value.trim() || "";
@@ -867,23 +846,25 @@
         stations: JSON.parse(JSON.stringify(currentStations))
       };
 
-      if (editingId) {
+      try {
+        await apiRequest("/api/bookings", {
+          method: "POST",
+          body: JSON.stringify(bookingObj)
+        });
         const idx = bookings.findIndex((b) => b.id === editingId);
-        if (idx !== -1) {
-          bookings[idx] = bookingObj;
-          showToast(`تم تحديث حجز ${mainFullName} (${pnr})`);
-        } else {
-          bookings.unshift(bookingObj);
-        }
-      } else {
-        bookings.unshift(bookingObj);
-        showToast(`تم حفظ الحجز باسم ${mainFullName} برمز ${pnr}`);
-      }
+        if (idx !== -1) bookings[idx] = bookingObj;
+        else bookings.unshift(bookingObj);
 
-      saveBookingsToStorage();
-      renderBookingsList();
-      renderGeneratedMessage(bookingObj);
-      resetAdminForm();
+        showToast(editingId
+          ? `تم تحديث حجز ${mainFullName} (${pnr}) في قاعدة البيانات`
+          : `تم حفظ الحجز باسم ${mainFullName} برمز ${pnr} في قاعدة البيانات`);
+        renderBookingsList();
+        renderGeneratedMessage(bookingObj);
+        resetAdminForm();
+      } catch (err) {
+        console.error("Booking save failed:", err);
+        showToast(err.message || "تعذر حفظ الحجز في قاعدة البيانات");
+      }
     }
 
     function editBooking(bookingId) {
@@ -924,11 +905,16 @@
       document.getElementById("btn-cancel-edit").classList.add("hidden");
     }
 
-    function deleteBooking(bookingId) {
-      bookings = bookings.filter((b) => b.id !== bookingId);
-      saveBookingsToStorage();
-      renderBookingsList();
-      showToast("تم حذف الحجز");
+    async function deleteBooking(bookingId) {
+      try {
+        await apiRequest(`/api/bookings/${encodeURIComponent(bookingId)}`, { method: "DELETE" });
+        bookings = bookings.filter((b) => b.id !== bookingId);
+        renderBookingsList();
+        showToast("تم حذف الحجز من قاعدة البيانات");
+      } catch (err) {
+        console.error("Booking delete failed:", err);
+        showToast(err.message || "تعذر حذف الحجز من قاعدة البيانات");
+      }
     }
 
     function renderGeneratedMessage(b) {
@@ -1863,9 +1849,9 @@
     // =======================================================================
     // تهيئة التطبيق عند التحميل
     // =======================================================================
-    window.addEventListener("DOMContentLoaded", () => {
-      loadBookings();
+    window.addEventListener("DOMContentLoaded", async () => {
       renderStationsEditor();
+      await loadBookings();
       renderBookingsList();
       renderQuickDemoBookings();
     });
