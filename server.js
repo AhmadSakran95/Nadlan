@@ -65,6 +65,7 @@ function initDatabase() {
       ensureFlightFileColumns((colErr) => {
         if (colErr) console.error('❌ Column migration error:', colErr.message);
         seedInitialBookings();
+        cleanupExpiredBookings();
       });
     }
   });
@@ -451,6 +452,186 @@ app.post('/api/customer/login', (req, res) => {
     return res.status(400).json({ error: 'يرجى إدخال رقم PNR واسم العائلة' });
   }
 
+  cleanupExpiredBookings(() => {
+    db.get(
+      `SELECT * FROM bookings WHERE UPPER(pnr) = UPPER(?) AND TRIM(last_name) = TRIM(?)`,
+      [pnr.trim(), lastName.trim()],
+      (err, bookingRow) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!bookingRow) return res.status(404).json({ error: 'لم يتم العثور على حجز مطابق' });
+
+        db.all(
+          `SELECT * FROM itinerary_steps WHERE booking_id = ? ORDER BY step_order ASC`,
+          [bookingRow.id],
+          (err2, stepRows) => {
+            if (err2) return res.status(500).json({ error: err2.message });
+            res.json(formatBookingRow(bookingRow, stepRows));
+          }
+        );
+      }
+    );
+  });
+});
+
+// ==================== AI TRAVEL ASSISTANT ENDPOINT (GEMINI API) ====================
+app.post('/api/ai/chat', async (req, res) => {
+  const { message, booking, weatherSummary, history } = req.body;
+
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'يرجى إرسال نص السؤال' });
+  }
+
+  if (!GEMINI_API_KEY) {
+    return res.status(200).json({
+      reply: `⚠️ لم يتم ضبط مفتاح الذكاء الاصطناعي **GEMINI_API_KEY** على Railway بعد.
+
+ل تفعيل الذكاء الاصطناعي الحقيقي الذي يجيب على أي سؤال عن السفر:
+1. احصل على مفتاح API مجاني أو مدفوع من Google AI Studio.
+2. في لوحة تحكم **Railway**، اذهب إلى تبويب **Variables**.
+3. أضف متغير جديد باسم \`GEMINI_API_KEY\` وقيمته مفتاحك.
+4. أعد النشر (Redeploy) وسيعمل المساعد الذكي بكامل طاقته على جميع أسئلة السفر!`,
+      usedRealAI: false
+    });
+  }
+
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+
+  const cleanItinerary = Array.isArray(booking?.itinerary)
+    ? booking.itinerary.map(({ flightFileData, ...rest }) => rest)
+    : [];
+
+  const bookingContext = booking
+    ? JSON.stringify(
+        {
+          pnr: booking.pnr,
+          passenger: `${booking.firstName} ${booking.lastName}`,
+          destinationCity: booking.city,
+          currentDate: today,
+          totalPrice: `${booking.price} ${booking.currency}`,
+          terms: booking.terms,
+          itinerary: cleanItinerary
+        },
+        null,
+        2
+      )
+    : 'لا يوجد حجز محدد حالياً.';
+
+  const weatherContext =
+    Array.isArray(weatherSummary) && weatherSummary.length > 0
+      ? weatherSummary.join('\n')
+      : 'غير متوفر حالياً.';
+
+  const systemInstruction = `أنت مساعد سفر ذكي وخبير سياحي متكامل لوكالة "Nadlantours" (ندلان تورز).
+تاريخ اليوم الفعلي هو: ${today}.
+مهمتك مساعدة المسافر في **أي شيء يتعلق بالسفر** بأسلوب ودود، عملي، ودقيق باللغة العربية:
+- اعتمد على تاريخ اليوم الفعلي (${today}) فقط عند حساب عدد الأيام المتبقية للرحلة أو الإجابة عن أي سؤال يتعلق بالوقت والتواريخ.
+- قراءة وفهم تفاصيل حجز المسافر من قاعدة البيانات (الرحلات، الفنادق، التوصيلات، الجولات، السعر، الشروط).
+- بناء جداول يومية مخصصة حسب اهتمامات المسافر (عائلات، أزواج، تسوق، طبيعة، أطفال، ميزانية).
+- عند السؤال عن مطاعم حلال أو مقاهي أو أماكن سياحية: اذكر فقط أسماء مطاعم حقيقية ومشهورة ومؤكدة الوجود فعلياً في مدينة الوجهة (${booking?.city || ''})، ويُمنع منعاً باتاً اختراع أو تخمين أي اسم مطعم غير موجود أو غير متأكد من وجوده الحقيقي. اذكر اسم المطعم الحقيقي، نوع الطعام، والحي أو المنطقة، وأضف رابط بحث خرائط جوجل بصيغة: https://www.google.com/maps/search/?api=1&query=اسم+المطعم+اسم+المدينة
+- اقتراح وسائل مواصلات (مترو، تاكسي، أوبر، قطارات، استئجار سيارة)، رحلات قريبة من الوجهة، نصائح السفر، التأشيرات/الجمارك العامة، الحقائب، العملات، التحويلات، لغة التواصل السريعة، وفيوز الكهرباء.
+- الإجابة بوضوح وبدون تقييد بأسئلة جاهزة. إذا سأل المسافر عن شيء خارج بيانات الحجز، أجب بمعرفتك السياحية الواسعة والعملية.
+
+بيانات حجز المسافر الحالية:
+${bookingContext}
+
+توقعات الطقس الحالية للوجهة:
+${weatherContext}`;
+
+  const contents = [];
+  if (Array.isArray(history)) {
+    for (const turn of history.slice(-8)) {
+      if (turn && (turn.role === 'user' || turn.role === 'model') && turn.text) {
+        contents.push({
+          role: turn.role,
+          parts: [{ text: String(turn.text) }]
+        });
+      }
+    }
+  }
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 1500
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      const apiErrMsg = data?.error?.message || 'خطأ من خدمة الذكاء الاصطناعي';
+      return res.status(502).json({ error: `تعذر الحصول على رد من Gemini API: ${apiErrMsg}` });
+    }
+
+    const replyText =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || '')
+        .join('')
+        .trim() || 'عذراً، لم أتمكن من صياغة رد واضح الآن. جرّب إعادة صياغة سؤالك.';
+
+    res.json({ reply: replyText, usedRealAI: true });
+  } catch (err) {
+    console.error('Gemini API error:', err);
+    res.status(500).json({ error: 'حدث خطأ أثناء الاتصال بواجهة الذكاء الاصطناعي.' });
+  }
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password === '300795') {
+    res.json({ success: true, token: 'nadlan-admin-session-2026' });
+  } else {
+    res.status(401).json({ success: false, message: 'رمز المرور غير صحيح' });
+  }
+});
+
+app.post('/api/customer/login', (req, res) => {
+  const { pnr, lastName } = req.body;
+  if (!pnr || !lastName) {
+    return res.status(400).json({ error: 'يرجى إدخال رقم PNR واسم العائلة' });
+  }
+
+  cleanupExpiredBookings(() => {
+    db.get(
+      `SELECT * FROM bookings WHERE UPPER(pnr) = UPPER(?) AND TRIM(last_name) = TRIM(?)`,
+      [pnr.trim(), lastName.trim()],
+      (err, bookingRow) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!bookingRow) return res.status(404).json({ error: 'لم يتم العثور على حجز مطابق' });
+
+        db.all(
+          `SELECT * FROM itinerary_steps WHERE booking_id = ? ORDER BY step_order ASC`,
+          [bookingRow.id],
+          (err2, stepRows) => {
+            if (err2) return res.status(500).json({ error: err2.message });
+            res.json(formatBookingRow(bookingRow, stepRows));
+          }
+        );
+      }
+    );
+  });
+});
+
+app.post('/api/customer/login-legacy-unused', (req, res) => {
+  if (!pnr || !lastName) {
+    return res.status(400).json({ error: 'يرجى إدخال رقم PNR واسم العائلة' });
+  }
+
   db.get(
     `SELECT * FROM bookings WHERE UPPER(pnr) = UPPER(?) AND TRIM(last_name) = TRIM(?)`,
     [pnr.trim(), lastName.trim()],
@@ -471,18 +652,20 @@ app.post('/api/customer/login', (req, res) => {
 });
 
 app.get('/api/bookings', (req, res) => {
-  db.all(`SELECT * FROM bookings ORDER BY id DESC`, [], (err, bookingRows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (bookingRows.length === 0) return res.json([]);
+  cleanupExpiredBookings(() => {
+    db.all(`SELECT * FROM bookings ORDER BY id DESC`, [], (err, bookingRows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (bookingRows.length === 0) return res.json([]);
 
-    db.all(`SELECT * FROM itinerary_steps ORDER BY step_order ASC`, [], (err2, allSteps) => {
-      if (err2) return res.status(500).json({ error: err2.message });
+      db.all(`SELECT * FROM itinerary_steps ORDER BY step_order ASC`, [], (err2, allSteps) => {
+        if (err2) return res.status(500).json({ error: err2.message });
 
-      const result = bookingRows.map((b) => {
-        const steps = allSteps.filter((s) => s.booking_id === b.id);
-        return formatBookingRow(b, steps);
+        const result = bookingRows.map((b) => {
+          const steps = allSteps.filter((s) => s.booking_id === b.id);
+          return formatBookingRow(b, steps);
+        });
+        res.json(result);
       });
-      res.json(result);
     });
   });
 });
@@ -546,6 +729,122 @@ app.delete('/api/bookings/:pnr', (req, res) => {
     res.json({ success: true, deleted: this.changes });
   });
 });
+
+
+// ==================== AUTO-CLEANUP EXPIRED RETURN FLIGHTS ====================
+const FLIGHT_TIMEZONE = process.env.FLIGHT_TIMEZONE || 'Asia/Jerusalem';
+
+function parseFlightDateTime(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+
+  // Normalize Arabic AM/PM indicators if present
+  const normalized = trimmed
+    .replace(/صباحاً|صباحا|ص/g, 'AM')
+    .replace(/مساءً|مساءا|م/g, 'PM')
+    .replace(/ظهراً|ظهرا/g, 'PM')
+    .replace(/[|،]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Extract YYYY-MM-DD
+  const dateMatch = normalized.match(/(\d{4}-\d{2}-\d{2})/);
+  if (!dateMatch) return null;
+  const ymd = dateMatch[1];
+
+  // Extract optional HH:MM (with optional AM/PM)
+  const timeMatch = normalized.match(/(\d{1,2}:\d{2})(?:\s*(AM|PM))?/i);
+  let hh = 23;
+  let mm = 59;
+  if (timeMatch) {
+    let [hStr, mStr] = timeMatch[1].split(':');
+    let h = parseInt(hStr, 10);
+    mm = parseInt(mStr, 10);
+    const mer = (timeMatch[2] || '').toUpperCase();
+    if (mer === 'PM' && h < 12) h += 12;
+    if (mer === 'AM' && h === 12) h = 0;
+    if (h >= 0 && h <= 23 && mm >= 0 && mm <= 59) {
+      hh = h;
+    }
+  }
+
+  const isoCandidate = `${ymd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
+  const parsed = new Date(isoCandidate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getLastFlightDate(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return null;
+  const flightSteps = steps.filter((s) => s.step_type === 'flight' && s.travel_date);
+  if (flightSteps.length === 0) return null;
+
+  // Prefer the last flight step in the itinerary (typically the return flight)
+  for (let i = flightSteps.length - 1; i >= 0; i--) {
+    const dt = parseFlightDateTime(flightSteps[i].travel_date);
+    if (dt) return dt;
+  }
+  return null;
+}
+
+function cleanupExpiredBookings(callback) {
+  const now = new Date();
+  db.all(`SELECT id, pnr FROM bookings`, [], (err, bookingRows) => {
+    if (err) {
+      console.error('❌ Cleanup query error:', err.message);
+      if (callback) callback(err);
+      return;
+    }
+    if (!bookingRows || bookingRows.length === 0) {
+      if (callback) callback(null, 0);
+      return;
+    }
+
+    db.all(`SELECT booking_id, step_type, travel_date FROM itinerary_steps ORDER BY step_order ASC`, [], (err2, allSteps) => {
+      if (err2) {
+        console.error('❌ Cleanup steps query error:', err2.message);
+        if (callback) callback(err2);
+        return;
+      }
+
+      const expiredIds = [];
+      const expiredPnrs = [];
+
+      for (const b of bookingRows) {
+        const steps = (allSteps || []).filter((s) => s.booking_id === b.id);
+        const lastFlightDt = getLastFlightDate(steps);
+        if (lastFlightDt && lastFlightDt.getTime() < now.getTime()) {
+          expiredIds.push(b.id);
+          expiredPnrs.push(b.pnr);
+        }
+      }
+
+      if (expiredIds.length === 0) {
+        if (callback) callback(null, 0);
+        return;
+      }
+
+      const placeholders = expiredIds.map(() => '?').join(',');
+      db.run(`DELETE FROM itinerary_steps WHERE booking_id IN (${placeholders})`, expiredIds, (delStepsErr) => {
+        if (delStepsErr) {
+          console.error('❌ Error deleting expired itinerary steps:', delStepsErr.message);
+        }
+        db.run(`DELETE FROM bookings WHERE id IN (${placeholders})`, expiredIds, function (delBookErr) {
+          if (delBookErr) {
+            console.error('❌ Error deleting expired bookings:', delBookErr.message);
+            if (callback) callback(delBookErr);
+            return;
+          }
+          console.log(`🧹 Auto-deleted ${this.changes} expired booking(s) and their flight attachments: ${expiredPnrs.join(', ')}`);
+          if (callback) callback(null, this.changes);
+        });
+      });
+    });
+  });
+}
+
+// Run cleanup every 15 minutes
+setInterval(() => cleanupExpiredBookings(), 15 * 60 * 1000);
 
 app.listen(PORT, HOST, () => {
   console.log(`🚀 Nadlantours Railway Server running on http://${HOST}:${PORT}`);
