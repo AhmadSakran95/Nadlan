@@ -1176,106 +1176,126 @@ function getCheckinFlightCodes(booking) {
 }
 
 function parseDepartureDateToTimestamp(departureText) {
-  if (!departureText) return null;
-  const isoMatch = String(departureText).match(/(\d{4}-\d{2}-\d{2})(?:[T\s]+(\d{1,2}:\d{2}))?/);
-  if (isoMatch) {
-    const dtStr = isoMatch[2] ? `${isoMatch[1]}T${isoMatch[2]}:00` : `${isoMatch[1]}T09:00:00`;
-    const ts = Date.parse(dtStr);
-    if (!Number.isNaN(ts)) return ts;
-  }
-  const parsed = Date.parse(departureText);
-  return Number.isNaN(parsed) ? null : parsed;
-}
+      if (!departureText) return null;
+      const raw = String(departureText).trim();
 
-function renderCheckinAlertBanner(booking) {
-  const banner = document.getElementById("checkin-alert-banner");
-  const badgeEl = document.getElementById("checkin-alert-badge");
-  const titleEl = document.getElementById("checkin-alert-title");
-  const descEl = document.getElementById("checkin-alert-desc");
-  const codesEl = document.getElementById("checkin-alert-codes");
-  const checkinLinkBtn = document.getElementById("btn-airline-checkin-link");
-  const checkinNameSpan = document.getElementById("btn-airline-checkin-name");
-  const copyCheckinBtn = document.getElementById("btn-copy-checkin-info");
-  if (!banner || !booking) return;
-
-  const codes = getCheckinFlightCodes(booking);
-  const airlineInfo = resolveAirlineCheckinInfo(
-    codes.outboundStop?.flightNumber,
-    codes.outboundStop?.notes
-  );
-
-  const depTs = parseDepartureDateToTimestamp(codes.outboundStop?.departureText);
-  const hoursLeft = depTs !== null ? (depTs - Date.now()) / (1000 * 3600) : null;
-
-  if (hoursLeft !== null && hoursLeft <= 24) {
-    banner.classList.remove("hidden");
-    banner.className = "bg-gradient-to-l from-amber-400 via-amber-300 to-yellow-300 text-slate-950 rounded-3xl p-4 sm:p-5 shadow-lg border-2 border-amber-500 flex flex-wrap items-center justify-between gap-4";
-    if (badgeEl) {
-      badgeEl.textContent = "🔥 فتح الشيك إن!";
-    }
-    if (titleEl) {
-      titleEl.textContent = "رحلتك اقتربت وبوابة الشيك إن مفتوحة الآن!";
-    }
-    if (descEl) {
-      descEl.textContent = `أتمم تسجيل الدخول (Check-in) الآن باستخدام رمز PNR واسم العائلة (${codes.lastName}) لتأكيد مقعدك.`;
-    }
-    if (codesEl) {
-      const badges = [
-        `<span class="px-3 py-1 rounded-xl bg-slate-950 text-amber-300">PNR الذهاب: ${escapeHtml(codes.outboundPnr)}</span>`,
-        `<span class="px-3 py-1 rounded-xl bg-white text-slate-900 border border-amber-500">اسم العائلة: ${escapeHtml(codes.lastName)}</span>`
-      ];
-      if (codes.returnPnr) {
-        badges.push(
-          `<span class="px-3 py-1 rounded-xl bg-brand-900 text-white">PNR العودة: ${escapeHtml(codes.returnPnr)}</span>`
-        );
+      // 1) صيغة YYYY-MM-DD مع وقت اختياري HH:MM
+      const isoMatch = raw.match(/(\d{4}-\d{1,2}-\d{1,2})(?:[T\s]+(\d{1,2}:\d{2}))?/);
+      if (isoMatch) {
+        const [y, m, d] = isoMatch[1].split("-").map((n) => n.padStart(2, "0"));
+        const timePart = isoMatch[2] ? `${isoMatch[2].padStart(5, "0")}:00` : "09:00:00";
+        const ts = Date.parse(`${y}-${m}-${d}T${timePart}`);
+        if (!Number.isNaN(ts)) return ts;
       }
-      codesEl.innerHTML = badges.join("");
+
+      // 2) صيغة DD/MM/YYYY أو DD-MM-YYYY مع وقت اختياري HH:MM
+      const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[T\s]+(\d{1,2}:\d{2}))?\b/);
+      if (dmyMatch) {
+        const day = dmyMatch[1].padStart(2, "0");
+        const month = dmyMatch[2].padStart(2, "0");
+        const year = dmyMatch[3];
+        const timePart = dmyMatch[4] ? `${dmyMatch[4].padStart(5, "0")}:00` : "09:00:00";
+        const ts = Date.parse(`${year}-${month}-${day}T${timePart}`);
+        if (!Number.isNaN(ts)) return ts;
+      }
+
+      // 3) أي صيغة تاريخ أخرى يقبلها المتصفح
+      const parsed = Date.parse(raw);
+      return Number.isNaN(parsed) ? null : parsed;
     }
-    if (copyCheckinBtn) copyCheckinBtn.classList.remove("hidden");
-    if (checkinLinkBtn && airlineInfo?.url) {
-      checkinLinkBtn.href = airlineInfo.url;
-      checkinLinkBtn.classList.remove("hidden");
-      checkinLinkBtn.classList.add("inline-flex");
-      if (checkinNameSpan) {
-        checkinNameSpan.textContent = `(${airlineInfo.name})`;
+
+    function renderCheckinAlertBanner(booking) {
+      const banner = document.getElementById("checkin-alert-banner");
+      const badgeEl = document.getElementById("checkin-alert-badge");
+      const titleEl = document.getElementById("checkin-alert-title");
+      const descEl = document.getElementById("checkin-alert-desc");
+      const codesEl = document.getElementById("checkin-alert-codes");
+      const checkinLinkBtn = document.getElementById("btn-airline-checkin-link");
+      const checkinNameSpan = document.getElementById("btn-airline-checkin-name");
+      const copyCheckinBtn = document.getElementById("btn-copy-checkin-info");
+      if (!banner || !booking) return;
+
+      const codes = getCheckinFlightCodes(booking);
+      const airlineInfo = resolveAirlineCheckinInfo(
+        codes.outboundStop?.flightNumber,
+        codes.outboundStop?.notes
+      );
+
+      const depTs = parseDepartureDateToTimestamp(codes.outboundStop?.departureText);
+      const hoursLeft = depTs !== null ? (depTs - Date.now()) / (1000 * 3600) : null;
+
+      // حالة 1: متبقي 24 ساعة أو أقل -> فتح الشيك إن
+      if (hoursLeft !== null && hoursLeft <= 24) {
+        banner.classList.remove("hidden");
+        banner.className = "bg-gradient-to-l from-amber-400 via-amber-300 to-yellow-300 text-slate-950 rounded-3xl p-4 sm:p-5 shadow-lg border-2 border-amber-500 flex flex-wrap items-center justify-between gap-4";
+        if (badgeEl) badgeEl.textContent = "🔥 فتح الشيك إن!";
+        if (titleEl) titleEl.textContent = "رحلتك اقتربت وبوابة الشيك إن مفتوحة الآن!";
+        if (descEl) {
+          descEl.textContent = `أتمم تسجيل الدخول (Check-in) الآن باستخدام رمز PNR واسم العائلة (${codes.lastName}) لتأكيد مقعدك.`;
+        }
+        if (codesEl) {
+          const badges = [
+            `<span class="px-3 py-1 rounded-xl bg-slate-950 text-amber-300">PNR الذهاب: ${escapeHtml(codes.outboundPnr)}</span>`,
+            `<span class="px-3 py-1 rounded-xl bg-white text-slate-900 border border-amber-500">اسم العائلة: ${escapeHtml(codes.lastName)}</span>`
+          ];
+          if (codes.returnPnr) {
+            badges.push(
+              `<span class="px-3 py-1 rounded-xl bg-brand-900 text-white">PNR العودة: ${escapeHtml(codes.returnPnr)}</span>`
+            );
+          }
+          codesEl.innerHTML = badges.join("");
+        }
+        if (copyCheckinBtn) copyCheckinBtn.classList.remove("hidden");
+        if (checkinLinkBtn && airlineInfo?.url) {
+          checkinLinkBtn.href = airlineInfo.url;
+          checkinLinkBtn.classList.remove("hidden");
+          checkinLinkBtn.classList.add("inline-flex");
+          if (checkinNameSpan) checkinNameSpan.textContent = `(${airlineInfo.name})`;
+        }
+        return;
+      }
+
+      // حالة 2: متبقي أكثر من 24 ساعة -> عرض كم يوم متبقي
+      if (hoursLeft !== null && hoursLeft > 24) {
+        const daysLeft = Math.max(1, Math.ceil(hoursLeft / 24));
+        const dayWord = daysLeft === 1 ? "يوم" : daysLeft <= 10 ? "أيام" : "يوماً";
+
+        banner.classList.remove("hidden");
+        banner.className = "bg-gradient-to-l from-brand-800 via-brand-700 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md border border-brand-600 flex flex-wrap items-center justify-between gap-4";
+        if (badgeEl) badgeEl.textContent = "⏳ العد التنازلي للرحلة";
+        if (titleEl) titleEl.textContent = `متبقي على رحلتك ${daysLeft} ${dayWord}!`;
+        if (descEl) {
+          descEl.textContent = `باقي على موعد إقلاع رحلتك ${daysLeft} ${dayWord} (${codes.outboundStop?.departureText || "الموعد المحدد"}) — سيُفتح الشيك إن قبل الرحلة بـ 24 ساعة أو أقل.`;
+        }
+        if (codesEl) {
+          codesEl.innerHTML = `
+            <span class="px-3 py-1 rounded-xl bg-amber-400 text-slate-950 font-black">⏳ باقي ${daysLeft} ${dayWord}</span>
+            <span class="px-3 py-1 rounded-xl bg-white/15 text-amber-300 border border-white/20">الوجهة: ${escapeHtml(booking.destination)}</span>
+          `;
+        }
+        if (copyCheckinBtn) copyCheckinBtn.classList.add("hidden");
+        if (checkinLinkBtn) {
+          checkinLinkBtn.classList.add("hidden");
+          checkinLinkBtn.classList.remove("inline-flex");
+        }
+        return;
+      }
+
+      // حالة 3: التاريخ غير واضح أو غير مكتوب
+      banner.classList.remove("hidden");
+      banner.className = "bg-gradient-to-l from-brand-800 via-brand-700 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md border border-brand-600 flex flex-wrap items-center justify-between gap-4";
+      if (badgeEl) badgeEl.textContent = "✈️ تفاصيل الرحلة";
+      if (titleEl) titleEl.textContent = `رحلتك إلى ${booking.destination} مؤكدة!`;
+      if (descEl) descEl.textContent = "سيُفتح الشيك إن قبل موعد إقلاع الرحلة بـ 24 ساعة أو أقل.";
+      if (codesEl) {
+        codesEl.innerHTML = `<span class="px-3 py-1 rounded-xl bg-white/15 text-amber-300 border border-white/20">الوجهة: ${escapeHtml(booking.destination)}</span>`;
+      }
+      if (copyCheckinBtn) copyCheckinBtn.classList.add("hidden");
+      if (checkinLinkBtn) {
+        checkinLinkBtn.classList.add("hidden");
+        checkinLinkBtn.classList.remove("inline-flex");
       }
     }
-  } else if (hoursLeft === null || hoursLeft > 24) {
-    const daysLeft = hoursLeft !== null ? Math.max(1, Math.ceil(hoursLeft / 24)) : null;
-    banner.classList.remove("hidden");
-    banner.className = "bg-gradient-to-l from-brand-800 via-brand-700 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md border border-brand-600 flex flex-wrap items-center justify-between gap-4";
-    if (badgeEl) {
-      badgeEl.textContent = "⏳ العد التنازلي للرحلة";
-    }
-    if (titleEl) {
-      titleEl.textContent =
-        daysLeft !== null
-          ? `متبقي على رحلتك ${daysLeft} ${daysLeft === 1 ? "يوم" : daysLeft <= 10 ? "أيام" : "يوماً"}!`
-          : `رحلتك إلى ${booking.destination} بانتظارك!`;
-    }
-    if (descEl) {
-      descEl.textContent =
-        daysLeft !== null
-          ? `باقي على موعد إقلاع رحلتك ${daysLeft} ${daysLeft === 1 ? "يوم" : "أيام"} (${codes.outboundStop?.departureText || "الموعد المحدد"}) — سيُفتح الشيك إن تلقائياً قبل الرحلة بـ 24 ساعة أو أقل.`
-          : `رحلتك إلى ${booking.destination} مؤكدة — سيُفتح الشيك إن قبل موعد الرحلة بـ 24 ساعة أو أقل.`;
-    }
-    if (codesEl) {
-      const countdownBadge =
-        daysLeft !== null
-          ? `<span class="px-3 py-1 rounded-xl bg-amber-400 text-slate-950 font-black">⏳ باقي ${daysLeft} ${daysLeft === 1 ? "يوم" : "أيام"}</span>`
-          : "";
-      codesEl.innerHTML = `${countdownBadge}<span class="px-3 py-1 rounded-xl bg-white/15 text-amber-300 border border-white/20">الوجهة: ${escapeHtml(booking.destination)}</span>`;
-    }
-    if (copyCheckinBtn) copyCheckinBtn.classList.add("hidden");
-    if (checkinLinkBtn) {
-      checkinLinkBtn.classList.add("hidden");
-      checkinLinkBtn.classList.remove("inline-flex");
-    }
-  } else {
-    banner.classList.add("hidden");
-  }
-}
-
 function copyCheckinCodesInfo() {
   if (!activeCustomerBooking) return;
   const codes = getCheckinFlightCodes(activeCustomerBooking);
