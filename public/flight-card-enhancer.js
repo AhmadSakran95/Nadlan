@@ -3,6 +3,30 @@
     return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  function stripTrailingNoise(nameStr) {
+    let s = normText(nameStr);
+    // Cut off any trailing UI / download / flight / PNR / button text that leaked after the last passenger name
+    const stopMarkers = [
+      /\s+تحميل\s+ملف\s+الطيران.*$/i,
+      /\s+E-?ticket\s+Confirmation.*$/i,
+      /\s+PNR\s*[:：#\-]?.*$/i,
+      /\s+Flight\s*[:：#\-]?.*$/i,
+      /\s+المسافرون\s*\(?\d*\)?.*$/i,
+      /\s+الطيران\s*[:：].*$/i
+    ];
+    for (const re of stopMarkers) {
+      s = s.replace(re, '').trim();
+    }
+    return s;
+  }
+
+  function isValidPassengerName(n) {
+    if (!n || n.length < 2 || n.length > 70) return false;
+    if (/^(?:PNR|Flight|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
+    if (/\.pdf\b/i.test(n)) return false;
+    return true;
+  }
+
   function parseFlightText(raw) {
     const t = normText(raw);
 
@@ -19,12 +43,21 @@
     }
 
     let passengers = [];
-    const paxMatch = t.match(/المسافرون\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
+    const paxMatch = t.match(/المسافرون\s*[:：]\s*(.+)$/i);
     if (paxMatch && paxMatch[1]) {
-      passengers = paxMatch[1]
+      const cleanedTail = stripTrailingNoise(paxMatch[1]);
+      passengers = cleanedTail
         .split(/،|,/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+        .map((part, idx, arr) => {
+          let item = normText(part);
+          if (idx === arr.length - 1) {
+            item = stripTrailingNoise(item);
+          }
+          // Remove trailing parenthesis or leftover file/code bits
+          item = item.replace(/\s*\([^)]*\)\s*$/g, '').trim();
+          return item;
+        })
+        .filter(isValidPassengerName);
     }
 
     return { pnr, flightNo, passengers };
@@ -93,6 +126,13 @@
     popup.style.display = 'flex';
   };
 
+  function getCardSourceText(card) {
+    // Prefer reading original text before our injected bar/button was added
+    const clone = card.cloneNode(true);
+    clone.querySelectorAll('.nadlan-flight-bar-v15, .nadlan-open-pax-btn, #nadlan-pax-modal-v15').forEach((el) => el.remove());
+    return normText(clone.innerText || clone.textContent || '');
+  }
+
   function runEnhancer() {
     const container = document.getElementById('cust-itinerary-list');
     if (!container) return;
@@ -103,7 +143,7 @@
 
     directChildren.forEach((card) => {
       if (!card || card.id === 'nadlan-pax-modal-v15') return;
-      const txt = normText(card.innerText || card.textContent || '');
+      const txt = getCardSourceText(card);
       const isFlight =
         txt.indexOf('طيران:') !== -1 ||
         txt.indexOf('Flight:') !== -1 ||
@@ -162,7 +202,7 @@
   let t = null;
   function debouncedRun() {
     clearTimeout(t);
-    t = setTimeout(runEnhancer, 80);
+    t = setTimeout(runEnhancer, 100);
   }
 
   const listEl = document.getElementById('cust-itinerary-list');
@@ -170,7 +210,7 @@
     new MutationObserver(debouncedRun).observe(listEl, { childList: true, subtree: true });
   }
 
-  setInterval(runEnhancer, 1000);
+  setInterval(runEnhancer, 1200);
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     setTimeout(runEnhancer, 100);
   } else {
