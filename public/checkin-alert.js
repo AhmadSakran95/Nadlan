@@ -12,6 +12,46 @@
     { match: ['pegasus', 'بيغاسوس'], url: 'https://www.flypgs.com/en/check-in', label: 'Pegasus' }
   ];
 
+  const MONTHS = {
+    january: '01', jan: '01',
+    february: '02', feb: '02',
+    march: '03', mar: '03',
+    april: '04', apr: '04',
+    may: '05',
+    june: '06', jun: '06',
+    july: '07', jul: '07',
+    august: '08', aug: '08',
+    september: '09', sep: '09', sept: '09',
+    october: '10', oct: '10',
+    november: '11', nov: '11',
+    december: '12', dec: '12'
+  };
+
+  function extractYmd(text) {
+    // 1. YYYY-MM-DD or YYYY/MM/DD
+    const iso = text.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (iso) {
+      return `${iso[1]}-${String(iso[2]).padStart(2, '0')}-${String(iso[3]).padStart(2, '0')}`;
+    }
+    // 2. DD/MM/YYYY or DD-MM-YYYY
+    const dmy = text.match(/\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b/);
+    if (dmy) {
+      return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
+    }
+    // 3. "25 November 2026" or "November 25, 2026" or "25 Nov 2026"
+    const mDayFirst = text.match(/\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})\b/i);
+    if (mDayFirst) {
+      const mm = MONTHS[mDayFirst[2].toLowerCase()];
+      if (mm) return `${mDayFirst[3]}-${mm}-${String(mDayFirst[1]).padStart(2, '0')}`;
+    }
+    const mMonthFirst = text.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i);
+    if (mMonthFirst) {
+      const mm = MONTHS[mMonthFirst[1].toLowerCase()];
+      if (mm) return `${mMonthFirst[3]}-${mm}-${String(mMonthFirst[2]).padStart(2, '0')}`;
+    }
+    return null;
+  }
+
   function parseDateTime(raw) {
     if (!raw || typeof raw !== 'string') return null;
     const normalized = raw
@@ -21,13 +61,15 @@
       .replace(/[|،]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    const dMatch = normalized.match(/(\d{4}-\d{2}-\d{2})/);
-    if (!dMatch) return null;
-    const ymd = dMatch[1];
-    const tMatch = normalized.match(/(\d{1,2}:\d{2})(?:\s*(AM|PM))?/i);
-    let hh = 9, mm = 0;
+
+    const ymd = extractYmd(normalized);
+    if (!ymd) return null;
+
+    // Match HH:MM excluding YYYY:MM
+    const tMatch = normalized.match(/(?<!\d{4})(?:\b|:)(\d{1,2}:\d{2})(?:\s*(AM|PM))?/i);
+    let hh = 12, mm = 0;
     if (tMatch) {
-      let [hStr, mStr] = tMatch[1].split(':');
+      const [hStr, mStr] = tMatch[1].split(':');
       let h = parseInt(hStr, 10);
       mm = parseInt(mStr, 10);
       const mer = (tMatch[2] || '').toUpperCase();
@@ -54,8 +96,9 @@
 
   function extractPnrAndLastName(step, booking) {
     const combined = `${step.flightPnr || ''} ${step.notes || ''} ${booking?.notes || ''}`;
-    const pnrMatch = combined.match(/\b([A-Z0-9]{5,7})\b/);
-    let pnr = (step.flightPnr || (pnrMatch ? pnrMatch[1] : '') || '').toUpperCase();
+    // Avoid matching flight numbers like W4 6406 or LY 282; look for explicit PNR or 6-char uppercase code not following W4/LY/TK/etc.
+    const explicitPnr = combined.match(/PNR[:\s#-]*([A-Z0-9]{5,7})/i);
+    let pnr = (step.flightPnr || (explicitPnr ? explicitPnr[1] : '') || '').toUpperCase();
     if (!pnr && booking?.pnr) pnr = String(booking.pnr).toUpperCase();
 
     let lastName = (step.passengerLastName || booking?.lastName || '').trim();
@@ -78,10 +121,9 @@
     const alerts = [];
 
     flights.forEach((flight, idx) => {
-      const dt = parseDateTime(flight.date || flight.travel_date || '');
+      const dt = parseDateTime(flight.date || flight.travel_date || flight.notes || '');
       if (!dt) return;
       const diffMs = dt.getTime() - now;
-      // Within 24 hours or less until flight departure (and not expired more than 24h after takeoff)
       if (diffMs <= twentyFourHoursMs && diffMs >= -twentyFourHoursMs) {
         const hoursLeft = Math.max(0, Math.round(diffMs / (60 * 60 * 1000)));
         const legLabel = flight.legType === 'return' || /عودة|return/i.test(`${flight.from || ''} ${flight.notes || ''}`) || (flights.length > 1 && idx > 0)
