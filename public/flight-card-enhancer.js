@@ -1,16 +1,16 @@
 (function () {
   function normText(s) {
-    return String(s || '').replace(/\u00A0/g, ' ').replace(/\\s+/g, ' ').trim();
+    return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   function stripTrailingNoise(nameStr) {
     let s = normText(nameStr);
     const stopMarkers = [
-      /\\s+تحميل\\s+ملف\\s+الطيران.*$/i,
-      /\\s+E-?ticket\\s+Confirmation.*$/i,
-      /\\s+(?:Airline\\s*booking\\s*reference|PNR|Flight)\\s*[:：#\-]?.*$/i,
-      /\\s+المسافرون\\s*\\(?\\d*\\)?.*$/i,
-      /\\s+الطيران\\s*[:：].*$/i
+      /\s+تحميل\s+ملف\s+الطيران.*$/i,
+      /\s+E-?ticket\s+Confirmation.*$/i,
+      /\s+(?:Airline\s*booking\s*reference|PNR|Flight)\s*[:：#\-]?.*$/i,
+      /\s+المسافرون\s*\(?\d*\)?.*$/i,
+      /\s+الطيران\s*[:：].*$/i
     ];
     for (const re of stopMarkers) {
       s = s.replace(re, '').trim();
@@ -20,35 +20,30 @@
 
   function isValidPassengerName(n) {
     if (!n || n.length < 2 || n.length > 70) return false;
-    if (/^(?:PNR|Flight|Airline\\s*booking\\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
-    if (/\\.pdf\b/i.test(n)) return false;
+    if (/^(?:PNR|Flight|Airline\s*booking\s*reference|الطيران|المسافرون|تحميل|E-?ticket|Confirmation|Wizz)/i.test(n)) return false;
+    if (/\.pdf\b/i.test(n)) return false;
     return true;
   }
 
   function extractAirlineBookingRef(str) {
     const s = normText(str);
     if (!s) return '';
-    // Match "Airline booking reference: XXXXXX" or "Airline Booking Reference - XXXXXX"
-    const m1 = s.match(/Airline\\s*booking\\s*reference\\s*[:：#\-]?\\s*([A-Z0-9]{4,12})/i);
+    const m1 = s.match(/Airline\s*booking\s*reference\s*[:：#\-]?\s*([A-Z0-9]{4,12})/i);
     if (m1 && m1[1]) return m1[1].trim().toUpperCase();
     return '';
   }
 
   function extractTextFromPdfBytes(bytes) {
     try {
-      // Decode ASCII/Latin1 chunks and scan uncompressed or FlateDecode streams if available
       let raw = '';
       for (let i = 0; i < bytes.length; i++) {
         raw += String.fromCharCode(bytes[i]);
       }
-
-      // 1. Direct plain-text search in PDF
       const directRef = extractAirlineBookingRef(raw);
       if (directRef) return directRef;
 
-      // 2. Scan PDF text-showing operators like (Airline booking reference:) Tj / TJ
       const textParts = [];
-      const parenMatches = raw.match(/\\(([^()\\]{1,120})\\)/g) || [];
+      const parenMatches = raw.match(/\(([^()\\]{1,120})\)/g) || [];
       for (const p of parenMatches) {
         textParts.push(p.slice(1, -1));
       }
@@ -106,20 +101,20 @@
 
     let pnr = extractAirlineBookingRef(t);
     if (!pnr) {
-      const pnrMatch = t.match(/PNR(?:\\s*الطيران)?\\s*[:：#-]?\\s*([A-Z0-9]{5,10})/i);
+      const pnrMatch = t.match(/PNR(?:\s*الطيران)?\s*[:：#-]?\s*([A-Z0-9]{5,10})/i);
       if (pnrMatch && pnrMatch[1]) {
         pnr = pnrMatch[1].trim().toUpperCase();
       }
     }
 
     let flightNo = '';
-    const fnMatch = t.match(/Flight(?:\\s*(?:No\\.?|Number))?\\s*[:：#-]?\\s*([A-Z0-9]{1,3}\\s*\\d{2,5})/i);
+    const fnMatch = t.match(/Flight(?:\s*(?:No\.?|Number))?\s*[:：#-]?\s*([A-Z0-9]{1,3}\s*\d{2,5})/i);
     if (fnMatch && fnMatch[1]) {
-      flightNo = fnMatch[1].replace(/\\s+/g, ' ').trim().toUpperCase();
+      flightNo = fnMatch[1].replace(/\s+/g, ' ').trim().toUpperCase();
     }
 
     let passengers = [];
-    const paxMatch = t.match(/المسافرون\\s*[:：]\\s*(.+)$/i);
+    const paxMatch = t.match(/المسافرون\s*[:：]\s*(.+)$/i);
     if (paxMatch && paxMatch[1]) {
       const cleanedTail = stripTrailingNoise(paxMatch[1]);
       passengers = cleanedTail
@@ -129,7 +124,7 @@
           if (idx === arr.length - 1) {
             item = stripTrailingNoise(item);
           }
-          item = item.replace(/\\s*\\([^)]*\\)\\s*$/g, '').trim();
+          item = item.replace(/\s*\([^)]*\)\s*$/g, '').trim();
           return item;
         })
         .filter(isValidPassengerName);
@@ -275,7 +270,6 @@
       window.__NADLAN_FLIGHT_ITEMS_V15__[currentIndex] = meta;
       renderCardBar(card, meta, currentIndex);
 
-      // Async check inside the attached flight file (data:/blob:/URL) for "Airline booking reference:"
       extractRefFromCardFile(card).then((fileRef) => {
         if (fileRef && fileRef !== meta.pnr) {
           meta.pnr = fileRef;
