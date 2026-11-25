@@ -1,3 +1,0 @@
-import {redirect} from "next/navigation";import {isAdmin} from "@/lib/auth";import {prisma} from "@/lib/prisma";import BookingForm from "./form";
-export const dynamic="force-dynamic";
-export default async function NewBooking(){if(!(await isAdmin()))redirect("/admin/login");const customers=await prisma.customer.findMany({orderBy:{firstName:"asc"}});const terms=await prisma.defaultTerm.findMany({where:{active:true}});return <main className="container" style={{maxWidth:850}}><div className="card"><h1>إنشاء حجز جديد</h1>{customers.length===0?<p>يجب إضافة زبون أولاً. <a href="/admin/customers/new">إضافة زبون</a></p>:<BookingForm customers={customers.map(c=>({id:c.id,name:`${c.firstName} ${c.lastName}`}))} terms={terms.map(t=>t.content)}/>}</div></main>}

@@ -1,2 +1,0 @@
-import {redirect} from "next/navigation";import {customerBookingId} from "@/lib/customer-session";import Chat from "./chat";
-export default async function Assistant(){const id=await customerBookingId();if(!id)redirect("/portal/login");return <main className="container" style={{maxWidth:800}}><div className="card"><h1>🤖 Nadlan AI</h1><p className="muted">مساعدك الشخصي للسفر.</p><Chat/></div></main>}
