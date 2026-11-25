@@ -4,7 +4,7 @@
 const STORAGE_KEY = "ndl_bookings_v1";
 const DEST_CACHE_PREFIX = "ndl_dest_info_v1_";
 const GEMINI_MODEL = "gemini-3-flash-preview";
-const ADMIN_CODE = "NDL2026"; // غيّر هذا الكود إلى كود الإدارة الخاص بك
+const ADMIN_CODE = "NADLAN0105"; // غيّر هذا الكود إلى كود الإدارة الخاص بك
 
 const AIRPORT_TO_CITY = {
   BUS: "باتومي",
