@@ -124,7 +124,7 @@
       const dt = parseDateTime(flight.date || flight.travel_date || flight.notes || '');
       if (!dt) return;
       const diffMs = dt.getTime() - now;
-      if (diffMs <= twentyFourHoursMs && diffMs >= -twentyFourHoursMs) {
+      if (diffMs <= twentyFourHoursMs && diffMs > 0) {
         const hoursLeft = Math.max(0, Math.round(diffMs / (60 * 60 * 1000)));
         const legLabel = flight.legType === 'return' || /عودة|return/i.test(`${flight.from || ''} ${flight.notes || ''}`) || (flights.length > 1 && idx > 0)
           ? 'طيران العودة'
