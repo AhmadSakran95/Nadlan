@@ -178,43 +178,10 @@
     }
   }
 
-  function renderCustomerBookingStatusBadge(explicitConfirmed) {
-    const listEl = document.getElementById('cust-itinerary-list');
-    if (!listEl || !listEl.parentElement) return;
-
-    const key = getCurrentBookingKey();
-    let isConfirmed =
-      typeof explicitConfirmed === 'boolean'
-        ? explicitConfirmed
-        : loadConfirmedState(key);
-
-    if (typeof explicitConfirmed !== 'boolean') {
-      try {
-        if (localStorage.getItem(key) === null && localStorage.getItem(STATUS_KEY_PREFIX + 'default') !== null) {
-          isConfirmed = loadConfirmedState(STATUS_KEY_PREFIX + 'default');
-        }
-      } catch (_) {}
-    }
-
-    let badge = document.getElementById('nadlan-customer-status-badge-v26');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = 'nadlan-customer-status-badge-v26';
-      badge.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 16px;border-radius:14px;font-size:13px;font-weight:800;direction:rtl;';
-      listEl.parentElement.insertBefore(badge, listEl);
-    }
-
-    if (isConfirmed) {
-      badge.style.background = '#dcfce7';
-      badge.style.color = '#166534';
-      badge.style.border = '1px solid #86efac';
-      badge.innerHTML = '<span>حالة الحجز</span><span>حجز مؤكد ✓</span>';
-    } else {
-      badge.style.background = '#fef3c7';
-      badge.style.color = '#92400e';
-      badge.style.border = '1px solid #fcd34d';
-      badge.innerHTML = '<span>حالة الحجز</span><span>حجز غير مؤكد</span>';
-    }
+  function renderCustomerBookingStatusBadge(_explicitConfirmed) {
+    // Keep original booking status badge design untouched (do not inject duplicate banner)
+    const oldBanner = document.getElementById('nadlan-customer-status-badge-v26');
+    if (oldBanner) oldBanner.remove();
   }
 
   function ensurePopup() {
