@@ -218,9 +218,12 @@ app.post('/api/ai/extract-flight', async (req, res) => {
     return res.status(400).json({ error: 'مفتاح GEMINI_API_KEY غير مضبوط على السيرفر' });
   }
 
-  const prompt = `حلّل ملف أو صورة تذكرة الطيران المرفقة بدقة عالية واستخرج جميع المسافرين وجميع قطاعات الرحلة (ذهاب وعودة أو عدة محطات إن وُجدت)، ثم أرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
+  const prompt = `حلّل ملف أو صورة تذكرة الطيران المرفقة بدقة عالية واستخرج جميع المسافرين، شركة الطيران، رقم حجز الطيران (PNR / Booking Reference) الخاص بالتذكرة، رابط صفحة Check-in لشركة الطيران إن وُجد أو الرابط الرسمي المعروف للشركة، وجميع قطاعات الرحلة (ذهاب وعودة أو عدة محطات إن وُجدت)، ثم أرجع النتيجة بصيغة JSON فقط بدون أي نص إضافي:
 {
   "passengers": ["اسم المسافر الأول", "اسم المسافر الثاني"],
+  "airlineName": "اسم شركة الطيران، مثال: Turkish Airlines أو El Al أو Ryanair أو Wizz Air",
+  "flightPnr": "رمز حجز الطيران PNR / Booking Reference من التذكرة، مثال: ABC123",
+  "checkInUrl": "رابط صفحة Check-in لشركة الطيران إن وجد في التذكرة أو الرابط الرسمي لصفحة Check-in للشركة",
   "outbound": {
     "from": "مطار المغادرة للذهاب مع الرمز إن وجد، مثال: مطار بن غوريون (TLV)",
     "to": "مطار الوصول للذهاب مع الرمز إن وجد، مثال: مطار برشلونة الدولي (BCN)",
@@ -237,6 +240,7 @@ app.post('/api/ai/extract-flight', async (req, res) => {
 }
 تنبيهات مهمة:
 - استخرج كل أسماء المسافرين الموجودة في التذكرة في مصفوفة "passengers" حتى لو كان مسافراً واحداً أو عدة مسافرين.
+- استخرج "flightPnr" (رمز حجز الطيران الخاص بشركة الطيران، مثل 6 أحرف/أرقام في التذكرة) بدقة.
 - إذا كانت التذكرة ذهاباً وعودة (أو تحتوي على رحلة عودة)، اجعل "hasReturn": true واملأ حقول "returnFlight" بدقة. إذا كانت ذهاباً فقط اجعل "hasReturn": false.`;
 
   try {
@@ -308,13 +312,45 @@ app.post('/api/ai/extract-flight', async (req, res) => {
     const baseRetNotes = String(retObj.notes || '').trim();
     const retNotes = hasReturn ? `${baseRetNotes}${paxSuffix}`.trim() : '';
 
+    const airlineName = String(parsed.airlineName || '').trim();
+    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
+    let checkInUrl = String(parsed.checkInUrl || '').trim();
+    if (!checkInUrl && airlineName) {
+      const low = airlineName.toLowerCase();
+      if (low.includes('turkish')) checkInUrl = 'https://www.turkishairlines.com/en-int/flights/manage-booking/';
+      else if (low.includes('el al')) checkInUrl = 'https://www.elal.com/en/Passengers-Info/Check-in/Pages/default.aspx';
+      else if (low.includes('ryanair')) checkInUrl = 'https://www.ryanair.com/gb/en/trip-manager';
+      else if (low.includes('wizz')) checkInUrl = 'https://wizzair.com/en-gb/check-in-and-booking';
+      else if (low.includes('aegean')) checkInUrl = 'https://en.aegeanair.com/plan/check-in/';
+      else if (low.includes('flydubai')) checkInUrl = 'https://www.flydubai.com/en/manage-booking/check-in';
+      else if (low.includes('emirates')) checkInUrl = 'https://www.emirates.com/english/manage-booking/';
+      else if (low.includes('qatar')) checkInUrl = 'https://www.qatarairways.com/en/hia-online-check-in.html';
+    }
+    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
+    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
+    const checkInUrl = String(parsed.checkInUrl || '').trim();
+    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
+
+        const airlineName = String(parsed.airlineName || '').trim();
+    const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
+    const checkInUrl = String(parsed.checkInUrl || '').trim();
+    const paxLastName = passengers.length > 0 ? passengers[0].trim().split(/\s+/).slice(-1)[0] : '';
+
     res.json({
       passengers,
+      airlineName,
+      flightPnr,
+      checkInUrl,
+      passengerLastName: paxLastName,
       outbound: {
         from: String(outObj.from || ''),
         to: String(outObj.to || ''),
         date: String(outObj.date || ''),
         notes: outNotes,
+        airlineName,
+        flightPnr,
+        checkInUrl,
+        passengerLastName: paxLastName,
         flightFileName: fileName || 'flight-ticket'
       },
       returnFlight: hasReturn
@@ -324,6 +360,10 @@ app.post('/api/ai/extract-flight', async (req, res) => {
             to: String(retObj.to || ''),
             date: String(retObj.date || ''),
             notes: retNotes,
+            airlineName,
+            flightPnr,
+            checkInUrl,
+            passengerLastName: paxLastName,
             flightFileName: fileName || 'flight-ticket'
           }
         : { hasReturn: false }
