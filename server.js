@@ -307,10 +307,11 @@ app.post('/api/ai/extract-flight', async (req, res) => {
 
     const paxSuffix = passengers.length > 0 ? ` | المسافرون: ${passengers.join('، ')}` : '';
     const baseOutNotes = String(outObj.notes || '').trim();
-    const outNotes = `${baseOutNotes}${paxSuffix}`.trim();
+    const pnrTag = String(parsed.flightPnr || '').trim().toUpperCase() ? ` | PNR الطيران: ${String(parsed.flightPnr || '').trim().toUpperCase()}` : '';
+    const outNotes = `${baseOutNotes}${pnrTag}${paxSuffix}`.trim();
 
     const baseRetNotes = String(retObj.notes || '').trim();
-    const retNotes = hasReturn ? `${baseRetNotes}${paxSuffix}`.trim() : '';
+    const retNotes = hasReturn ? `${baseRetNotes}${pnrTag}${paxSuffix}`.trim() : '';
 
     const airlineName = String(parsed.airlineName || '').trim();
     const flightPnr = String(parsed.flightPnr || '').trim().toUpperCase();
