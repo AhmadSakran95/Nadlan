@@ -72,6 +72,151 @@
     return { pnr, flightNo, passengers };
   }
 
+  // --- Booking Status Option at the end when creating a new booking + display on customer view ---
+  const STATUS_KEY_PREFIX = 'nadlan_booking_confirmed_v26_';
+
+  function getCurrentBookingKey() {
+    const params = new URLSearchParams(window.location.search || '');
+    const rawId =
+      params.get('id') ||
+      params.get('customer') ||
+      params.get('booking') ||
+      params.get('pnr') ||
+      params.get('code') ||
+      '';
+    if (rawId) return STATUS_KEY_PREFIX + rawId.trim();
+
+    // Try extracting booking code/ID from visible page text (e.g. PNR / رقم الحجز / اسم الزبون)
+    const bodyTxt = normText(document.body ? document.body.innerText : '');
+    const codeMatch = bodyTxt.match(/(?:PNR|كود\s*الحجز|رقم\s*الحجز)\s*[:：#-]?\s*([A-Z0-9]{5,12})/i);
+    if (codeMatch && codeMatch[1]) {
+      return STATUS_KEY_PREFIX + codeMatch[1].toUpperCase();
+    }
+    return STATUS_KEY_PREFIX + 'default';
+  }
+
+  function loadConfirmedState(key) {
+    try {
+      const val = localStorage.getItem(key);
+      if (val === 'false') return false;
+      if (val === 'true') return true;
+    } catch (_) {}
+    return true; // Default: حجز مؤكد
+  }
+
+  function saveConfirmedState(key, isConfirmed) {
+    try {
+      localStorage.setItem(key, isConfirmed ? 'true' : 'false');
+    } catch (_) {}
+  }
+
+  function findBookingCreationEndTarget() {
+    // Find the main admin/booking form or container near save/create buttons
+    const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+    for (const btn of buttons) {
+      if (btn.closest('#nadlan-pax-modal-v15') || btn.closest('#nadlan-booking-status-end-v26')) continue;
+      const t = normText(btn.innerText || btn.value || '');
+      if (/حفظ|إنشاء|إضافة\s*حجز|إرسال|تأكيد\s*الحجز|حفظ\s*الزبون/i.test(t)) {
+        const parent = btn.closest('form') || btn.parentElement;
+        if (parent && parent !== document.body) {
+          return { container: parent, beforeBtn: btn };
+        }
+      }
+    }
+    return null;
+  }
+
+  function injectEndOfBookingStatusOption() {
+    if (document.getElementById('nadlan-booking-status-end-v26')) return;
+
+    const target = findBookingCreationEndTarget();
+    const listEl = document.getElementById('cust-itinerary-list');
+
+    // Only place at the end of booking form if a booking/form target exists; otherwise if admin form is present
+    if (!target && !listEl) return;
+
+    const box = document.createElement('div');
+    box.id = 'nadlan-booking-status-end-v26';
+    box.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:14px 0;padding:14px 16px;border-radius:16px;background:#f8fafc;border:1px solid #cbd5e1;direction:rtl;';
+
+    const key = getCurrentBookingKey();
+    const initialConfirmed = loadConfirmedState(key);
+
+    box.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <span style="font-size:13px;font-weight:800;color:#0f172a;">حالة الحجز (في نهاية الحجز)</span>
+        <span style="font-size:11px;color:#64748b;">اختر هل الحجز مؤكد أو غير مؤكد ليظهر في عرض الزبون</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <select id="nadlan-booking-status-select-v26" style="padding:8px 14px;border-radius:12px;border:1px solid #94a3b8;background:#fff;color:#0f172a;font-size:13px;font-weight:800;cursor:pointer;">
+          <option value="true" ${initialConfirmed ? 'selected' : ''}>حجز مؤكد</option>
+          <option value="false" ${!initialConfirmed ? 'selected' : ''}>حجز غير مؤكد</option>
+        </select>
+      </div>
+    `;
+
+    if (target && target.container && target.beforeBtn) {
+      target.beforeBtn.parentElement.insertBefore(box, target.beforeBtn);
+    } else if (listEl && listEl.parentElement) {
+      // Place after #cust-itinerary-list (at the end of the booking/itinerary)
+      if (listEl.nextSibling) {
+        listEl.parentElement.insertBefore(box, listEl.nextSibling);
+      } else {
+        listEl.parentElement.appendChild(box);
+      }
+    }
+
+    const sel = document.getElementById('nadlan-booking-status-select-v26');
+    if (sel) {
+      sel.addEventListener('change', function () {
+        const isConf = sel.value === 'true';
+        const activeKey = getCurrentBookingKey();
+        saveConfirmedState(activeKey, isConf);
+        saveConfirmedState(STATUS_KEY_PREFIX + 'default', isConf);
+        renderCustomerBookingStatusBadge(isConf);
+      });
+    }
+  }
+
+  function renderCustomerBookingStatusBadge(explicitConfirmed) {
+    const listEl = document.getElementById('cust-itinerary-list');
+    if (!listEl || !listEl.parentElement) return;
+
+    const key = getCurrentBookingKey();
+    let isConfirmed =
+      typeof explicitConfirmed === 'boolean'
+        ? explicitConfirmed
+        : loadConfirmedState(key);
+
+    if (typeof explicitConfirmed !== 'boolean') {
+      try {
+        if (localStorage.getItem(key) === null && localStorage.getItem(STATUS_KEY_PREFIX + 'default') !== null) {
+          isConfirmed = loadConfirmedState(STATUS_KEY_PREFIX + 'default');
+        }
+      } catch (_) {}
+    }
+
+    let badge = document.getElementById('nadlan-customer-status-badge-v26');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'nadlan-customer-status-badge-v26';
+      badge.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 16px;border-radius:14px;font-size:13px;font-weight:800;direction:rtl;';
+      listEl.parentElement.insertBefore(badge, listEl);
+    }
+
+    if (isConfirmed) {
+      badge.style.background = '#dcfce7';
+      badge.style.color = '#166534';
+      badge.style.border = '1px solid #86efac';
+      badge.innerHTML = '<span>حالة الحجز</span><span>حجز مؤكد ✓</span>';
+    } else {
+      badge.style.background = '#fef3c7';
+      badge.style.color = '#92400e';
+      badge.style.border = '1px solid #fcd34d';
+      badge.innerHTML = '<span>حالة الحجز</span><span>حجز غير مؤكد</span>';
+    }
+  }
+
   function ensurePopup() {
     let popup = document.getElementById('nadlan-pax-modal-v15');
     if (popup) return popup;
@@ -155,14 +300,12 @@
   }
 
   function parseHotelDetails(txt) {
-    // Extract "نوع الغرفة:" value
     let roomType = '';
     const roomMatch = txt.match(/نوع\s*الغرفة\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
     if (roomMatch && roomMatch[1]) {
       roomType = normText(roomMatch[1]);
     }
 
-    // Extract "العنوان:" value and strip extra distance note like "(يبعد ... عن المركز)" if present or keep clean address
     let address = '';
     const addrMatch = txt.match(/العنوان\s*[:：]\s*([^|]+?)(?=\s*\||$)/i);
     if (addrMatch && addrMatch[1]) {
@@ -177,7 +320,6 @@
     const { roomType, address } = parseHotelDetails(txt);
     if (!roomType && !address) return;
 
-    // Hide noisy hotel extra detail lines (address/room/meals/cancellation raw line) and render a clean 2-line box
     const nodes = Array.from(card.querySelectorAll('p, div, span, li'));
     nodes.forEach((el) => {
       if (
@@ -395,6 +537,9 @@
   }
 
   function runEnhancer() {
+    injectEndOfBookingStatusOption();
+    renderCustomerBookingStatusBadge();
+
     const container = document.getElementById('cust-itinerary-list');
     if (!container) return;
 
@@ -433,9 +578,8 @@
     t = setTimeout(runEnhancer, 100);
   }
 
-  const listEl = document.getElementById('cust-itinerary-list');
-  if (listEl && typeof MutationObserver !== 'undefined') {
-    new MutationObserver(debouncedRun).observe(listEl, { childList: true, subtree: true });
+  if (typeof MutationObserver !== 'undefined') {
+    new MutationObserver(debouncedRun).observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 
   setInterval(runEnhancer, 1200);
