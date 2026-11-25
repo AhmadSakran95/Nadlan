@@ -2,113 +2,7 @@
 
 const API_BASE = "/api";
 
-const DESTINATION_DB = {
-  "برشلونة": {
-    lat: 41.3874,
-    lon: 2.1686,
-    country: "إسبانيا",
-    plugType: "Type C / Type F",
-    voltage: "230V / 50Hz",
-    plugNote: "فيوز ثنائي دائري (قياسي أوروبي). يعمل مباشرة مع معظم شواحن الهواتف، وتحتاج محولاً فقط إذا كان جهازك ثلاثي الرؤوس.",
-    halalRestaurants: [
-      { name: "مطعم الأندلس (Al-Andalus)", rating: "4.9", cuisine: "مأكولات عربية ومتوسطية", area: "حي رافال (El Raval)" },
-      { name: "مطعم دمشق (Restaurante Damasco)", rating: "4.8", cuisine: "مشويات وشاورما سورية", area: "الحي القوطي" },
-      { name: "مطعم مراكش (Marrakech)", rating: "4.8", cuisine: "طواجن وكسكس مغربي", area: "إيكزامبل (Eixample)" },
-      { name: "مطعم كراتشي (Karachi Halal)", rating: "4.7", cuisine: "مأكولات هندية وباكستانية", area: "لا رامبلا" },
-      { name: "مطعم بوسفور (Bósforo Kebab & Grill)", rating: "4.7", cuisine: "مشويات تركية حلال", area: "بلازا كاتالونيا" }
-    ],
-    attractions: [
-      { name: "كنيسة ساغرادا فاميليا", desc: "أشهر تحفة معمارية للمصمم غاودي في قلب برشلونة." },
-      { name: "حديقة بارك غويل (Park Güell)", desc: "حديقة فنية خلابة بإطلالة بانورامية على المدينة والبحر." },
-      { name: "شارع لا رامبلا والحي القوطي", desc: "قلب المدينة النابض بالأسواق والمقاهي التاريخية." },
-      { name: "شاطئ برشلونيتا وملعب كامب نو", desc: "أجواء بحرية رائعة مع زيارة متحف نادي برشلونة." }
-    ]
-  },
-  "إسطنبول": {
-    lat: 41.0082,
-    lon: 28.9784,
-    country: "تركيا",
-    plugType: "Type C / Type F",
-    voltage: "230V / 50Hz",
-    plugNote: "فيوز أوروبي ثنائي دائري. لا تحتاج لمحول للأجهزة ذات الرأسين، وتحتاج لمحول بسيط للأجهزة ذات الرؤوس الثلاثة.",
-    halalRestaurants: [
-      { name: "مطعم المدينة (Hatay Medeniyetler Sofrası)", rating: "4.9", cuisine: "مشويات وأطباق تركية", area: "تقسيم" },
-      { name: "مطعم نصرت ستيك هاوس (Nusr-Et)", rating: "4.8", cuisine: "ستيك ولحوم فاخرة", area: "إتيلر / البوسفور" },
-      { name: "مطعم حمدي (Hamdi Restaurant)", rating: "4.8", cuisine: "كباب تركي أصيل", area: "إمينونو" },
-      { name: "مطعم سلطان أحمد كفتجي", rating: "4.7", cuisine: "كفتة ومشويات تقليدية", area: "السلطان أحمد" },
-      { name: "مطعم أورتاكوي كومبير", rating: "4.7", cuisine: "مأكولات تركية سريعة", area: "أورتاكوي" }
-    ],
-    attractions: [
-      { name: "آيا صوفيا ومسجد السلطان أحمد", desc: "أبرز المعالم التاريخية في إسطنبول القديمة." },
-      { name: "جولة البوسفور البحرية", desc: "رحلة بحرية تفصل بين قارتي آسيا وأوروبا." },
-      { name: "قصر توبكابي والبازار الكبير", desc: "تاريخ السلاطين العثمانيين وأكبر سوق مغطى في العالم." },
-      { name: "برج غلطة وشارع الاستقلال", desc: "إطلالة 360 درجة على المدينة مع أجواء تسوق حيوية." }
-    ]
-  },
-  "دبي": {
-    lat: 25.2048,
-    lon: 55.2708,
-    country: "الإمارات العربية المتحدة",
-    plugType: "Type G (ثلاثي بريطاني)",
-    voltage: "230V / 50Hz",
-    plugNote: "فيوز ثلاثي مستطيل (النظام البريطاني). إذا كانت أجهزتك برأسين دائريين ستحتاج لمحول ثلاثي.",
-    halalRestaurants: [
-      { name: "مطعم الفنر (Al Fanar)", rating: "4.9", cuisine: "مأكولات إماراتية تقليدية", area: "دبي فستيفال سيتي" },
-      { name: "مطعم الصفدي (Al Safadi)", rating: "4.8", cuisine: "مشويات ومقبلات لبنانية", area: "شارع الشيخ زايد" },
-      { name: "مطعم الحلاب (Al Hallab)", rating: "4.8", cuisine: "مأكولات شامية وحلويات", area: "دبي مول" },
-      { name: "مطعم أرابيان تي هاوس", rating: "4.8", cuisine: "فطور وأطباق خليجية", area: "حي الفهيدي التاريخي" },
-      { name: "مطعم زوما دبي (Zuma - Halal Certified)", rating: "4.9", cuisine: "مطبخ ياباني فاخر", area: "مركز دبي المالي" }
-    ],
-    attractions: [
-      { name: "برج خليفة ودبي مول", desc: "أطول مبنى في العالم مع عروض النافورة الراقصة." },
-      { name: "متحف المستقبل", desc: "أيقونة معمارية تستعرض ابتكارات المستقبل." },
-      { name: "رحلة سفاري الصحراء", desc: "تجربة التطعيس وعشاء بدوي تحت النجوم." },
-      { name: "دبي مارينا وعين دبي", desc: "ممشى بحري فاخر مع مطاعم ويخوت سياحية." }
-    ]
-  },
-  "لندن": {
-    lat: 51.5072,
-    lon: -0.1276,
-    country: "المملكة المتحدة",
-    plugType: "Type G (ثلاثي بريطاني)",
-    voltage: "230V / 50Hz",
-    plugNote: "فيوز ثلاثي مستطيل حصراً. يجب إحضار محول ثلاثي (UK Adapter) لشحن أجهزتك ذات الرأسين.",
-    halalRestaurants: [
-      { name: "مطعم ديشوم (Dishoom)", rating: "4.9", cuisine: "مطبخ هندي بومباي", area: "كوفنت غاردن" },
-      { name: "مطعم مروش (Maroush)", rating: "4.8", cuisine: "مشويات ومأكولات لبنانية", area: "إدجوير رود" },
-      { name: "مطعم تايمز (Taza Kebab House)", rating: "4.8", cuisine: "شاورما ومشويات حلال", area: "كوينزواي" },
-      { name: "مطعم ستييك آند كومباني", rating: "4.7", cuisine: "ستيك حلال معتمد", area: "بيكاديلي" },
-      { name: "مطعم خان (Khan's Restaurant)", rating: "4.7", cuisine: "مأكولات هندية وباكستانية", area: "بايزووتر" }
-    ],
-    attractions: [
-      { name: "ساعة بيغ بن وعين لندن", desc: "أشهر معالم العاصمة البريطانية على نهر التايمز." },
-      { name: "قصر باكنغهام وحديقة هايد بارك", desc: "مشاهدة تغيير الحرس الملكي والتنزه في أشهر حدائق لندن." },
-      { name: "شارع أكسفورد وريجنت", desc: "وجهة التسوق الأولى في بريطانيا." },
-      { name: "المتحف البريطاني", desc: "كنوز حضارية من مختلف أنحاء العالم." }
-    ]
-  },
-  "باريس": {
-    lat: 48.8566,
-    lon: 2.3522,
-    country: "فرنسا",
-    plugType: "Type C / Type E",
-    voltage: "230V / 50Hz",
-    plugNote: "فيوز ثنائي دائري قياسي أوروبي. يعمل مباشرة مع الأجهزة ذات الرأسين.",
-    halalRestaurants: [
-      { name: "مطعم لو ريلي دو لونتريكوت (حلال)", rating: "4.9", cuisine: "ستيك فرنسي حلال", area: "الدائرة العاشرة" },
-      { name: "مطعم نورا (Noura)", rating: "4.8", cuisine: "مأكولات لبنانية فاخرة", area: "الشانزليزيه" },
-      { name: "مطعم المنصور (Le Mansour)", rating: "4.8", cuisine: "طواجن ومشويات مغربية", area: "قرب قوس النصر" },
-      { name: "مطعم كشمير هاوس", rating: "4.7", cuisine: "مطبخ هندي وباكستاني", area: "غار دو نور" },
-      { name: "مطعم برغر فكتوري حلال", rating: "4.7", cuisine: "برغر غورميه حلال", area: "حي ماريه" }
-    ],
-    attractions: [
-      { name: "برج إيفل ونهر السين", desc: "رمز باريس الأشهر مع جولة قارب في نهر السين." },
-      { name: "شارع الشانزليزيه وقوس النصر", desc: "أرقى جادة للتسوق والمقاهي في العالم." },
-      { name: "متحف اللوفر", desc: "موطن لوحة الموناليزا وأعظم الفنون العالمية." },
-      { name: "ديزني لاند باريس", desc: "مدينة الألعاب الترفيهية للعائلات." }
-    ]
-  }
-};
+const DESTINATION_DB = {};
 
 // ==================== STATE MANAGEMENT ====================
 
@@ -741,35 +635,29 @@ async function loadDestinationAutoGuide(cityName) {
   document.getElementById("guide-city-name").textContent = cityName;
   document.getElementById("halal-city-title").textContent = cityName;
 
-  const matchedKey = Object.keys(DESTINATION_DB).find(k => cityName.includes(k) || k.includes(cityName));
-  const baseInfo = matchedKey ? DESTINATION_DB[matchedKey] : {
+  const defaultPlug = {
     lat: null,
     lon: null,
     country: cityName,
     plugType: "Type C / Type F (قياسي دولي)",
     voltage: "220V - 240V / 50Hz",
-    plugNote: "يُنصح باصطحاب محول كهرباء عالمي متعدد الرؤوس (Universal Travel Adapter) لضمان توافق جميع الأجهزة.",
-    halalRestaurants: [],
-    attractions: []
+    plugNote: "يُنصح باصطحاب محول كهرباء عالمي متعدد الرؤوس (Universal Travel Adapter) لضمان توافق جميع الأجهزة."
   };
 
-  document.getElementById("plug-country").textContent = baseInfo.country;
-  document.getElementById("plug-type-badge").textContent = `${baseInfo.plugType} | ${baseInfo.voltage}`;
-  document.getElementById("plug-details").textContent = baseInfo.plugNote;
+  document.getElementById("plug-country").textContent = defaultPlug.country;
+  document.getElementById("plug-type-badge").textContent = `${defaultPlug.plugType} | ${defaultPlug.voltage}`;
+  document.getElementById("plug-details").textContent = defaultPlug.plugNote;
 
   const restContainer = document.getElementById("halal-restaurants-list");
   const attrContainer = document.getElementById("attractions-list");
 
-  if (matchedKey && baseInfo.halalRestaurants.length > 0) {
-    renderRestaurantsCards(baseInfo.halalRestaurants);
-    renderAttractionsCards(baseInfo.attractions);
-  } else if (autoGuideCache[cityName]) {
+  if (autoGuideCache[cityName]) {
     const cached = autoGuideCache[cityName];
     document.getElementById("plug-country").textContent = cached.country || cityName;
-    document.getElementById("plug-type-badge").textContent = `${cached.plugType || baseInfo.plugType} | ${cached.voltage || baseInfo.voltage}`;
-    document.getElementById("plug-details").textContent = cached.plugNote || baseInfo.plugNote;
-    renderRestaurantsCards(cached.halalRestaurants);
-    renderAttractionsCards(cached.attractions || []);
+    document.getElementById("plug-type-badge").textContent = `${cached.plugType || defaultPlug.plugType} | ${cached.voltage || defaultPlug.voltage}`;
+    document.getElementById("plug-details").textContent = cached.plugNote || defaultPlug.plugNote;
+    renderRestaurantsCards((cached.halalRestaurants || []).slice(0, 5));
+    renderAttractionsCards((cached.attractions || []).slice(0, 4));
   } else {
     restContainer.innerHTML = `<div class="text-center py-6 text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin ml-2"></i> جاري البحث أوتوماتيكياً عن مطاعم حقيقية في ${escapeHtml(cityName)}...</div>`;
     attrContainer.innerHTML = `<div class="text-center py-6 text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin ml-2"></i> جاري جلب أبرز المناطق السياحية في ${escapeHtml(cityName)}...</div>`;
@@ -779,10 +667,10 @@ async function loadDestinationAutoGuide(cityName) {
       autoGuideCache[cityName] = aiGuide;
 
       document.getElementById("plug-country").textContent = aiGuide.country || cityName;
-      document.getElementById("plug-type-badge").textContent = `${aiGuide.plugType || baseInfo.plugType} | ${aiGuide.voltage || baseInfo.voltage}`;
-      document.getElementById("plug-details").textContent = aiGuide.plugNote || baseInfo.plugNote;
+      document.getElementById("plug-type-badge").textContent = `${aiGuide.plugType || defaultPlug.plugType} | ${aiGuide.voltage || defaultPlug.voltage}`;
+      document.getElementById("plug-details").textContent = aiGuide.plugNote || defaultPlug.plugNote;
 
-      renderRestaurantsCards(aiGuide.halalRestaurants.slice(0, 5));
+      renderRestaurantsCards((aiGuide.halalRestaurants || []).slice(0, 5));
       renderAttractionsCards((aiGuide.attractions || []).slice(0, 4));
     } catch (err) {
       console.warn("Auto AI destination guide fallback:", err);
@@ -791,7 +679,7 @@ async function loadDestinationAutoGuide(cityName) {
     }
   }
 
-  await fetch5DayWeather(cityName, baseInfo.lat, baseInfo.lon);
+  await fetch5DayWeather(cityName, null, null);
 }
 
 async function fetch5DayWeather(cityName, lat, lon) {
