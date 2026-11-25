@@ -1,0 +1,3 @@
+import {NextRequest,NextResponse} from "next/server";import {isAdmin} from "@/lib/auth";import {prisma} from "@/lib/prisma";
+export async function GET(){if(!(await isAdmin()))return NextResponse.json({error:"Unauthorized"},{status:401});return NextResponse.json(await prisma.defaultTerm.findMany());}
+export async function POST(req:NextRequest){if(!(await isAdmin()))return NextResponse.json({error:"Unauthorized"},{status:401});const {content}=await req.json();if(typeof content!=="string"||!content.trim())return NextResponse.json({error:"Content required"},{status:400});return NextResponse.json(await prisma.defaultTerm.create({data:{content:content.trim()}}),{status:201});}

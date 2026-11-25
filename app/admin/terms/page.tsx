@@ -1,0 +1,3 @@
+import {redirect} from "next/navigation";import Link from "next/link";import {isAdmin} from "@/lib/auth";import {prisma} from "@/lib/prisma";import TermsForm from "./terms-form";
+export const dynamic="force-dynamic";
+export default async function Terms(){if(!(await isAdmin()))redirect("/admin/login");const terms=await prisma.defaultTerm.findMany({orderBy:{createdAt:"desc"}});return <main className="container"><div className="card"><h1>شروط الحجز الافتراضية</h1><p className="muted">تضاف الشروط النشطة تلقائياً إلى الحجوزات الجديدة.</p><TermsForm initial={terms.map(t=>({id:t.id,content:t.content,active:t.active}))}/><div className="section">{terms.map(t=><p key={t.id}>{t.active?"🟢":"⚪"} {t.content}</p>)}</div><Link href="/admin">العودة للوحة التحكم</Link></div></main>}
