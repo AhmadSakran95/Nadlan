@@ -173,15 +173,40 @@
         const activeKey = getCurrentBookingKey();
         saveConfirmedState(activeKey, isConf);
         saveConfirmedState(STATUS_KEY_PREFIX + 'default', isConf);
-        renderCustomerBookingStatusBadge(isConf);
+        syncExistingStatusBadge(isConf);
       });
     }
   }
 
-  function renderCustomerBookingStatusBadge(_explicitConfirmed) {
-    // Keep original booking status badge design untouched (do not inject duplicate banner)
+  function syncExistingStatusBadge(explicitConfirmed) {
+    const key = getCurrentBookingKey();
+    let isConfirmed =
+      typeof explicitConfirmed === 'boolean'
+        ? explicitConfirmed
+        : loadConfirmedState(key);
+
+    if (typeof explicitConfirmed !== 'boolean') {
+      try {
+        if (localStorage.getItem(key) === null && localStorage.getItem(STATUS_KEY_PREFIX + 'default') !== null) {
+          isConfirmed = loadConfirmedState(STATUS_KEY_PREFIX + 'default');
+        }
+      } catch (_) {}
+    }
+
+    // Remove any duplicate banner we might have added earlier
     const oldBanner = document.getElementById('nadlan-customer-status-badge-v26');
     if (oldBanner) oldBanner.remove();
+
+    // Update the existing status badge in the page design without duplicating it
+    const candidates = Array.from(document.querySelectorAll('span, div, button, a'));
+    candidates.forEach((el) => {
+      if (el.id === 'nadlan-booking-status-end-v26' || el.closest('#nadlan-booking-status-end-v26')) return;
+      if (el.children && el.children.length > 0) return;
+      const t = normText(el.innerText || el.textContent || '');
+      if (t === 'حجز مؤكد' || t === 'حجز مؤكد ✓' || t === 'حجز غير مؤكد') {
+        el.textContent = isConfirmed ? 'حجز مؤكد' : 'حجز غير مؤكد';
+      }
+    });
   }
 
   function ensurePopup() {
@@ -505,7 +530,7 @@
 
   function runEnhancer() {
     injectEndOfBookingStatusOption();
-    renderCustomerBookingStatusBadge();
+    syncExistingStatusBadge();
 
     const container = document.getElementById('cust-itinerary-list');
     if (!container) return;
