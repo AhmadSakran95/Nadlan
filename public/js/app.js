@@ -1434,24 +1434,31 @@ async function ntQuerySingleFlightSchedule(st) {
 اذكر بوضوح موعد الإقلاع المحلي المجدول (التاريخ والساعة بالدقائق مثل ${dateKey} 14:30) وحالة الرحلة (مثل Scheduled / On Time / Delayed / Cancelled).
 إذا لم تجد موعداً مؤكداً للرحلة في هذا التاريخ اكتب "غير موجود".`;
 
-  const result = await callGeminiApi({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    tools: [{ google_search: {} }]
-  });
+  // نحاول أولاً مع google_search وإذا رفضه الـ backend أو أرجع خطأ نعيد المحاولة بدونه كـ fallback
+  let result = null;
+  try {
+    result = await callGeminiApi({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }]
+    });
+  } catch (searchErr) {
+    console.warn("[Nadlan Flight Sync] Search call failed, retrying without search tool:", searchErr);
+    result = await callGeminiApi({
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
+    });
+  }
 
   const rawText = extractGeminiText(result);
   console.log("[Nadlan Flight Sync] Raw text for", flightNo, dateKey, "->", rawText);
 
-  if (!rawText || /غير موجود|not found|no flight/i.test(rawText) && !/\b\d{1,2}:\d{2}\b/.test(rawText)) {
+  if (!rawText || (/غير موجود|not found|no flight/i.test(rawText) && !/\b\d{1,2}:\d{2}\b/.test(rawText))) {
     return null;
   }
 
-  // 1) محاولة قراءة JSON إن وُجد
   const parsed = parseJsonLoose(rawText);
   let depVal = ntExtractDepartureFromAnyShape(parsed, dateKey);
   let statusVal = (parsed && (parsed.status || parsed.flight_status)) || "";
 
-  // 2) إذا لم يرجع JSON أو لم يجد الحقل، نستخرج التاريخ والوقت مباشرة من النص بأنماط مرنة
   if (!depVal) {
     const dtMatch =
       rawText.match(/\b(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})[T\s]+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:AM|PM|am|pm|ص|م))?)\b/) ||
@@ -1582,8 +1589,13 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
       ntSetFlightSyncStatusBadge("ℹ️ لم يُعثر على موعد مطابق في البحث", "info");
     }
   } catch (err) {
-    console.warn("Live flight schedule check error:", err);
-    ntSetFlightSyncStatusBadge("⚠️ تعذر إتمام الفحص الآن", "info");
+    console.warn("[Nadlan Flight Sync] Error:", err);
+    const msg = String(err && err.message ? err.message : "");
+    if (msg.includes("429")) {
+      ntSetFlightSyncStatusBadge("⏳ ضغط طلبات مؤقت — جرّب بعد قليل", "info");
+    } else {
+      ntSetFlightSyncStatusBadge("⚠️ تعذر إتمام الفحص الآن", "info");
+    }
   } finally {
     ntFlightSyncRunning = false;
   }
