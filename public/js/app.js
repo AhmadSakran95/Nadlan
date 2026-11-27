@@ -640,6 +640,26 @@ async function handleExtractFileSelected(event) {
   const file = event.target?.files?.[0];
   if (!file) return;
 
+  // حفظ ملف الاستخراج نفسه كفاوشر تلقائياً حتى لا يضطر المستخدم لرفعه مرتين
+  try {
+    const voucherDataUrl = await ntFileToDataUrl(file);
+    const vRecord = {
+      name: file.name,
+      stationType: extractTargetType,
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+      dataUrl: voucherDataUrl
+    };
+    const vMap = ntReadVoucherMap();
+    const vKeys = ntGetActiveAdminKeys();
+    for (const k of vKeys) {
+      if (!vMap[k]) vMap[k] = {};
+      vMap[k][extractTargetType] = vRecord;
+    }
+    if (!vMap["__LATEST_BY_TYPE__"]) vMap["__LATEST_BY_TYPE__"] = {};
+    vMap["__LATEST_BY_TYPE__"][extractTargetType] = vRecord;
+    ntWriteVoucherMap(vMap);
+  } catch (_) {}
+
   syncStationsFromDom();
   const statusBox = document.getElementById("extract-status");
   const statusText = document.getElementById("extract-status-text");
@@ -2234,46 +2254,7 @@ function ntDownloadVoucherPdf(stationType, index) {
 }
 
 function ntAdminVoucherUi(idx, stationType) {
-  if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
-  const rec = ntFindVoucherRecord(null, stationType, idx);
-  const inputId = `nt-voucher-input-${idx}`;
-  const titleMap = {
-    flight: "فاوشر / تذكرة الطيران",
-    hotel: "فاوشر الفندق",
-    transfer: "فاوشر التوصيل"
-  };
-  const title = titleMap[stationType];
-
-  if (!rec || !rec.dataUrl) {
-    return `
-      <div class="mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
-        <span class="text-xs font-bold text-slate-600">📎 ${escapeHtml(title)}: <span class="text-slate-400">غير مرفق بعد (PDF أو صورة)</span></span>
-        <label for="${inputId}" class="px-3 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer">
-          ⬆️ رفع ${escapeHtml(title)}
-        </label>
-        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntUploadStationVoucher(event, ${idx}, '${stationType}')" />
-      </div>
-    `;
-  }
-
-  const isPdf = ntIsPdfVoucher(rec);
-  const badge = isPdf
-    ? `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black">PDF — يُحمّل للزبون</span>`
-    : `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-black">صورة — عرض فقط (لا يُحمّل للزبون)</span>`;
-
-  return `
-    <div class="mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
-      <div class="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
-        <span>📎 ${escapeHtml(rec.name || title)}</span>
-        ${badge}
-      </div>
-      <div class="flex items-center gap-1.5">
-        <label for="${inputId}" class="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-black cursor-pointer">تغيير</label>
-        <button type="button" onclick="ntDeleteStationVoucher(${idx}, '${stationType}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black cursor-pointer">حذف</button>
-        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntUploadStationVoucher(event, ${idx}, '${stationType}')" />
-      </div>
-    </div>
-  `;
+  return "";
 }
 
 function ntCustomerVoucherUi(idx, stationType, booking) {
