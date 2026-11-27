@@ -1482,7 +1482,7 @@ function renderCustomerDashboard(booking) {
                 <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
               </div>
               <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
-                <span dir="ltr" class="inline-flex items-center gap-1.5">
+                <span class="inline-flex items-center gap-1.5">
                   <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
                   <span class="text-sky-600">←</span>
                   <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
