@@ -105,6 +105,22 @@ app.delete("/api/bookings/:id", async (req, res) => {
   }
 });
 
+const geminiCache = new Map();
+const GEMINI_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ساعات
+
+function getCacheKeyForGemini(body) {
+  try {
+    const textPart = body?.contents?.[0]?.parts?.find((p) => typeof p?.text === "string")?.text || "";
+    const cityMatch = textPart.match(/لمدينة\s+"([^"]+)"/);
+    if (cityMatch && cityMatch[1]) {
+      return `dest_intel_${cityMatch[1].trim().toLowerCase()}`;
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 app.post("/api/gemini", async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -113,18 +129,39 @@ app.post("/api/gemini", async (req, res) => {
     });
   }
 
+  const cacheKey = getCacheKeyForGemini(req.body);
+  if (cacheKey) {
+    const cached = geminiCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < GEMINI_CACHE_TTL_MS) {
+      return res.json(cached.data);
+    }
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const bodyStr = JSON.stringify(req.body);
+
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
+    let response = null;
+    let data = {};
+    const maxServerRetries = 2;
+
+    for (let attempt = 0; attempt <= maxServerRetries; attempt++) {
+      response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body)
+        body: bodyStr
+      });
+      data = await response.json().catch(() => ({}));
+      if (response.ok) break;
+      if (response.status === 429 && attempt < maxServerRetries) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
       }
-    );
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
       return res.status(response.status).json({ error: data?.error?.message || "فشل الاتصال بخدمة Gemini." });
+    }
+
+    if (cacheKey && data) {
+      geminiCache.set(cacheKey, { ts: Date.now(), data });
     }
     return res.json(data);
   } catch (error) {
