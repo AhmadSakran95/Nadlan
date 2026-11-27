@@ -1567,15 +1567,30 @@ function renderCustomerDashboard(booking) {
     return;
   }
 
-  // تجميع مقاطع الطيران المتصلة (كونيكشين) ضمن مجموعة واحدة بفاصل خفيف بينها
-  function isConnectionBetweenFlights(currSt, nextSt) {
+  // تحديد اتجاه مقطع الطيران (ذهاب أو عودة) بدقة حتى لو أُدخل يدوياً بدون كلمة ذهاب/عودة
+  function getFlightLegDirection(st, flightIdxInAllFlights, totalFlightsCount) {
+    const notes = String(st.notes || "").toLowerCase();
+    if (notes.includes("عودة") || notes.includes("return")) return "return";
+    if (notes.includes("ذهاب") || notes.includes("outbound")) return "outbound";
+    // إذا أُدخلت 4 مقاطع يدوياً بدون كتابة ذهاب/عودة: أول مقطعين ذهاب والمقطعين الباقيين عودة
+    if (totalFlightsCount === 4) {
+      return flightIdxInAllFlights < 2 ? "outbound" : "return";
+    }
+    return "outbound";
+  }
+
+  // تجميع مقاطع الطيران المتصلة (كونيكشين) ضمن مجموعة واحدة لكل اتجاه على حدة
+  function isConnectionBetweenFlights(currSt, nextSt, currFlightOrder, nextFlightOrder, totalFlightsCount) {
     if (!currSt || !nextSt || currSt.type !== "flight" || nextSt.type !== "flight") return false;
+    const dir1 = getFlightLegDirection(currSt, currFlightOrder, totalFlightsCount);
+    const dir2 = getFlightLegDirection(nextSt, nextFlightOrder, totalFlightsCount);
+    // لا ندمج الذهاب مع العودة أبداً
+    if (dir1 !== dir2) return false;
     const n1 = String(currSt.notes || "").toLowerCase();
     const n2 = String(nextSt.notes || "").toLowerCase();
     if (n1.includes("كونيكشين") || n2.includes("كونيكشين")) return true;
-    const sameLegOutbound = n1.includes("ذهاب") && n2.includes("ذهاب");
-    const sameLegReturn = n1.includes("عودة") && n2.includes("عودة");
-    return sameLegOutbound || sameLegReturn;
+    if (dir1 === "outbound" || dir1 === "return") return true;
+    return false;
   }
 
   function renderSingleStationCard(st, idx) {
@@ -1732,22 +1747,38 @@ function renderCustomerDashboard(booking) {
     `;
   }
 
+  const allFlightIndices = stations
+    .map((s, idx) => (s.type === "flight" ? idx : -1))
+    .filter((idx) => idx !== -1);
+  const totalFlightsCount = allFlightIndices.length;
+
   const renderedBlocks = [];
   let i = 0;
   while (i < stations.length) {
     const st = stations[i];
     if (st.type === "flight") {
-      const group = [{ st, idx: i }];
-      while (i + 1 < stations.length && isConnectionBetweenFlights(stations[i], stations[i + 1])) {
+      const currOrder = allFlightIndices.indexOf(i);
+      const group = [{ st, idx: i, flightOrder: currOrder }];
+      while (
+        i + 1 < stations.length &&
+        isConnectionBetweenFlights(
+          stations[i],
+          stations[i + 1],
+          allFlightIndices.indexOf(i),
+          allFlightIndices.indexOf(i + 1),
+          totalFlightsCount
+        )
+      ) {
         i++;
-        group.push({ st: stations[i], idx: i });
+        group.push({ st: stations[i], idx: i, flightOrder: allFlightIndices.indexOf(i) });
       }
 
       if (group.length > 1) {
-        const isReturnLeg = group.some((item) => String(item.st.notes || "").includes("عودة"));
+        const groupDir = getFlightLegDirection(group[0].st, group[0].flightOrder, totalFlightsCount);
+        const isReturnLeg = groupDir === "return";
         const legTitle = isReturnLeg
           ? "رحلة العودة كونيكشين"
-          : `رحلة الذهاب (كونيكشين • ${group.length} طائرات)`;
+          : "رحلة الذهاب كونيكشين";
 
         const innerHtml = group
           .map((item, gIdx) => {
