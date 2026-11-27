@@ -1744,9 +1744,9 @@ function renderCustomerDashboard(booking) {
       }
 
       if (group.length > 1) {
-        const firstNotes = String(group[0].st.notes || "");
-        const legTitle = firstNotes.includes("عودة")
-          ? `رحلة العودة (كونيكشين • ${group.length} طائرات)`
+        const isReturnLeg = group.some((item) => String(item.st.notes || "").includes("عودة"));
+        const legTitle = isReturnLeg
+          ? "رحلة العودة كونيكشين"
           : `رحلة الذهاب (كونيكشين • ${group.length} طائرات)`;
 
         const innerHtml = group
