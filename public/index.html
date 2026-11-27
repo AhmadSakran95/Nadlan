@@ -3,27 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ندلان تورز (Nadlantours) — نظام إدارة الحجوزات ومساعد الزبون الذكي</title>
+  <title>NadlanTours AI — نظام إدارة الحجوزات ومساعد السفر الذكي</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <script>
     tailwind.config = {
       theme: {
         extend: {
           fontFamily: {
-            cairo: ["Cairo", "sans-serif"]
+            cairo: ["Cairo", "sans-serif"],
+            jakarta: ["Plus Jakarta Sans", "sans-serif"]
           },
           colors: {
             brand: {
-              50: "#f0fdf9",
-              100: "#ccfbf1",
-              500: "#0d9488",
-              600: "#0f766e",
-              700: "#115e59",
-              800: "#134e4a",
-              900: "#042f2e"
+              50: "#eff6ff",
+              100: "#dbeafe",
+              200: "#bfdbfe",
+              500: "#2563eb",
+              600: "#1d4ed8",
+              700: "#1e40af",
+              800: "#1e3a8a",
+              900: "#0b192c"
             }
           }
         }
@@ -32,7 +34,7 @@
   </script>
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
-<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+<body class="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/35 to-slate-100 text-slate-900">
   <!-- إشعار نظام مخصص بديل عن alert/confirm -->
   <div id="toast-banner" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden max-w-md w-[92%] px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-2xl border border-slate-700 items-center justify-between gap-3">
     <span id="toast-message"></span>
@@ -40,27 +42,45 @@
   </div>
 
   <!-- الشريط العلوي -->
-  <header class="bg-gradient-to-l from-brand-900 via-brand-800 to-slate-900 text-white shadow-lg border-b border-brand-700/50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 font-black text-xl flex items-center justify-center shadow">
-          ✈️
+  <header class="bg-gradient-to-l from-[#071324] via-[#0f2544] to-[#16335b] text-white shadow-xl border-b border-blue-400/20 relative overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.14),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.12),transparent_40%)] pointer-events-none"></div>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4 relative z-10">
+      <div class="flex items-center gap-3.5">
+        <!-- شعار NadlanTours AI -->
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 p-[1.5px] shadow-lg shadow-amber-500/20 shrink-0">
+          <div class="w-full h-full rounded-[14px] bg-[#09182d] flex items-center justify-center relative">
+            <svg viewBox="0 0 36 36" class="w-7 h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="18" cy="18" r="14" stroke="url(#nt-grad)" stroke-width="1.6" stroke-dasharray="3 2.5"/>
+              <path d="M9 21.5L26.5 11.5L21 25L17.2 20.4L13.5 23L14.2 18.2L9 21.5Z" fill="url(#nt-grad)"/>
+              <circle cx="26.5" cy="9.5" r="2.2" fill="#38bdf8"/>
+              <defs>
+                <linearGradient id="nt-grad" x1="8" y1="10" x2="28" y2="26" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#FDE68A"/>
+                  <stop offset="0.55" stop-color="#F59E0B"/>
+                  <stop offset="1" stop-color="#38BDF8"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
         </div>
         <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-lg sm:text-xl font-black tracking-tight">ندلان تورز — Nadlantours</h1>
-            <span class="text-[11px] px-2.5 py-0.5 rounded-full bg-brand-700/80 text-amber-300 font-bold border border-brand-500/40">نظام ذكي</span>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 dir="ltr" class="font-jakarta text-xl sm:text-2xl font-extrabold tracking-tight flex items-center gap-1.5">
+              <span class="text-white">Nadlan<span class="text-amber-400">Tours</span></span>
+              <span class="px-2 py-0.5 rounded-lg bg-gradient-to-r from-sky-400 to-blue-500 text-slate-950 text-xs font-black tracking-wider shadow-xs">AI</span>
+            </h1>
+            <span class="hidden sm:inline-block text-[11px] px-2.5 py-0.5 rounded-full bg-white/10 text-sky-200 font-bold border border-white/15">ندلان تورز</span>
           </div>
-          <p class="text-xs text-slate-300">إدارة الحجوزات، استخراج التذاكر والفنادق والمواصلات، وبوابة الزبون الذكية</p>
+          <p class="text-xs text-slate-300 mt-0.5">منصة السفر الذكية — إدارة الحجوزات، استخراج التذاكر، وبوابة الزبون التفاعلية</p>
         </div>
       </div>
 
-      <div class="flex items-center gap-2 bg-slate-950/50 p-1.5 rounded-2xl border border-white/10">
+      <div class="flex items-center gap-2 bg-slate-950/60 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 shadow-inner">
         <button
           type="button"
           id="tab-customer-btn"
           onclick="switchPortal('customer')"
-          class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-amber-400 text-slate-950 shadow cursor-pointer"
+          class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow cursor-pointer"
         >
           🧳 دخول الزبون
         </button>
@@ -273,9 +293,9 @@
     <section id="customer-section" class="space-y-6">
       <!-- شاشة تسجيل دخول الزبون -->
       <div id="customer-login-card" class="max-w-lg mx-auto bg-white rounded-3xl shadow-md border border-slate-200 p-6 sm:p-8 space-y-5">
-        <div class="text-center space-y-1.5">
-          <div class="w-14 h-14 mx-auto rounded-2xl bg-brand-100 text-brand-800 flex items-center justify-center text-2xl font-black">🧳</div>
-          <h2 class="text-xl font-black text-slate-900">بوابة الزبون — ندلان تورز</h2>
+        <div class="text-center space-y-2">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-brand-800 to-slate-900 text-amber-400 flex items-center justify-center text-2xl font-black shadow-md border border-brand-700/30">✈️</div>
+          <h2 class="text-xl font-black text-slate-900">بوابة الزبون — <span dir="ltr" class="font-jakarta text-brand-700">NadlanTours AI</span></h2>
           <p class="text-xs sm:text-sm text-slate-500">أدخل رمز الحجز / PNR واسم العائلة لعرض تفاصيل رحلتك ومساعدك الذكي</p>
         </div>
 
@@ -378,34 +398,33 @@
             </button>
           </div>
         </div>
-
-        <!-- ملاحظات الحجز للزبون -->
-        <div id="customer-notes-card" class="hidden bg-amber-50/90 border border-amber-300 rounded-3xl p-4 sm:p-5 shadow-2xs space-y-1.5">
-          <div class="flex items-center gap-2">
-            <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-xs font-black">📝 ملاحظات الحجز</span>
+        <!-- بطاقة ملاحظات الحجز للزبون -->
+        <div id="customer-notes-card" class="hidden bg-amber-50 border-2 border-amber-400 rounded-3xl p-4 sm:p-5 shadow-sm space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black">📝 ملاحظات الحجز</span>
           </div>
-          <p id="customer-notes-text" class="text-xs sm:text-sm font-bold text-slate-900 leading-relaxed whitespace-pre-wrap"></p>
+          <p id="customer-notes-text" class="text-xs sm:text-sm font-extrabold text-slate-900 leading-relaxed whitespace-pre-wrap"></p>
         </div>
 
-        <!-- شبكة المسار + مساعد ندلان تورز الذكي -->
+        <!-- المحطات + الشات الذكي -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <!-- مسار الرحلة المرتب -->
+          <!-- عمود محطات الرحلة -->
           <div class="lg:col-span-7 space-y-4">
-            <div class="flex items-center justify-between">
-              <h3 class="text-base font-black text-slate-900">🗺️ خط سير الرحلة</h3>
-              <span id="customer-stages-count" class="text-xs font-extrabold text-slate-500"></span>
+            <div class="flex items-center justify-between px-1">
+              <h3 class="text-base font-black text-slate-900">🧭 برنامج ومحطات الرحلة</h3>
+              <span id="customer-stages-count" class="text-xs font-extrabold text-brand-700 bg-brand-100/80 px-3 py-1 rounded-full"></span>
             </div>
             <div id="customer-stages-list" class="space-y-4"></div>
           </div>
 
           <!-- شات مساعد ندلان تورز الذكي -->
           <div class="lg:col-span-5 lg:sticky lg:top-6 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[540px]">
-            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-brand-900 text-white rounded-t-3xl">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-l from-[#071324] via-brand-900 to-brand-800 text-white rounded-t-3xl">
               <div class="flex items-center gap-2.5">
-                <span class="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">🤖</span>
+                <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 flex items-center justify-center font-black shadow-xs">🤖</span>
                 <div>
-                  <h3 class="text-sm font-black">مساعد ندلان تورز الذكي</h3>
-                  <p class="text-[11px] text-brand-100">يساعدك في مواعيد رحلتك، الشيك إن، والوجهة</p>
+                  <h3 class="text-sm font-black flex items-center gap-1.5"><span>مساعد</span> <span dir="ltr" class="font-jakarta text-amber-300">NadlanTours AI</span></h3>
+                  <p class="text-[11px] text-sky-200">يساعدك في مواعيد رحلتك، الشيك إن، والوجهة</p>
                 </div>
               </div>
               <button
