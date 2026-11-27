@@ -1424,22 +1424,15 @@ async function ntQuerySingleFlightSchedule(st) {
     const cachedRaw = sessionStorage.getItem(cacheKey);
     if (cachedRaw) {
       const cached = JSON.parse(cachedRaw);
-      if (cached && cached.ts && Date.now() - cached.ts < 5 * 60 * 1000) {
+      if (cached && cached.ts && Date.now() - cached.ts < 2 * 60 * 1000) {
         return cached.data;
       }
     }
   } catch (_) {}
 
-  const prompt = `ابحث في الإنترنت عن جدول رحلة الطيران رقم "${flightNo}" بتاريخ "${dateKey}"${fromCode ? ` من ${fromCode}` : ""}${toCode ? ` إلى ${toCode}` : ""}.
-أعد النتيجة بصيغة JSON فقط بدون أي شرح إضافي:
-{
-  "found": true,
-  "flightNumber": "${flightNo}",
-  "scheduledDepartureLocal": "${dateKey} HH:MM",
-  "status": "On Time أو Delayed أو Scheduled أو Cancelled",
-  "notes": "ملاحظة مختصرة"
-}
-إذا لم تجد موعداً مؤكداً للرحلة في هذا التاريخ اجعل "found": false.`;
+  const prompt = `ابحث في الإنترنت عن جدول رحلة الطيران رقم "${flightNo}" بتاريخ "${dateKey}"${fromCode ? ` من مطار ${fromCode}` : ""}${toCode ? ` إلى مطار ${toCode}` : ""}.
+اذكر بوضوح موعد الإقلاع المحلي المجدول (التاريخ والساعة بالدقائق مثل ${dateKey} 14:30) وحالة الرحلة (مثل Scheduled / On Time / Delayed / Cancelled).
+إذا لم تجد موعداً مؤكداً للرحلة في هذا التاريخ اكتب "غير موجود".`;
 
   const result = await callGeminiApi({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -1447,20 +1440,49 @@ async function ntQuerySingleFlightSchedule(st) {
   });
 
   const rawText = extractGeminiText(result);
-  console.log("[Nadlan Flight Sync] Raw response for", flightNo, dateKey, "->", rawText);
+  console.log("[Nadlan Flight Sync] Raw text for", flightNo, dateKey, "->", rawText);
 
+  if (!rawText || /غير موجود|not found|no flight/i.test(rawText) && !/\b\d{1,2}:\d{2}\b/.test(rawText)) {
+    return null;
+  }
+
+  // 1) محاولة قراءة JSON إن وُجد
   const parsed = parseJsonLoose(rawText);
-  const depVal = ntExtractDepartureFromAnyShape(parsed, dateKey);
+  let depVal = ntExtractDepartureFromAnyShape(parsed, dateKey);
+  let statusVal = (parsed && (parsed.status || parsed.flight_status)) || "";
 
-  if (!parsed || parsed.found === false || !depVal) {
+  // 2) إذا لم يرجع JSON أو لم يجد الحقل، نستخرج التاريخ والوقت مباشرة من النص بأنماط مرنة
+  if (!depVal) {
+    const dtMatch =
+      rawText.match(/\b(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})[T\s]+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:AM|PM|am|pm|ص|م))?)\b/) ||
+      rawText.match(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})[T\s]+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:AM|PM|am|pm|ص|م))?)\b/);
+
+    if (dtMatch) {
+      depVal = `${dtMatch[1]} ${dtMatch[2]}`.trim();
+    } else {
+      const timeOnlyMatch = rawText.match(/\b(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:AM|PM|am|pm|ص|م))?)\b/);
+      if (timeOnlyMatch && dateKey) {
+        depVal = `${dateKey} ${timeOnlyMatch[1]}`.trim();
+      }
+    }
+  }
+
+  if (!statusVal) {
+    if (/cancel/i.test(rawText) || /ملغ/i.test(rawText)) statusVal = "Cancelled";
+    else if (/delay/i.test(rawText) || /متأخر/i.test(rawText)) statusVal = "Delayed";
+    else if (/on time/i.test(rawText) || /بالوقت/i.test(rawText)) statusVal = "On Time";
+    else if (depVal) statusVal = "Scheduled";
+  }
+
+  if (!depVal) {
     return null;
   }
 
   const normalizedData = {
     found: true,
-    flightNumber: parsed.flightNumber || flightNo,
+    flightNumber: (parsed && parsed.flightNumber) || flightNo,
     scheduledDepartureLocal: depVal,
-    status: parsed.status || parsed.flight_status || ""
+    status: statusVal
   };
 
   try {
@@ -1485,6 +1507,7 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
   if (oldAlert) oldAlert.remove();
 
   const changes = [];
+  const checkedSummaries = [];
   let anyStationUpdated = false;
 
   try {
@@ -1495,7 +1518,10 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
       const oldTs = parseDepartureDateToTimestamp(oldRaw);
 
       const liveInfo = await ntQuerySingleFlightSchedule(st);
-      if (!liveInfo || !liveInfo.scheduledDepartureLocal) continue;
+      if (!liveInfo || !liveInfo.scheduledDepartureLocal) {
+        checkedSummaries.push(`${st.flightNumber}: تعذر تأكيد موعد جديد`);
+        continue;
+      }
 
       const newRaw = String(liveInfo.scheduledDepartureLocal || "").trim();
       const newFormatted = formatArabicDepartureDisplay(newRaw);
@@ -1525,6 +1551,8 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
           oldFormatted,
           newFormatted
         });
+      } else {
+        checkedSummaries.push(`${st.flightNumber}: لا يوجد تغير (${newFormatted})`);
       }
     }
 
@@ -1544,16 +1572,18 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
 
       if (activeCustomerBooking && activeCustomerBooking.id === booking.id) {
         renderCustomerDashboard(booking);
-        ntSetFlightSyncStatusBadge("✓ تم تحديث موعد الرحلة", "updated");
+        ntSetFlightSyncStatusBadge("🔔 تم رصد تغير في موعد الرحلة", "updated");
         ntBuildFlightLiveAlertBanner(changes);
-        showToast("تم تحديث موعد الطيران تلقائياً حسب جدول الرحلة");
+        showToast("تم رصد تعديل على موعد الطيران وتحديثه تلقائياً");
       }
+    } else if (checkedSummaries.some((s) => s.includes("لا يوجد تغير"))) {
+      ntSetFlightSyncStatusBadge("✓ تم الفحص: لا يوجد تغير على موعد الرحلة", "info");
     } else {
-      ntSetFlightSyncStatusBadge("✓ جدول الرحلة محدّث", "info");
+      ntSetFlightSyncStatusBadge("ℹ️ لم يُعثر على موعد مطابق في البحث", "info");
     }
   } catch (err) {
     console.warn("Live flight schedule check error:", err);
-    ntSetFlightSyncStatusBadge("", "info");
+    ntSetFlightSyncStatusBadge("⚠️ تعذر إتمام الفحص الآن", "info");
   } finally {
     ntFlightSyncRunning = false;
   }
