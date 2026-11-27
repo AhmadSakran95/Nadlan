@@ -308,6 +308,9 @@ function switchPortal(portal) {
     openAdminCodeModal();
     return;
   }
+  if (portal !== "customer" && typeof ntStopFlightAutoRefresh === "function") {
+    ntStopFlightAutoRefresh();
+  }
 
   const adminSec = document.getElementById("admin-section");
   const custSec = document.getElementById("customer-section");
@@ -1282,6 +1285,7 @@ function openBookingInCustomerPortal(bookingId) {
   if (!found) return;
 
   activeCustomerBooking = found;
+  ntStartFlightAutoRefresh(found);
   switchPortal("customer");
   document.getElementById("customer-login-card").classList.add("hidden");
   document.getElementById("customer-dashboard").classList.remove("hidden");
@@ -1296,8 +1300,35 @@ function openBookingInCustomerPortal(bookingId) {
 // =======================================================================
 // فحص تلقائي لمواعيد وحالة الرحلات عبر التاريخ ورقم الطائرة عند فتح الصفحة
 // =======================================================================
-const FLIGHT_SYNC_CACHE_PREFIX = "ndl_flight_sync_v2_";
+const FLIGHT_SYNC_CACHE_PREFIX = "ndl_flight_sync_v3_";
+const FLIGHT_SYNC_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق
+const FLIGHT_SYNC_CACHE_TTL_MS = 60 * 1000;
 let ntFlightSyncRunning = false;
+let ntFlightSyncInterval = null;
+let ntFlightSyncBookingId = null;
+
+function ntStartFlightAutoRefresh(booking) {
+  ntStopFlightAutoRefresh();
+  if (!booking || !booking.id) return;
+  ntFlightSyncBookingId = booking.id;
+  ntFlightSyncInterval = window.setInterval(() => {
+    if (
+      activeCustomerBooking &&
+      activeCustomerBooking.id === ntFlightSyncBookingId &&
+      !document.hidden
+    ) {
+      checkAndSyncLiveFlightsForBooking(activeCustomerBooking, { force: true });
+    }
+  }, FLIGHT_SYNC_INTERVAL_MS);
+}
+
+function ntStopFlightAutoRefresh() {
+  if (ntFlightSyncInterval) {
+    window.clearInterval(ntFlightSyncInterval);
+    ntFlightSyncInterval = null;
+  }
+  ntFlightSyncBookingId = null;
+}
 
 function ntNormalizeFlightDateKey(departureText) {
   const raw = String(departureText || "").trim();
@@ -1433,7 +1464,7 @@ function ntExtractAllDatetimesFromText(text, fallbackDateKey) {
   return results;
 }
 
-async function ntQuerySingleFlightSchedule(st) {
+async function ntQuerySingleFlightSchedule(st, options = {}) {
   const flightNo = String(st.flightNumber || "").trim().toUpperCase();
   const dateKey = ntNormalizeFlightDateKey(st.departureText);
   const fromCode = String(st.fromAirport || "").trim().toUpperCase();
@@ -1445,7 +1476,7 @@ async function ntQuerySingleFlightSchedule(st) {
     const cachedRaw = sessionStorage.getItem(cacheKey);
     if (cachedRaw) {
       const cached = JSON.parse(cachedRaw);
-      if (cached && cached.ts && Date.now() - cached.ts < 30 * 1000) {
+      if (!options.force && cached && cached.ts && Date.now() - cached.ts < FLIGHT_SYNC_CACHE_TTL_MS) {
         return cached.data;
       }
     }
@@ -1456,6 +1487,8 @@ async function ntQuerySingleFlightSchedule(st) {
 
   const prompt = `Search the web for flight "${flightNo}" from "${fromCode || "TLV"}" to "${toCode || "TBS"}" on date "${dateKey}".
 Current recorded departure in our system: "${oldRaw}".
+
+Use only information specifically matching this flight number, route, and date. Do not guess. If you cannot verify the flight, return status "Unverified", hasChange false, and an empty scheduledDepartureLocal. If delayed/cancelled but no replacement time is published, still return that status and leave scheduledDepartureLocal empty. Do not report a generic airport or another date's result.
 
 Return ONLY a valid JSON object (no markdown, no extra text):
 {
@@ -1499,38 +1532,27 @@ Return ONLY a valid JSON object (no markdown, no extra text):
     if (!depVal && candidates.length) depVal = candidates[0];
   }
 
-  // إذا لم يعثر البحث على موعد جديد موثوق، لا نختلق تغييراً ولا نعدّله لوقت عشوائي
-  if (!depVal) {
-    return {
-      found: false,
-      flightNumber: flightNo,
-      scheduledDepartureLocal: oldRaw,
-      status: statusVal || "Unverified",
-      hasChange: false,
-      reason: reasonText,
-      noChangeConfirmed: true
-    };
-  }
+  // لا نشترط وجود وقت جديد: قد تتغير حالة الرحلة إلى متأخرة/ملغاة دون إعلان وقت بديل.
+  const depTs = depVal ? parseDepartureDateToTimestamp(depVal) : null;
+  const actualTimeDiff = depVal
+    ? (oldTs !== null && depTs !== null
+        ? Math.abs(depTs - oldTs) > 60 * 1000
+        : formatArabicDepartureDisplay(depVal) !== formatArabicDepartureDisplay(oldRaw))
+    : false;
 
-  const depTs = parseDepartureDateToTimestamp(depVal);
-  const actualTimeDiff =
-    oldTs !== null && depTs !== null
-      ? Math.abs(depTs - oldTs) > 60 * 1000
-      : Boolean(depVal && formatArabicDepartureDisplay(depVal) !== formatArabicDepartureDisplay(oldRaw));
+  const statusIndicatesChange = /delay|delayed|cancel|cancelled|canceled|reschedul|diverted|boarding|departed|متأخر|تأخير|تأجيل|تأخر|ملغ|إلغاء|تحويل|تغيير/i.test(statusVal);
+  const isChanged = actualTimeDiff || hasChangeFlag || statusIndicatesChange;
 
-  const isChanged =
-    actualTimeDiff ||
-    hasChangeFlag ||
-    /delay|cancel|reschedul|متأخر|تأجيل|تأخر|ملغ|تعديل|تغيير/i.test(statusVal);
-
+  // لا نعتبر الرد تأكيداً إذا لم يتضمن وقتاً أو حالة مفهومة.
+  const hasUsefulStatus = Boolean(statusVal && !/unknown|unverified|n\/a|غير معروف|غير متاح/i.test(statusVal));
   const normalizedData = {
-    found: true,
+    found: Boolean(depVal || hasUsefulStatus || hasChangeFlag),
     flightNumber: (parsed && parsed.flightNumber) || flightNo,
-    scheduledDepartureLocal: depVal,
-    status: statusVal || (isChanged ? "Rescheduled / Delayed" : "On Time"),
+    scheduledDepartureLocal: depVal || oldRaw,
+    status: statusVal || (isChanged ? "Rescheduled / Delayed" : (depVal ? "On Time" : "Unverified")),
     hasChange: isChanged,
     reason: reasonText,
-    noChangeConfirmed: !isChanged
+    noChangeConfirmed: Boolean(depVal && !isChanged)
   };
 
   try {
@@ -1540,7 +1562,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
   return normalizedData;
 }
 
-async function checkAndSyncLiveFlightsForBooking(booking) {
+async function checkAndSyncLiveFlightsForBooking(booking, options = {}) {
   if (!booking || !Array.isArray(booking.stations) || ntFlightSyncRunning) return;
   const flightEntries = booking.stations
     .map((st, idx) => ({ st, idx }))
@@ -1565,20 +1587,23 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
       const oldFormatted = formatArabicDepartureDisplay(oldRaw);
       const oldTs = parseDepartureDateToTimestamp(oldRaw);
 
-      const liveInfo = await ntQuerySingleFlightSchedule(st);
-      if (!liveInfo || !liveInfo.found || !liveInfo.scheduledDepartureLocal) {
-        continue;
-      }
+      // خزّن الموعد الأصلي مرة واحدة حتى لا نفقده عند تحديث الموعد الحالي.
+      if (!st.scheduledDepartureBaseline) st.scheduledDepartureBaseline = oldRaw;
+
+      const liveInfo = await ntQuerySingleFlightSchedule(st, options);
+      if (!liveInfo || !liveInfo.found) continue;
       anyVerified = true;
 
       const newRaw = String(liveInfo.scheduledDepartureLocal || "").trim();
-      const newFormatted = formatArabicDepartureDisplay(newRaw);
-      const newTs = parseDepartureDateToTimestamp(newRaw);
+      const hasNewDeparture = Boolean(newRaw && newRaw !== oldRaw);
+      const newFormatted = hasNewDeparture ? formatArabicDepartureDisplay(newRaw) : oldFormatted;
+      const newTs = hasNewDeparture ? parseDepartureDateToTimestamp(newRaw) : null;
 
-      const timeChanged =
+      const timeChanged = hasNewDeparture && (
         oldTs !== null && newTs !== null
           ? Math.abs(newTs - oldTs) > 60 * 1000
-          : Boolean(liveInfo.hasChange && newFormatted !== oldFormatted && !newFormatted.includes("غير محدد"));
+          : Boolean(newFormatted !== oldFormatted && !newFormatted.includes("غير محدد"))
+      );
 
       const statusChanged = Boolean(
         liveInfo.hasChange || /delay|cancel|reschedul|متأخر|تأجيل|تأخر|ملغ|تعديل|تغيير/i.test(String(liveInfo.status || ""))
@@ -1589,6 +1614,11 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
           st.departureText = newRaw;
           anyStationUpdated = true;
         }
+        const normalizedStatus = String(liveInfo.status || "").trim();
+        if (normalizedStatus && st.liveFlightStatus !== normalizedStatus) {
+          st.liveFlightStatus = normalizedStatus;
+          anyStationUpdated = true;
+        }
         const statusParts = [liveInfo.status, liveInfo.reason].filter(Boolean).join(" — ");
 
         changes.push({
@@ -1596,7 +1626,7 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
           route: `${st.fromAirport || "—"} ➔ ${st.toAirport || "—"}`,
           status: statusParts || (timeChanged ? "موعد محدّث" : ""),
           oldFormatted,
-          newFormatted: timeChanged ? newFormatted : `${oldFormatted} (${statusParts || "تغير في الحالة"})`
+          newFormatted: timeChanged ? newFormatted : `${statusParts || "تغير في الحالة"}`
         });
       }
     }
@@ -1638,6 +1668,7 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
 }
 
 function logoutCustomerPortal() {
+  ntStopFlightAutoRefresh();
   activeCustomerBooking = null;
   document.getElementById("customer-dashboard").classList.add("hidden");
   document.getElementById("customer-login-card").classList.remove("hidden");
