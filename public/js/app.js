@@ -852,7 +852,6 @@ async function processExtractedFile(file, targetType) {
   }
 }
 
-
 let pendingPasteTargetType = null;
 
 function triggerPasteExtract(targetType = null) {
@@ -899,7 +898,6 @@ document.addEventListener("paste", async (event) => {
       activeEl.tagName === "TEXTAREA" ||
       activeEl.isContentEditable);
 
-  // السماح باللصق النصي الطبيعي داخل حقول النص، إلا إذا كان المستخدم ينتظر لصق صورة
   const pastedFile = getPastedImageFile(event.clipboardData);
   if (!pastedFile) return;
   if (isTextInput && !pendingPasteTargetType) return;
@@ -1579,21 +1577,21 @@ function parseFlexibleDateTime(rawVal) {
   const str = String(rawVal).trim();
   if (!str) return null;
 
-const monthsMap = {
-  jan: 1, january: 1, جانفي: 1, يناير: 1,
-  feb: 2, february: 2, فيفري: 2, فبراير: 2,
-  mar: 3, march: 3, مارس: 3, آذار: 3,
-  apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
-  may: 5, ماي: 5, مايو: 5, أيار: 5,
-  jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
-  jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
-  aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
-  sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
-  oct: 10, october: 10, أكتوبر: 10, "تشرين الأول": 10,
-  nov: 11, november: 11, نوفمبر: 11, "تشرين الثاني": 11,
-  dec: 12, december: 12, ديسمبر: 12, "كانون الأول": 12
-};
-  
+  const monthsMap = {
+    jan: 1, january: 1, جانفي: 1, يناير: 1,
+    feb: 2, february: 2, فيفري: 2, فبراير: 2,
+    mar: 3, march: 3, مارس: 3, آذار: 3,
+    apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
+    may: 5, ماي: 5, مايو: 5, أيار: 5,
+    jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
+    jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
+    aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
+    sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
+    oct: 10, october: 10, أكتوبر: 10, "تشرين الأول": 10,
+    nov: 11, november: 11, نوفمبر: 11, "تشرين الثاني": 11,
+    dec: 12, december: 12, ديسمبر: 12, "كانون الأول": 12
+  };
+
   let year = null;
   let month = null;
   let day = null;
@@ -2184,8 +2182,75 @@ function closePassengersModal() {
 }
 
 // =======================================================================
-// معلومات الوجهة التلقائية بالذكاء الاصطناعي (الطقس 5 أيام، 4 مناطق، 5 مطاعم حلال، الفيوز)
+// جلب الطقس من /api/weather + معلومات الوجهة بالذكاء الاصطناعي
 // =======================================================================
+function getWeatherIconFromCode(code) {
+  const c = Number(code);
+  if (c === 0) return "☀️";
+  if ([1, 2].includes(c)) return "⛅";
+  if (c === 3) return "☁️";
+  if ([45, 48].includes(c)) return "🌫️";
+  if ([51, 53, 55, 61, 63, 80, 81].includes(c)) return "🌦️";
+  if ([65, 82].includes(c)) return "🌧️";
+  if ([71, 73, 75, 77, 85, 86].includes(c)) return "❄️";
+  if ([95, 96, 99].includes(c)) return "⛈️";
+  return "🌤️";
+}
+
+function formatWeatherDayLabel(dateStr, index) {
+  if (index === 0) return "اليوم";
+  if (index === 1) return "غداً";
+  if (!dateStr) return `اليوم ${index + 1}`;
+  const dt = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(dt.getTime())) return dateStr;
+  return dt.toLocaleDateString("ar-EG", { weekday: "short", day: "numeric", month: "short" });
+}
+
+async function fetchWeatherFromApi(city) {
+  const weatherGrid = document.getElementById("weather-5days-grid");
+  const cityLabel = document.getElementById("weather-city-label");
+  if (cityLabel) cityLabel.textContent = city;
+
+  try {
+    const res = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data.days) || !data.days.length) {
+      return null;
+    }
+
+    const formattedDays = data.days.slice(0, 5).map((d, idx) => ({
+      day: formatWeatherDayLabel(d.date, idx),
+      temp: `${d.maxTemp}° / ${d.minTemp}°C`,
+      condition: d.condition || "معتدل",
+      icon: getWeatherIconFromCode(d.code)
+    }));
+
+    if (weatherGrid) {
+      weatherGrid.innerHTML = formattedDays
+        .map(
+          (item) => `
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 text-center space-y-1.5">
+            <p class="text-xs font-extrabold text-slate-600">${escapeHtml(item.day)}</p>
+            <div class="text-2xl">${escapeHtml(item.icon)}</div>
+            <p class="text-sm sm:text-base font-black text-slate-900" dir="ltr">${escapeHtml(item.temp)}</p>
+            <p class="text-xs font-bold text-brand-800">${escapeHtml(item.condition)}</p>
+          </div>
+        `
+        )
+        .join("");
+    }
+
+    if (cityLabel && data.city) {
+      cityLabel.textContent = data.country ? `${data.city} — ${data.country}` : data.city;
+    }
+
+    return formattedDays;
+  } catch (err) {
+    console.warn("Weather API fallback:", err);
+    return null;
+  }
+}
+
 async function fetchDestinationIntelligence(city) {
   const cleanCity = String(city || "").trim();
   if (!cleanCity) return;
@@ -2193,7 +2258,12 @@ async function fetchDestinationIntelligence(city) {
   const dots = document.getElementById("dest-loading-dots");
   if (dots) dots.classList.remove("hidden");
 
-  document.getElementById("weather-city-label").textContent = cleanCity;
+  if (document.getElementById("weather-city-label")) {
+    document.getElementById("weather-city-label").textContent = cleanCity;
+  }
+
+  // جلب الطقس الحقيقي مباشرة من /api/weather (Open-Meteo + كاش ساعتين)
+  const liveWeather = await fetchWeatherFromApi(cleanCity);
 
   const cacheKey = DEST_CACHE_PREFIX + cleanCity.toLowerCase();
   try {
@@ -2201,7 +2271,10 @@ async function fetchDestinationIntelligence(city) {
     if (cached) {
       const parsedCache = JSON.parse(cached);
       if (parsedCache && parsedCache.data) {
-        renderDestinationSections(cleanCity, parsedCache.data);
+        renderDestinationSections(cleanCity, {
+          ...parsedCache.data,
+          ...(liveWeather ? { weather5Days: liveWeather } : {})
+        });
       }
     }
   } catch (_) {}
@@ -2209,9 +2282,6 @@ async function fetchDestinationIntelligence(city) {
   const todayStr = getTodayFormatted();
   const prompt = `ابحث عن معلومات دقيقة ومحدثة لمدينة "${cleanCity}" بدءاً من تاريخ اليوم (${todayStr}) وأرجع JSON فقط بالشكل التالي:
 {
-  "weather5Days": [
-    { "day": "اليوم / التاريخ", "temp": "درجة الحرارة مثل 18°C", "condition": "حالة الطقس بالعربية", "icon": "☀️ أو ⛅ أو 🌧️" }
-  ],
   "attractions4": [
     { "name": "اسم المنطقة السياحية", "desc": "وصف مختصر مفيد بالعربية" }
   ],
@@ -2225,7 +2295,7 @@ async function fetchDestinationIntelligence(city) {
     "notes": "ملاحظة مختصرة عن الفيش والفيوز في ${cleanCity}"
   }
 }
-تأكد أن weather5Days تحتوي 5 أيام، و attractions4 تحتوي 4 مناطق، و halalRestaurants5 تحتوي 5 مطاعم.`;
+تأكد أن attractions4 تحتوي 4 مناطق، و halalRestaurants5 تحتوي 5 مطاعم.`;
 
   try {
     const payload = {
@@ -2240,13 +2310,20 @@ async function fetchDestinationIntelligence(city) {
     const parsed = parseJsonLoose(rawText);
 
     if (parsed) {
-      renderDestinationSections(cleanCity, parsed);
+      const mergedData = {
+        ...parsed,
+        ...(liveWeather ? { weather5Days: liveWeather } : {})
+      };
+      renderDestinationSections(cleanCity, mergedData);
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: parsed }));
+        localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: mergedData }));
       } catch (_) {}
     }
   } catch (_) {
     renderFallbackDestinationSections(cleanCity);
+    if (liveWeather) {
+      renderDestinationSections(cleanCity, { weather5Days: liveWeather });
+    }
   } finally {
     if (dots) dots.classList.add("hidden");
   }
@@ -2746,3 +2823,11 @@ function ntCustomerVoucherUi(idx, stationType, booking) {
     </div>
   `;
 }
+```[cite: 5]
+
+### خطوات سريعة بعد النسخ:
+* احفظه باسم `app.js` في مسار الواجهة المستخدم في مشروعك (`public/js/app.js` مطابق لـ `<script src="/js/app.js" defer></script>` في `index.html`)[cite: 6].
+* ارفع التعديل إلى GitHub ثم اعمل **Redeploy** في Railway[cite: 5].
+* افتح أي حجز في بوابة الزبون وتأكد من ظهور الطقس لـ 5 أيام مباشرة من `/api/weather`[cite: 6].
+
+قلّي إذا ظهر معك الطقس مضبوطاً بعد النشر، أو إذا تحب نضيف خدمة مجانية ثانية!
