@@ -1420,8 +1420,7 @@ function formatArabicDepartureDisplay(rawVal) {
   }
 
   const period = hour >= 12 ? "مساءً" : "صباحاً";
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  const hh = String(displayHour).padStart(2, "0");
+  const hh = String(hour).padStart(2, "0");
   const minStr = String(minute).padStart(2, "0");
 
   return `${datePart} | ${hh}:${minStr} ${period}`;
