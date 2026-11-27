@@ -614,54 +614,25 @@ function onFlightToAirportChange(idx) {
 // =======================================================================
 // استخراج تلقائي من ملف PDF أو صورة (رفع ملف أو لصق صورة مباشرة Ctrl+V)
 // =======================================================================
-let pasteExtractTargetType = null;
-let pasteModalSelectedFile = null;
+let pendingPasteTargetType = null;
 
-function setPasteExtractTarget(targetType) {
-  pasteExtractTargetType = targetType || null;
-}
-
-function openPasteExtractModal(targetType = null) {
+function triggerPasteExtract(targetType = null) {
   if (targetType) {
-    pasteExtractTargetType = targetType;
+    extractTargetType = targetType;
+    pendingPasteTargetType = targetType;
+  } else {
+    pendingPasteTargetType = null;
   }
-  pasteModalSelectedFile = null;
-
-  const modal = document.getElementById("paste-extract-modal");
-  const selectEl = document.getElementById("paste-extract-type-select");
-  const previewWrap = document.getElementById("paste-extract-preview-wrap");
-  const previewImg = document.getElementById("paste-extract-preview-img");
-  const confirmBtn = document.getElementById("paste-extract-confirm-btn");
-  const hintEl = document.getElementById("paste-extract-hint");
-
-  if (selectEl && pasteExtractTargetType) {
-    selectEl.value = pasteExtractTargetType;
-  }
-  if (previewWrap) previewWrap.classList.add("hidden");
-  if (previewImg) previewImg.src = "";
-  if (confirmBtn) confirmBtn.disabled = true;
-  if (hintEl) {
-    hintEl.textContent = "اضغط Ctrl+V (أو Cmd+V على Mac) في أي مكان داخل هذه النافذة للصق الصورة مباشرة من الحافظة.";
-  }
-
-  if (modal) {
-    modal.classList.remove("hidden");
-    modal.classList.add("flex");
-  }
-}
-
-function closePasteExtractModal() {
-  pasteModalSelectedFile = null;
-  const modal = document.getElementById("paste-extract-modal");
-  if (modal) {
-    modal.classList.add("hidden");
-    modal.classList.remove("flex");
-  }
+  showToast(
+    targetType
+      ? "اضغط الآن Ctrl+V (أو Cmd+V) للصق صورة الاستخراج"
+      : "الصق الصورة مباشرة باستخدام Ctrl+V (أو Cmd+V) أو اختر نوع الاستخراج"
+  );
 }
 
 function triggerExtract(targetType) {
   extractTargetType = targetType;
-  pasteExtractTargetType = targetType;
+  pendingPasteTargetType = targetType;
   const fileInput = document.getElementById("extract-file-input");
   if (fileInput) {
     fileInput.value = "";
@@ -682,20 +653,18 @@ function fileToBase64Data(file) {
   });
 }
 
-function extractImageFileFromClipboardEvent(event) {
-  const clipboardData = event?.clipboardData || window.clipboardData;
+function getPastedImageFile(clipboardData) {
   if (!clipboardData) return null;
 
   const items = Array.from(clipboardData.items || []);
   for (const item of items) {
     if (item.kind === "file" && String(item.type || "").toLowerCase().startsWith("image/")) {
-      const file = item.getAsFile();
-      if (file) {
-        const ext = (file.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
-        return new File([file], `pasted-${Date.now()}.${ext}`, {
-          type: file.type || "image/png"
-        });
-      }
+      const blob = item.getAsFile();
+      if (!blob) continue;
+      const ext = (item.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
+      return new File([blob], `pasted-booking-${Date.now()}.${ext}`, {
+        type: item.type || "image/png"
+      });
     }
   }
 
@@ -703,7 +672,7 @@ function extractImageFileFromClipboardEvent(event) {
   const imgFile = files.find((f) => String(f.type || "").toLowerCase().startsWith("image/"));
   if (imgFile) {
     const ext = (imgFile.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
-    return new File([imgFile], imgFile.name || `pasted-${Date.now()}.${ext}`, {
+    return new File([imgFile], imgFile.name || `pasted-booking-${Date.now()}.${ext}`, {
       type: imgFile.type || "image/png"
     });
   }
@@ -713,19 +682,20 @@ function extractImageFileFromClipboardEvent(event) {
 
 async function processExtractedFile(file, targetType) {
   if (!file) return;
-  extractTargetType = targetType || extractTargetType || "flight";
+  const chosenType = targetType || extractTargetType || "flight";
+  extractTargetType = chosenType;
 
   // حفظ ملف/صورة الاستخراج كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
   try {
     const voucherDataUrl = await ntFileToDataUrl(file);
     const vRecord = {
       name: file.name,
-      stationType: extractTargetType,
+      stationType: chosenType,
       mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
       dataUrl: voucherDataUrl
     };
-    ntSessionVouchers[extractTargetType] = vRecord;
-    const matchedIdx = currentStations.findIndex((s) => s.type === extractTargetType);
+    ntSessionVouchers[chosenType] = vRecord;
+    const matchedIdx = currentStations.findIndex((s) => s.type === chosenType);
     if (matchedIdx !== -1) {
       ntSessionVouchers["idx_" + matchedIdx] = vRecord;
     }
@@ -734,7 +704,10 @@ async function processExtractedFile(file, targetType) {
   syncStationsFromDom();
   const statusBox = document.getElementById("extract-status");
   const statusText = document.getElementById("extract-status-text");
-  if (statusBox) statusBox.classList.remove("hidden");
+  if (statusBox) {
+    statusBox.classList.remove("hidden");
+    statusBox.classList.add("flex");
+  }
   if (statusText) statusText.textContent = `جاري تحليل "${file.name}" واستخراج البيانات...`;
 
   try {
@@ -742,7 +715,7 @@ async function processExtractedFile(file, targetType) {
     const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png");
 
     let prompt = "";
-    if (extractTargetType === "flight") {
+    if (chosenType === "flight") {
       prompt = `استخرج بيانات تذكرة الطيران بدقة وأرجع JSON فقط بدون أي نص إضافي.
 إذا كانت رحلة الذهاب أو العودة تحتوي على كونيكشين (أكثر من طائرة/مقطع)، ضع كل طائرة كعنصر مستقل بالترتيب في outboundSegments و returnSegments:
 {
@@ -784,18 +757,19 @@ async function processExtractedFile(file, targetType) {
   "returnDepartureText": "موعد أول إقلاع في العودة",
   "returnBaggage": "حقائب العودة"
 }`;
-    } else if (extractTargetType === "hotel") {
-      prompt = `استخرج بيانات حجز الفندق بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+    } else if (chosenType === "hotel") {
+      prompt = `استخرج بيانات حجز الفندق بدقة من الصورة أو الملف وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
 {
   "hotelName": "اسم الفندق",
+  "stars": "تصنيف النجوم مثل 5 نجوم أو 4 نجوم",
   "city": "المدينة",
   "checkIn": "تاريخ الدخول",
   "checkOut": "تاريخ الخروج",
-  "nights": "عدد الليالي",
-  "notes": "ملاحظات مثل الإفطار أو رقم الحجز"
+  "nights": "عدد الليالي مثل 5 ليالي",
+  "notes": "ملاحظات مثل نوع الغرفة أو الإفطار أو رقم الحجز"
 }`;
     } else {
-      prompt = `استخرج بيانات حجز التوصيل أو المواصلات بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+      prompt = `استخرج بيانات حجز التوصيل أو المواصلات بدقة من الصورة أو الملف وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
 {
   "fromLocation": "نقطة الانطلاق",
   "toLocation": "نقطة الوصول",
@@ -828,63 +802,32 @@ async function processExtractedFile(file, targetType) {
       return;
     }
 
-    if (extractTargetType === "flight") {
+    if (chosenType === "flight") {
       applyExtractedFlightData(data);
-    } else if (extractTargetType === "hotel") {
+    } else if (chosenType === "hotel") {
       applyExtractedHotelData(data);
     } else {
       applyExtractedTransferData(data);
     }
 
     try {
-      const idxAfter = currentStations.findIndex((s) => s.type === extractTargetType);
-      if (idxAfter !== -1 && ntSessionVouchers[extractTargetType]) {
-        ntSessionVouchers["idx_" + idxAfter] = ntSessionVouchers[extractTargetType];
+      const idxAfter = currentStations.findIndex((s) => s.type === chosenType);
+      if (idxAfter !== -1 && ntSessionVouchers[chosenType]) {
+        ntSessionVouchers["idx_" + idxAfter] = ntSessionVouchers[chosenType];
       }
     } catch (_) {}
 
     renderStationsEditor();
     showToast("تم استخراج البيانات وتعبئتها بنجاح");
   } catch (err) {
+    console.error("Extract failed:", err);
     showToast("حدث خطأ أثناء استخراج البيانات من الصورة");
   } finally {
-    if (statusBox) statusBox.classList.add("hidden");
-  }
-}
-
-
-let pendingPasteTargetType = null;
-
-function triggerPasteExtract(targetType = null) {
-  if (targetType) {
-    extractTargetType = targetType;
-    pendingPasteTargetType = targetType;
-  } else {
-    pendingPasteTargetType = null;
-  }
-  showToast(
-    targetType
-      ? "الآن اضغط Ctrl+V (أو Cmd+V) للصق صورة الاستخراج"
-      : "يمكنك لصق صورة التذكرة أو الحجز مباشرة باستخدام Ctrl+V أو Cmd+V"
-  );
-}
-
-function getPastedImageFile(clipboardData) {
-  const items = clipboardData?.items;
-  if (!items) return null;
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.kind === "file" && item.type && item.type.startsWith("image/")) {
-      const blob = item.getAsFile();
-      if (!blob) continue;
-      const ext = (item.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
-      return new File([blob], `pasted-booking-${Date.now()}.${ext}`, {
-        type: item.type
-      });
+    if (statusBox) {
+      statusBox.classList.add("hidden");
+      statusBox.classList.remove("flex");
     }
   }
-  return null;
 }
 
 document.addEventListener("paste", async (event) => {
@@ -892,31 +835,26 @@ document.addEventListener("paste", async (event) => {
   const isAdminVisible = adminSec && !adminSec.classList.contains("hidden");
   if (!isAdminVisible) return;
 
-  const activeEl = document.activeElement;
-  const isTextInput =
-    activeEl &&
-    (activeEl.tagName === "INPUT" ||
-      activeEl.tagName === "TEXTAREA" ||
-      activeEl.isContentEditable);
-
-  // السماح باللصق النصي الطبيعي داخل حقول النص، إلا إذا كان المستخدم ينتظر لصق صورة
   const pastedFile = getPastedImageFile(event.clipboardData);
   if (!pastedFile) return;
-  if (isTextInput && !pendingPasteTargetType) return;
+
+  const activeEl = document.activeElement;
+  const tag = activeEl?.tagName?.toLowerCase() || "";
+  const isTextField =
+    (tag === "input" && !["file", "checkbox", "radio", "button"].includes((activeEl.type || "").toLowerCase())) ||
+    tag === "textarea" ||
+    tag === "select" ||
+    activeEl?.isContentEditable;
+
+  if (isTextField && !pendingPasteTargetType) return;
 
   event.preventDefault();
 
-  if (pendingPasteTargetType) {
-    extractTargetType = pendingPasteTargetType;
-    pendingPasteTargetType = null;
-  }
+  const chosenType = pendingPasteTargetType || extractTargetType || "flight";
+  pendingPasteTargetType = null;
+  extractTargetType = chosenType;
 
-  await handleExtractFileSelected({
-    target: {
-      files: [pastedFile],
-      value: ""
-    }
-  });
+  await processExtractedFile(pastedFile, chosenType);
 });
 
 async function handleExtractFileSelected(event) {
@@ -928,79 +866,6 @@ async function handleExtractFileSelected(event) {
     event.target.value = "";
   }
 }
-
-async function confirmPastedImageExtraction() {
-  if (!pasteModalSelectedFile) {
-    showToast("يرجى لصق صورة أولاً باستخدام Ctrl+V");
-    return;
-  }
-  const selectEl = document.getElementById("paste-extract-type-select");
-  const chosenType = selectEl?.value || pasteExtractTargetType || "flight";
-  const fileToProcess = pasteModalSelectedFile;
-  closePasteExtractModal();
-  await processExtractedFile(fileToProcess, chosenType);
-}
-
-document.addEventListener("paste", async (event) => {
-  const adminSec = document.getElementById("admin-section");
-  const isAdminVisible = adminSec && !adminSec.classList.contains("hidden");
-  if (!isAdminVisible) return;
-
-  const activeTag = document.activeElement?.tagName?.toLowerCase() || "";
-  const isTypingInTextInput =
-    (activeTag === "input" && !["file", "checkbox", "radio", "button"].includes((document.activeElement.type || "").toLowerCase())) ||
-    activeTag === "textarea" ||
-    activeTag === "select" ||
-    document.activeElement?.isContentEditable;
-
-  const pastedImage = extractImageFileFromClipboardEvent(event);
-  if (!pastedImage) return;
-
-  const pasteModal = document.getElementById("paste-extract-modal");
-  const isPasteModalOpen = pasteModal && !pasteModal.classList.contains("hidden");
-
-  if (!isPasteModalOpen && isTypingInTextInput && !pasteExtractTargetType) {
-    return;
-  }
-
-  event.preventDefault();
-
-  if (isPasteModalOpen) {
-    pasteModalSelectedFile = pastedImage;
-    const previewWrap = document.getElementById("paste-extract-preview-wrap");
-    const previewImg = document.getElementById("paste-extract-preview-img");
-    const confirmBtn = document.getElementById("paste-extract-confirm-btn");
-    const hintEl = document.getElementById("paste-extract-hint");
-    try {
-      const url = await ntFileToDataUrl(pastedImage);
-      if (previewImg) previewImg.src = url;
-      if (previewWrap) previewWrap.classList.remove("hidden");
-      if (confirmBtn) confirmBtn.disabled = false;
-      if (hintEl) hintEl.textContent = `تم التقاط الصورة (${pastedImage.name}). اختر نوع الاستخراج واضغط "استخراج الآن".`;
-    } catch (_) {
-      showToast("تعذر معاينة الصورة الملصوقة");
-    }
-    return;
-  }
-
-  if (pasteExtractTargetType) {
-    await processExtractedFile(pastedImage, pasteExtractTargetType);
-  } else {
-    openPasteExtractModal("flight");
-    pasteModalSelectedFile = pastedImage;
-    const previewWrap = document.getElementById("paste-extract-preview-wrap");
-    const previewImg = document.getElementById("paste-extract-preview-img");
-    const confirmBtn = document.getElementById("paste-extract-confirm-btn");
-    const hintEl = document.getElementById("paste-extract-hint");
-    try {
-      const url = await ntFileToDataUrl(pastedImage);
-      if (previewImg) previewImg.src = url;
-      if (previewWrap) previewWrap.classList.remove("hidden");
-      if (confirmBtn) confirmBtn.disabled = false;
-      if (hintEl) hintEl.textContent = `تم التقاط الصورة (${pastedImage.name}). اختر نوع الاستخراج واضغط "استخراج الآن".`;
-    } catch (_) {}
-  }
-});
 
 function buildFlightSegmentStation(seg, fallbackPnr, fallbackBaggage, legLabel, connNote) {
   const st = createStationObject("flight");
@@ -1158,21 +1023,32 @@ function applyExtractedFlightData(data) {
 function applyExtractedHotelData(data) {
   let hotelIdx = currentStations.findIndex((s) => s.type === "hotel" && !s.name);
   if (hotelIdx === -1) {
+    hotelIdx = currentStations.findIndex((s) => s.type === "hotel");
+  }
+  if (hotelIdx === -1) {
     currentStations.push(createStationObject("hotel"));
     hotelIdx = currentStations.length - 1;
   }
   const st = currentStations[hotelIdx];
-  st.name = String(data.hotelName || "").trim();
+  const newName = String(data.hotelName || data.name || "").trim();
+  if (newName) st.name = newName;
+
   const rawStars = String(data.stars || data.starRating || "").trim();
   if (rawStars) {
     st.stars = rawStars.includes("نجم") ? rawStars : `${rawStars} نجوم`;
   } else if (!st.stars) {
     st.stars = "5 نجوم";
   }
-  st.checkIn = String(data.checkIn || "").trim();
-  st.checkOut = String(data.checkOut || "").trim();
-  st.nights = String(data.nights || "").trim();
-  st.notes = String(data.notes || "").trim();
+
+  const checkInVal = String(data.checkIn || data.check_in || "").trim();
+  const checkOutVal = String(data.checkOut || data.check_out || "").trim();
+  const nightsVal = String(data.nights || "").trim();
+  const notesVal = String(data.notes || "").trim();
+
+  if (checkInVal) st.checkIn = checkInVal;
+  if (checkOutVal) st.checkOut = checkOutVal;
+  if (nightsVal) st.nights = nightsVal;
+  if (notesVal) st.notes = notesVal;
 
   const destInput = document.getElementById("main-destination");
   if (data.city && destInput && !destInput.value.trim()) {
@@ -1183,14 +1059,22 @@ function applyExtractedHotelData(data) {
 function applyExtractedTransferData(data) {
   let trIdx = currentStations.findIndex((s) => s.type === "transfer" && !s.fromLocation && !s.toLocation);
   if (trIdx === -1) {
+    trIdx = currentStations.findIndex((s) => s.type === "transfer");
+  }
+  if (trIdx === -1) {
     currentStations.push(createStationObject("transfer"));
     trIdx = currentStations.length - 1;
   }
   const st = currentStations[trIdx];
-  st.fromLocation = String(data.fromLocation || "").trim();
-  st.toLocation = String(data.toLocation || "").trim();
-  st.pickupTime = String(data.pickupTime || "").trim();
-  st.notes = String(data.notes || "").trim();
+  const fromVal = String(data.fromLocation || data.from || "").trim();
+  const toVal = String(data.toLocation || data.to || "").trim();
+  const timeVal = String(data.pickupTime || data.time || "").trim();
+  const notesVal = String(data.notes || "").trim();
+
+  if (fromVal) st.fromLocation = fromVal;
+  if (toVal) st.toLocation = toVal;
+  if (timeVal) st.pickupTime = timeVal;
+  if (notesVal) st.notes = notesVal;
 }
 
 // =======================================================================
