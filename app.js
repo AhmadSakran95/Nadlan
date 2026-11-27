@@ -595,6 +595,7 @@ function renderStationsEditor() {
             </div>
           </div>
           ${fieldsHtml}
+          ${renderAdminStationAttachmentBox(idx, st.type)}
         </div>
       `;
     })
@@ -1494,6 +1495,7 @@ function renderCustomerDashboard(booking) {
                 }
               </div>
             </div>
+            ${renderCustomerStationAttachmentBox(idx, "flight", booking)}
           </div>
         `;
       }
@@ -1541,6 +1543,7 @@ function renderCustomerDashboard(booking) {
               <span class="block text-[11px] font-bold text-slate-500">📝 تفاصيل وملاحظات الإقامة</span>
               <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "إقامة مؤكدة")}</span>
             </div>
+            ${renderCustomerStationAttachmentBox(idx, "hotel", booking)}
           </div>
         `;
       }
@@ -1557,6 +1560,7 @@ function renderCustomerDashboard(booking) {
             </div>
             <p class="text-sm font-black text-slate-900">${escapeHtml(st.fromLocation || "—")} <span class="text-amber-600 mx-1">➔</span> ${escapeHtml(st.toLocation || "—")}</p>
             ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+            ${renderCustomerStationAttachmentBox(idx, "transfer", booking)}
           </div>
         `;
       }
@@ -2025,3 +2029,199 @@ window.addEventListener("DOMContentLoaded", async () => {
   renderQuickDemoBookings();
   switchPortal("customer");
 });
+
+
+// =======================================================================
+// إرفاق ملفات المحطات (طيران / فندق / توصيل) — تحميل PDF فقط للزبون
+// =======================================================================
+const NT_ATTACH_STORAGE_KEY = "nadlantours_station_attachments_v1";
+
+function ntLoadAttachmentsMap() {
+  try {
+    return JSON.parse(localStorage.getItem(NT_ATTACH_STORAGE_KEY) || "{}") || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function ntSaveAttachmentsMap(map) {
+  try {
+    localStorage.setItem(NT_ATTACH_STORAGE_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+function ntGetAttachmentKey(bookingOrFallback) {
+  if (bookingOrFallback && bookingOrFallback.pnr) {
+    return String(bookingOrFallback.pnr).trim().toUpperCase();
+  }
+  if (activeCustomerBooking && activeCustomerBooking.pnr) {
+    return String(activeCustomerBooking.pnr).trim().toUpperCase();
+  }
+  const editId = (document.getElementById("editing-booking-id")?.value || "").trim();
+  const pnr = (document.getElementById("booking-pnr")?.value || "").trim().toUpperCase();
+  const last = (document.getElementById("customer-last-name")?.value || "").trim();
+  return editId || pnr || last || "default_booking";
+}
+
+function ntIsPdfFile(fileObj) {
+  if (!fileObj) return false;
+  const mime = String(fileObj.mimeType || fileObj.type || "").toLowerCase();
+  const name = String(fileObj.name || "").toLowerCase();
+  return mime === "application/pdf" || name.endsWith(".pdf");
+}
+
+function ntReadFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("تعذر قراءة الملف"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function ntHandleStationUpload(event, index, stationType) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  try {
+    const dataUrl = await ntReadFileAsDataUrl(file);
+    const map = ntLoadAttachmentsMap();
+    const key = ntGetAttachmentKey();
+    if (!map[key]) map[key] = {};
+    const record = {
+      name: file.name,
+      type: stationType,
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+      dataUrl
+    };
+    map[key][stationType] = record;
+    map[key]["idx_" + index] = record;
+    ntSaveAttachmentsMap(map);
+    renderStationsEditor();
+    showToast(
+      ntIsPdfFile(record)
+        ? "تم إرفاق ملف PDF — يمكن للزبون تحميله"
+        : "تم إرفاق صورة — الصور للعرض فقط ولا تُحمّل للزبون"
+    );
+  } catch (_) {
+    showToast("حدث خطأ أثناء رفع الملف");
+  }
+  event.target.value = "";
+}
+
+function ntRemoveStationFile(index, stationType) {
+  const map = ntLoadAttachmentsMap();
+  const key = ntGetAttachmentKey();
+  if (map[key]) {
+    delete map[key][stationType];
+    delete map[key]["idx_" + index];
+    ntSaveAttachmentsMap(map);
+  }
+  renderStationsEditor();
+  showToast("تم حذف المرفق");
+}
+
+function ntDownloadStationPdf(stationType, index) {
+  const map = ntLoadAttachmentsMap();
+  const key = ntGetAttachmentKey(activeCustomerBooking);
+  const files = map[key] || {};
+  const rec = files[stationType] || files["idx_" + index];
+
+  if (!rec || !rec.dataUrl) {
+    showToast("لا يوجد ملف مرفق لهذه المحطة");
+    return;
+  }
+  if (!ntIsPdfFile(rec)) {
+    showToast("عذراً: التحميل متاح لملفات PDF فقط، والصور للعرض فقط");
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.href = rec.dataUrl;
+  link.download = rec.name.toLowerCase().endsWith(".pdf") ? rec.name : `${rec.name}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast(`جاري تحميل ملف PDF: ${link.download}`);
+}
+
+function renderAdminStationAttachmentBox(idx, stationType) {
+  if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
+  const map = ntLoadAttachmentsMap();
+  const key = ntGetAttachmentKey();
+  const rec = (map[key] && (map[key][stationType] || map[key]["idx_" + idx])) || null;
+  const inputId = `nt-st-file-${idx}`;
+  const labelMap = { flight: "الطيران", hotel: "الفندق", transfer: "التوصيل" };
+  const label = labelMap[stationType] || "المحطة";
+
+  if (!rec || !rec.dataUrl) {
+    return `
+      <div class="mt-3 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
+        <span class="text-xs font-bold text-slate-600">📎 مرفق ${escapeHtml(label)}: <span class="text-slate-400">لم يُرفع ملف (PDF أو صورة)</span></span>
+        <label for="${inputId}" class="px-3 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer">
+          ⬆️ رفع ملف (${escapeHtml(label)})
+        </label>
+        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntHandleStationUpload(event, ${idx}, '${stationType}')" />
+      </div>
+    `;
+  }
+
+  const isPdf = ntIsPdfFile(rec);
+  const statusBadge = isPdf
+    ? `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black">PDF — مسموح للزبون بالتحميل</span>`
+    : `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-black">صورة — عرض فقط (لا يُحمّل للزبون)</span>`;
+
+  return `
+    <div class="mt-3 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
+      <div class="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
+        <span>📎 ${escapeHtml(rec.name || "ملف مرفق")}</span>
+        ${statusBadge}
+      </div>
+      <div class="flex items-center gap-1.5">
+        <label for="${inputId}" class="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-black cursor-pointer">تغيير</label>
+        <button type="button" onclick="ntRemoveStationFile(${idx}, '${stationType}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black cursor-pointer">حذف</button>
+        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntHandleStationUpload(event, ${idx}, '${stationType}')" />
+      </div>
+    </div>
+  `;
+}
+
+function renderCustomerStationAttachmentBox(idx, stationType, booking) {
+  if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
+  const map = ntLoadAttachmentsMap();
+  const key = ntGetAttachmentKey(booking);
+  const rec = (map[key] && (map[key][stationType] || map[key]["idx_" + idx])) || null;
+  const labelMap = { flight: "تذكرة الطيران", hotel: "حجز الفندق", transfer: "مستند التوصيل" };
+  const docLabel = labelMap[stationType] || "المستند";
+
+  if (!rec || !rec.dataUrl) {
+    return `
+      <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <span class="text-xs font-bold text-slate-400">📄 ${escapeHtml(docLabel)}: لم يُرفع ملف بعد</span>
+        <span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-extrabold">🔒 غير متوفر</span>
+      </div>
+    `;
+  }
+
+  if (ntIsPdfFile(rec)) {
+    return `
+      <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <span class="text-xs font-extrabold text-brand-900">📄 ${escapeHtml(docLabel)} (${escapeHtml(rec.name || "PDF")})</span>
+        <button
+          type="button"
+          onclick="ntDownloadStationPdf('${stationType}', ${idx})"
+          class="px-3.5 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black shadow-xs transition cursor-pointer"
+        >
+          ⬇️ تحميل PDF
+        </button>
+      </div>
+    `;
+  }
+
+  // صورة: يُمنع التحميل تماماً ولا يُعرض زر تحميل
+  return `
+    <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+      <span class="text-xs font-extrabold text-slate-700">🖼️ ${escapeHtml(docLabel)} (صورة — للعرض فقط)</span>
+      <span class="px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 text-xs font-black">🚫 التحميل لملفات PDF فقط</span>
+    </div>
+  `;
+}
