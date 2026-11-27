@@ -433,7 +433,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 class="text-xs sm:text-sm font-black text-brand-900">⚡ استخراج تلقائي من ملف PDF أو صورة</h3>
-                <p class="text-[11px] text-slate-600">يدعم رفع الملف أو لصق الصورة مباشرة (Ctrl+V / Cmd+V) لتذاكر الطيران والفنادق والتوصيل</p>
+                <p class="text-[11px] text-slate-600">يدعم تذاكر الطيران (ذهاب وعودة، رقم الرحلة، PNR، الحقائب، المسافرين) والفنادق والتوصيل</p>
               </div>
               <div class="flex flex-wrap items-center gap-1.5">
                 <button type="button" onclick="triggerExtract('flight')" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-extrabold cursor-pointer">
@@ -444,9 +444,6 @@
                 </button>
                 <button type="button" onclick="triggerExtract('transfer')" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold cursor-pointer">
                   🚐 استخراج توصيل
-                </button>
-                <button type="button" onclick="triggerPasteExtract()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-amber-300 text-xs font-extrabold cursor-pointer">
-                  📋 لصق صورة
                 </button>
               </div>
             </div>

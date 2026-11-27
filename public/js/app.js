@@ -232,6 +232,7 @@ async function loadBookings() {
     let result = await apiRequest("/api/bookings");
     bookings = Array.isArray(result.bookings) ? result.bookings : [];
 
+
     const legacyRaw = localStorage.getItem(STORAGE_KEY);
     if (bookings.length === 0 && legacyRaw) {
       let legacyBookings = [];
@@ -612,27 +613,10 @@ function onFlightToAirportChange(idx) {
 }
 
 // =======================================================================
-// استخراج تلقائي من ملف PDF أو صورة (رفع ملف أو لصق صورة مباشرة Ctrl+V)
+// استخراج تلقائي من ملف PDF أو صورة (طيران / فندق / توصيل)
 // =======================================================================
-let pendingPasteTargetType = null;
-
-function triggerPasteExtract(targetType = null) {
-  if (targetType) {
-    extractTargetType = targetType;
-    pendingPasteTargetType = targetType;
-  } else {
-    pendingPasteTargetType = null;
-  }
-  showToast(
-    targetType
-      ? "اضغط الآن Ctrl+V (أو Cmd+V) للصق صورة الاستخراج"
-      : "الصق الصورة مباشرة باستخدام Ctrl+V (أو Cmd+V) أو اختر نوع الاستخراج"
-  );
-}
-
 function triggerExtract(targetType) {
   extractTargetType = targetType;
-  pendingPasteTargetType = targetType;
   const fileInput = document.getElementById("extract-file-input");
   if (fileInput) {
     fileInput.value = "";
@@ -653,49 +637,21 @@ function fileToBase64Data(file) {
   });
 }
 
-function getPastedImageFile(clipboardData) {
-  if (!clipboardData) return null;
-
-  const items = Array.from(clipboardData.items || []);
-  for (const item of items) {
-    if (item.kind === "file" && String(item.type || "").toLowerCase().startsWith("image/")) {
-      const blob = item.getAsFile();
-      if (!blob) continue;
-      const ext = (item.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
-      return new File([blob], `pasted-booking-${Date.now()}.${ext}`, {
-        type: item.type || "image/png"
-      });
-    }
-  }
-
-  const files = Array.from(clipboardData.files || []);
-  const imgFile = files.find((f) => String(f.type || "").toLowerCase().startsWith("image/"));
-  if (imgFile) {
-    const ext = (imgFile.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
-    return new File([imgFile], imgFile.name || `pasted-booking-${Date.now()}.${ext}`, {
-      type: imgFile.type || "image/png"
-    });
-  }
-
-  return null;
-}
-
-async function processExtractedFile(file, targetType) {
+async function handleExtractFileSelected(event) {
+  const file = event.target?.files?.[0];
   if (!file) return;
-  const chosenType = targetType || extractTargetType || "flight";
-  extractTargetType = chosenType;
 
-  // حفظ ملف/صورة الاستخراج كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
+  // حفظ ملف الاستخراج نفسه كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
   try {
     const voucherDataUrl = await ntFileToDataUrl(file);
     const vRecord = {
       name: file.name,
-      stationType: chosenType,
-      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
+      stationType: extractTargetType,
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
       dataUrl: voucherDataUrl
     };
-    ntSessionVouchers[chosenType] = vRecord;
-    const matchedIdx = currentStations.findIndex((s) => s.type === chosenType);
+    ntSessionVouchers[extractTargetType] = vRecord;
+    const matchedIdx = currentStations.findIndex((s) => s.type === extractTargetType);
     if (matchedIdx !== -1) {
       ntSessionVouchers["idx_" + matchedIdx] = vRecord;
     }
@@ -704,18 +660,15 @@ async function processExtractedFile(file, targetType) {
   syncStationsFromDom();
   const statusBox = document.getElementById("extract-status");
   const statusText = document.getElementById("extract-status-text");
-  if (statusBox) {
-    statusBox.classList.remove("hidden");
-    statusBox.classList.add("flex");
-  }
+  if (statusBox) statusBox.classList.remove("hidden");
   if (statusText) statusText.textContent = `جاري تحليل "${file.name}" واستخراج البيانات...`;
 
   try {
     const base64Data = await fileToBase64Data(file);
-    const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png");
+    const mimeType = file.type || "application/pdf";
 
     let prompt = "";
-    if (chosenType === "flight") {
+    if (extractTargetType === "flight") {
       prompt = `استخرج بيانات تذكرة الطيران بدقة وأرجع JSON فقط بدون أي نص إضافي.
 إذا كانت رحلة الذهاب أو العودة تحتوي على كونيكشين (أكثر من طائرة/مقطع)، ضع كل طائرة كعنصر مستقل بالترتيب في outboundSegments و returnSegments:
 {
@@ -757,19 +710,18 @@ async function processExtractedFile(file, targetType) {
   "returnDepartureText": "موعد أول إقلاع في العودة",
   "returnBaggage": "حقائب العودة"
 }`;
-    } else if (chosenType === "hotel") {
-      prompt = `استخرج بيانات حجز الفندق بدقة من الصورة أو الملف وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+    } else if (extractTargetType === "hotel") {
+      prompt = `استخرج بيانات حجز الفندق بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
 {
   "hotelName": "اسم الفندق",
-  "stars": "تصنيف النجوم مثل 5 نجوم أو 4 نجوم",
   "city": "المدينة",
   "checkIn": "تاريخ الدخول",
   "checkOut": "تاريخ الخروج",
-  "nights": "عدد الليالي مثل 5 ليالي",
-  "notes": "ملاحظات مثل نوع الغرفة أو الإفطار أو رقم الحجز"
+  "nights": "عدد الليالي",
+  "notes": "ملاحظات مثل الإفطار أو رقم الحجز"
 }`;
     } else {
-      prompt = `استخرج بيانات حجز التوصيل أو المواصلات بدقة من الصورة أو الملف وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+      prompt = `استخرج بيانات حجز التوصيل أو المواصلات بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
 {
   "fromLocation": "نقطة الانطلاق",
   "toLocation": "نقطة الوصول",
@@ -798,71 +750,31 @@ async function processExtractedFile(file, targetType) {
     const data = parseJsonLoose(rawText);
 
     if (!data) {
-      showToast("لم يتمكن النظام من قراءة البيانات من الصورة، يمكنك إدخالها يدوياً");
+      showToast("لم يتمكن النظام من قراءة البيانات من الملف، يمكنك إدخالها يدوياً");
       return;
     }
 
-    if (chosenType === "flight") {
+    if (extractTargetType === "flight") {
       applyExtractedFlightData(data);
-    } else if (chosenType === "hotel") {
+    } else if (extractTargetType === "hotel") {
       applyExtractedHotelData(data);
     } else {
       applyExtractedTransferData(data);
     }
 
     try {
-      const idxAfter = currentStations.findIndex((s) => s.type === chosenType);
-      if (idxAfter !== -1 && ntSessionVouchers[chosenType]) {
-        ntSessionVouchers["idx_" + idxAfter] = ntSessionVouchers[chosenType];
+      const idxAfter = currentStations.findIndex((s) => s.type === extractTargetType);
+      if (idxAfter !== -1 && ntSessionVouchers[extractTargetType]) {
+        ntSessionVouchers["idx_" + idxAfter] = ntSessionVouchers[extractTargetType];
       }
     } catch (_) {}
 
     renderStationsEditor();
     showToast("تم استخراج البيانات وتعبئتها بنجاح");
   } catch (err) {
-    console.error("Extract failed:", err);
-    showToast("حدث خطأ أثناء استخراج البيانات من الصورة");
+    showToast("حدث خطأ أثناء استخراج البيانات من الملف");
   } finally {
-    if (statusBox) {
-      statusBox.classList.add("hidden");
-      statusBox.classList.remove("flex");
-    }
-  }
-}
-
-document.addEventListener("paste", async (event) => {
-  const adminSec = document.getElementById("admin-section");
-  const isAdminVisible = adminSec && !adminSec.classList.contains("hidden");
-  if (!isAdminVisible) return;
-
-  const pastedFile = getPastedImageFile(event.clipboardData);
-  if (!pastedFile) return;
-
-  const activeEl = document.activeElement;
-  const tag = activeEl?.tagName?.toLowerCase() || "";
-  const isTextField =
-    (tag === "input" && !["file", "checkbox", "radio", "button"].includes((activeEl.type || "").toLowerCase())) ||
-    tag === "textarea" ||
-    tag === "select" ||
-    activeEl?.isContentEditable;
-
-  if (isTextField && !pendingPasteTargetType) return;
-
-  event.preventDefault();
-
-  const chosenType = pendingPasteTargetType || extractTargetType || "flight";
-  pendingPasteTargetType = null;
-  extractTargetType = chosenType;
-
-  await processExtractedFile(pastedFile, chosenType);
-});
-
-async function handleExtractFileSelected(event) {
-  const file = event.target?.files?.[0];
-  if (!file) return;
-  try {
-    await processExtractedFile(file, extractTargetType);
-  } finally {
+    if (statusBox) statusBox.classList.add("hidden");
     event.target.value = "";
   }
 }
@@ -1023,32 +935,21 @@ function applyExtractedFlightData(data) {
 function applyExtractedHotelData(data) {
   let hotelIdx = currentStations.findIndex((s) => s.type === "hotel" && !s.name);
   if (hotelIdx === -1) {
-    hotelIdx = currentStations.findIndex((s) => s.type === "hotel");
-  }
-  if (hotelIdx === -1) {
     currentStations.push(createStationObject("hotel"));
     hotelIdx = currentStations.length - 1;
   }
   const st = currentStations[hotelIdx];
-  const newName = String(data.hotelName || data.name || "").trim();
-  if (newName) st.name = newName;
-
+  st.name = String(data.hotelName || "").trim();
   const rawStars = String(data.stars || data.starRating || "").trim();
   if (rawStars) {
     st.stars = rawStars.includes("نجم") ? rawStars : `${rawStars} نجوم`;
   } else if (!st.stars) {
     st.stars = "5 نجوم";
   }
-
-  const checkInVal = String(data.checkIn || data.check_in || "").trim();
-  const checkOutVal = String(data.checkOut || data.check_out || "").trim();
-  const nightsVal = String(data.nights || "").trim();
-  const notesVal = String(data.notes || "").trim();
-
-  if (checkInVal) st.checkIn = checkInVal;
-  if (checkOutVal) st.checkOut = checkOutVal;
-  if (nightsVal) st.nights = nightsVal;
-  if (notesVal) st.notes = notesVal;
+  st.checkIn = String(data.checkIn || "").trim();
+  st.checkOut = String(data.checkOut || "").trim();
+  st.nights = String(data.nights || "").trim();
+  st.notes = String(data.notes || "").trim();
 
   const destInput = document.getElementById("main-destination");
   if (data.city && destInput && !destInput.value.trim()) {
@@ -1059,22 +960,14 @@ function applyExtractedHotelData(data) {
 function applyExtractedTransferData(data) {
   let trIdx = currentStations.findIndex((s) => s.type === "transfer" && !s.fromLocation && !s.toLocation);
   if (trIdx === -1) {
-    trIdx = currentStations.findIndex((s) => s.type === "transfer");
-  }
-  if (trIdx === -1) {
     currentStations.push(createStationObject("transfer"));
     trIdx = currentStations.length - 1;
   }
   const st = currentStations[trIdx];
-  const fromVal = String(data.fromLocation || data.from || "").trim();
-  const toVal = String(data.toLocation || data.to || "").trim();
-  const timeVal = String(data.pickupTime || data.time || "").trim();
-  const notesVal = String(data.notes || "").trim();
-
-  if (fromVal) st.fromLocation = fromVal;
-  if (toVal) st.toLocation = toVal;
-  if (timeVal) st.pickupTime = timeVal;
-  if (notesVal) st.notes = notesVal;
+  st.fromLocation = String(data.fromLocation || "").trim();
+  st.toLocation = String(data.toLocation || "").trim();
+  st.pickupTime = String(data.pickupTime || "").trim();
+  st.notes = String(data.notes || "").trim();
 }
 
 // =======================================================================
@@ -1458,174 +1351,145 @@ function getCheckinFlightCodes(booking) {
   };
 }
 
-function parseFlexibleDateTime(rawVal) {
-  if (!rawVal) return null;
+function formatArabicDepartureDisplay(rawVal) {
+  if (!rawVal) return "غير محدد";
   const str = String(rawVal).trim();
-  if (!str) return null;
+  const monthsMap = {
+    jan: 1, january: 1,
+    feb: 2, february: 2,
+    mar: 3, march: 3,
+    apr: 4, april: 4,
+    may: 5,
+    jun: 6, june: 6,
+    jul: 7, july: 7,
+    aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12
+  };
 
-const monthsMap = {
-  jan: 1, january: 1, جانفي: 1, يناير: 1,
-  feb: 2, february: 2, فيفري: 2, فبراير: 2,
-  mar: 3, march: 3, مارس: 3, آذار: 3,
-  apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
-  may: 5, ماي: 5, مايو: 5, أيار: 5,
-  jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
-  jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
-  aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
-  sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
-  oct: 10, october: 10, أكتوبر: 10, "تشرين الأول": 10,
-  nov: 11, november: 11, نوفمبر: 11, "تشرين الثاني": 11,
-  dec: 12, december: 12, ديسمبر: 12, "كانون الأول": 12
-};
-  
-  let year = null;
-  let month = null;
-  let day = null;
-  let hour = null;
-  let minute = null;
-  let second = 0;
+  let day = null, month = null, year = null;
+  let hour = null, minute = null;
 
-  const time12Match = str.match(
-    /(?:^|[\sT,@\-–|])(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)\b/i
-  );
-  const time24Match = str.match(
-    /(?:^|[\sT,@\-–|])(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\s*(?:am|pm|ص|م|صباحا|صباحاً|مساء|مساءً))\b/i
-  );
+  // استخراج الوقت (24 ساعة أو 12 ساعة AM/PM)
+  const time12Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)\b/i);
+  const time24Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/);
 
   if (time12Match) {
     let h = parseInt(time12Match[1], 10);
     minute = parseInt(time12Match[2], 10);
-    second = time12Match[3] ? parseInt(time12Match[3], 10) : 0;
-    const mer = time12Match[4].toLowerCase();
-    const isPm = mer === "pm" || mer === "م" || mer === "مساء" || mer === "مساءً";
-    const isAm = mer === "am" || mer === "ص" || mer === "صباحا" || mer === "صباحاً";
-    if (isPm && h < 12) h += 12;
-    if (isAm && h === 12) h = 0;
+    const mer = time12Match[3].toLowerCase();
+    if ((mer === "pm" || mer === "م" || mer === "مساء" || mer === "مساءً") && h < 12) h += 12;
+    if ((mer === "am" || mer === "ص" || mer === "صباحا" || mer === "صباحاً") && h === 12) h = 0;
     hour = h;
   } else if (time24Match) {
     hour = parseInt(time24Match[1], 10);
     minute = parseInt(time24Match[2], 10);
-    second = time24Match[3] ? parseInt(time24Match[3], 10) : 0;
   }
 
-  const cleanedForDate = str
-    .replace(/\b(?:sun|mon|tue|wed|thu|fri|sat|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b,?/gi, " ")
-    .replace(/(?:^|[\sT,@\-–|])\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)?/gi, " ")
-    .trim();
-
-  const ymdMatch = cleanedForDate.match(/\b(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/);
-  const dmyMatch = cleanedForDate.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
-  const monthDayYearMatch = cleanedForDate.match(
-    /\b([A-Za-z\u0600-\u06FF]+)[,\s]+(\d{1,2})(?:st|nd|rd|th)?(?:[,\s]+(\d{4}))?\b/i
-  );
-  const dayMonthYearMatch = cleanedForDate.match(
-    /\b(\d{1,2})(?:st|nd|rd|th)?[\s,/-]+([A-Za-z\u0600-\u06FF]+)(?:[,\s/-]+(\d{4}))?\b/i
-  );
+  // استخراج التاريخ (YYYY-MM-DD أو DD-MM-YYYY أو DD/MM/YYYY أو DD Mon YYYY)
+  const ymdMatch = str.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+  const dmyMatch = str.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  const textMonthMatch = str.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:[,\s]+(\d{4}))?\b/);
 
   if (ymdMatch) {
     year = parseInt(ymdMatch[1], 10);
     month = parseInt(ymdMatch[2], 10);
     day = parseInt(ymdMatch[3], 10);
   } else if (dmyMatch) {
-    const p1 = parseInt(dmyMatch[1], 10);
-    const p2 = parseInt(dmyMatch[2], 10);
+    day = parseInt(dmyMatch[1], 10);
+    month = parseInt(dmyMatch[2], 10);
     year = parseInt(dmyMatch[3], 10);
-    if (p1 > 12) {
-      day = p1;
-      month = p2;
-    } else if (p2 > 12) {
-      month = p1;
-      day = p2;
-    } else {
-      day = p1;
-      month = p2;
-    }
-  } else if (monthDayYearMatch && monthsMap[monthDayYearMatch[1].toLowerCase()]) {
-    month = monthsMap[monthDayYearMatch[1].toLowerCase()];
-    day = parseInt(monthDayYearMatch[2], 10);
-    year = monthDayYearMatch[3] ? parseInt(monthDayYearMatch[3], 10) : null;
-  } else if (dayMonthYearMatch && monthsMap[dayMonthYearMatch[2].toLowerCase()]) {
-    day = parseInt(dayMonthYearMatch[1], 10);
-    month = monthsMap[dayMonthYearMatch[2].toLowerCase()];
-    year = dayMonthYearMatch[3] ? parseInt(dayMonthYearMatch[3], 10) : null;
+  } else if (textMonthMatch) {
+    day = parseInt(textMonthMatch[1], 10);
+    month = monthsMap[textMonthMatch[2].toLowerCase()] || null;
+    year = textMonthMatch[3] ? parseInt(textMonthMatch[3], 10) : new Date().getFullYear();
   }
 
-  if (day && month && !year) {
-    const now = new Date();
-    year = now.getFullYear();
-    const hTest = hour ?? 9;
-    const mTest = minute ?? 0;
-    const candidate = new Date(year, month - 1, day, hTest, mTest, second);
-    if (candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000) {
-      year += 1;
-    }
+  if (!day || !month || !year) {
+    return str;
   }
 
-  if (year && month && day) {
-    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    const hasTime = hour !== null && minute !== null && !Number.isNaN(hour) && !Number.isNaN(minute);
-    const dt = new Date(
-      year,
-      month - 1,
-      day,
-      hasTime ? hour : 9,
-      hasTime ? minute : 0,
-      hasTime ? second : 0
-    );
-    if (Number.isNaN(dt.getTime())) return null;
-    return {
-      date: dt,
-      timestamp: dt.getTime(),
-      year,
-      month,
-      day,
-      hour: hasTime ? hour : null,
-      minute: hasTime ? minute : null,
-      hasTime
-    };
-  }
+  const dd = String(day).padStart(2, "0");
+  const mm = String(month).padStart(2, "0");
+  const datePart = `${dd}-${mm}-${year}`;
 
-  const parsedNative = Date.parse(str);
-  if (!Number.isNaN(parsedNative)) {
-    const dt = new Date(parsedNative);
-    return {
-      date: dt,
-      timestamp: dt.getTime(),
-      year: dt.getFullYear(),
-      month: dt.getMonth() + 1,
-      day: dt.getDate(),
-      hour: dt.getHours(),
-      minute: dt.getMinutes(),
-      hasTime: true
-    };
-  }
-
-  return null;
-}
-
-function formatArabicDepartureDisplay(rawVal) {
-  if (!rawVal) return "غير محدد";
-  const parsed = parseFlexibleDateTime(rawVal);
-  if (!parsed) return String(rawVal).trim();
-
-  const dd = String(parsed.day).padStart(2, "0");
-  const mm = String(parsed.month).padStart(2, "0");
-  const datePart = `${dd}-${mm}-${parsed.year}`;
-
-  if (!parsed.hasTime) {
+  if (hour === null || minute === null || Number.isNaN(hour) || Number.isNaN(minute)) {
     return datePart;
   }
 
-  const period = parsed.hour >= 12 ? "مساءً" : "صباحاً";
-  const hh = String(parsed.hour).padStart(2, "0");
-  const minStr = String(parsed.minute).padStart(2, "0");
+  const period = hour >= 12 ? "مساءً" : "صباحاً";
+  const hh = String(hour).padStart(2, "0");
+  const minStr = String(minute).padStart(2, "0");
 
   return `${datePart} | ${hh}:${minStr} ${period}`;
 }
 
 function parseDepartureDateToTimestamp(departureText) {
-  const parsed = parseFlexibleDateTime(departureText);
-  return parsed ? parsed.timestamp : null;
+  if (!departureText) return null;
+  const raw = String(departureText).trim();
+
+  const monthsMap = {
+    jan: "01", january: "01",
+    feb: "02", february: "02",
+    mar: "03", march: "03",
+    apr: "04", april: "04",
+    may: "05",
+    jun: "06", june: "06",
+    jul: "07", july: "07",
+    aug: "08", august: "08",
+    sep: "09", sept: "09", september: "09",
+    oct: "10", october: "10",
+    nov: "11", november: "11",
+    dec: "12", december: "12"
+  };
+
+  const timeMatch = raw.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
+  const hh = timeMatch ? String(timeMatch[1]).padStart(2, "0") : "09";
+  const mm = timeMatch ? String(timeMatch[2]).padStart(2, "0") : "00";
+  const ss = timeMatch && timeMatch[3] ? String(timeMatch[3]).padStart(2, "0") : "00";
+
+  const monthNameMatch = raw.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?\b/);
+  if (monthNameMatch) {
+    const day = String(monthNameMatch[1]).padStart(2, "0");
+    const monthKey = monthNameMatch[2].toLowerCase();
+    const month = monthsMap[monthKey];
+    if (month) {
+      let year = monthNameMatch[3];
+      if (!year) {
+        const now = new Date();
+        year = String(now.getFullYear());
+        const candidate = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`);
+        if (candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000) {
+          year = String(now.getFullYear() + 1);
+        }
+      }
+      const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
+      if (!Number.isNaN(ts)) return ts;
+    }
+  }
+
+  const ymdMatch = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = String(ymdMatch[2]).padStart(2, "0");
+    const day = String(ymdMatch[3]).padStart(2, "0");
+    const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+
+  const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  if (dmyMatch) {
+    const day = String(dmyMatch[1]).padStart(2, "0");
+    const month = String(dmyMatch[2]).padStart(2, "0");
+    const year = dmyMatch[3];
+    const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+
+  const directTs = Date.parse(raw);
+  return Number.isNaN(directTs) ? null : directTs;
 }
 
 function renderCheckinAlertBanner(booking) {
@@ -1785,20 +1649,24 @@ function renderCustomerDashboard(booking) {
     return;
   }
 
+  // تحديد اتجاه مقطع الطيران (ذهاب أو عودة) بدقة حتى لو أُدخل يدوياً بدون كلمة ذهاب/عودة
   function getFlightLegDirection(st, flightIdxInAllFlights, totalFlightsCount) {
     const notes = String(st.notes || "").toLowerCase();
     if (notes.includes("عودة") || notes.includes("return")) return "return";
     if (notes.includes("ذهاب") || notes.includes("outbound")) return "outbound";
+    // إذا أُدخلت 4 مقاطع يدوياً بدون كتابة ذهاب/عودة: أول مقطعين ذهاب والمقطعين الباقيين عودة
     if (totalFlightsCount === 4) {
       return flightIdxInAllFlights < 2 ? "outbound" : "return";
     }
     return "outbound";
   }
 
+  // تجميع مقاطع الطيران المتصلة (كونيكشين) ضمن مجموعة واحدة لكل اتجاه على حدة
   function isConnectionBetweenFlights(currSt, nextSt, currFlightOrder, nextFlightOrder, totalFlightsCount) {
     if (!currSt || !nextSt || currSt.type !== "flight" || nextSt.type !== "flight") return false;
     const dir1 = getFlightLegDirection(currSt, currFlightOrder, totalFlightsCount);
     const dir2 = getFlightLegDirection(nextSt, nextFlightOrder, totalFlightsCount);
+    // لا ندمج الذهاب مع العودة أبداً
     if (dir1 !== dir2) return false;
     const n1 = String(currSt.notes || "").toLowerCase();
     const n2 = String(nextSt.notes || "").toLowerCase();
@@ -2480,6 +2348,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   switchPortal("customer");
 });
 
+
+
+
+
+
+
+
 // =======================================================================
 // نظام فاوشرات الحجز (طيران / فندق / توصيل) — عبر قاعدة البيانات فقط (بدون localStorage)
 // =======================================================================
@@ -2528,6 +2403,7 @@ async function ntUploadStationVoucher(event, index, stationType) {
     ntSessionVouchers[stationType] = record;
     ntSessionVouchers["idx_" + index] = record;
 
+    // إذا كان الحجز محفوظاً مسبقاً في قاعدة البيانات، نحدّثه فوراً في القاعدة أيضاً
     const editId = document.getElementById("editing-booking-id")?.value?.trim();
     const pnrVal = document.getElementById("booking-pnr")?.value?.trim()?.toUpperCase();
     const targetBooking = bookings.find(
