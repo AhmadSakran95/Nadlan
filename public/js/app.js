@@ -1290,7 +1290,197 @@ function openBookingInCustomerPortal(bookingId) {
   renderCustomerNotesCard(found);
   initAiChatForBooking(found);
   fetchDestinationIntelligence(found.destination);
+  checkAndSyncLiveFlightsForBooking(found);
 }
+
+// =======================================================================
+// فحص تلقائي لمواعيد وحالة الرحلات عبر التاريخ ورقم الطائرة عند فتح الصفحة
+// =======================================================================
+const FLIGHT_SYNC_CACHE_PREFIX = "ndl_flight_sync_v1_";
+let ntFlightSyncRunning = false;
+
+function ntNormalizeFlightDateKey(departureText) {
+  const raw = String(departureText || "").trim();
+  const ymd = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+  if (ymd) {
+    return `${ymd[1]}-${String(ymd[2]).padStart(2, "0")}-${String(ymd[3]).padStart(2, "0")}`;
+  }
+  const dmy = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  if (dmy) {
+    return `${dmy[3]}-${String(dmy[2]).padStart(2, "0")}-${String(dmy[1]).padStart(2, "0")}`;
+  }
+  const ts = parseDepartureDateToTimestamp(raw);
+  if (ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  return raw;
+}
+
+function ntBuildFlightLiveAlertBanner(changes) {
+  const banner = document.getElementById("checkin-alert-banner");
+  if (!banner || !changes.length) return;
+
+  let alertBox = document.getElementById("nt-live-flight-schedule-alert");
+  if (!alertBox) {
+    alertBox = document.createElement("div");
+    alertBox.id = "nt-live-flight-schedule-alert";
+    banner.parentNode.insertBefore(alertBox, banner.nextSibling);
+  }
+
+  const itemsHtml = changes
+    .map(
+      (c) => `
+      <li class="flex flex-wrap items-center justify-between gap-2 bg-white/85 border border-rose-200 rounded-2xl px-3.5 py-2 text-xs font-extrabold text-slate-900">
+        <span>✈️ <strong>${escapeHtml(c.flightNumber)}</strong> (${escapeHtml(c.route)}):</span>
+        <span>
+          السابق: <s class="text-rose-700" dir="ltr">${escapeHtml(c.oldFormatted)}</s>
+          <span class="mx-1.5 text-emerald-700 font-black">➔</span>
+          الجديد: <strong class="text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded-lg" dir="ltr">${escapeHtml(c.newFormatted)}</strong>
+        </span>
+      </li>
+    `
+    )
+    .join("");
+
+  alertBox.className =
+    "bg-gradient-to-l from-rose-50 via-amber-50 to-white border-2 border-rose-400 rounded-3xl p-4 sm:p-5 shadow-md space-y-3";
+  alertBox.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black">🔔 تحديث موعد الطيران</span>
+        <h3 class="text-sm sm:text-base font-black text-slate-950">تم رصد تعديل على موعد إقلاع رحلتك!</h3>
+      </div>
+      <span class="text-[11px] font-extrabold text-rose-800 bg-rose-100 px-2.5 py-1 rounded-full">فحص تلقائي بالتاريخ ورقم الرحلة</span>
+    </div>
+    <ul class="space-y-2">${itemsHtml}</ul>
+  `;
+}
+
+async function ntQuerySingleFlightSchedule(st) {
+  const flightNo = String(st.flightNumber || "").trim().toUpperCase();
+  const dateKey = ntNormalizeFlightDateKey(st.departureText);
+  const fromCode = String(st.fromAirport || "").trim().toUpperCase();
+  const toCode = String(st.toAirport || "").trim().toUpperCase();
+  if (!flightNo || !dateKey) return null;
+
+  const cacheKey = `${FLIGHT_SYNC_CACHE_PREFIX}${flightNo}_${dateKey}_${fromCode}_${toCode}`;
+  try {
+    const cachedRaw = sessionStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (cached && cached.ts && Date.now() - cached.ts < 15 * 60 * 1000) {
+        return cached.data;
+      }
+    }
+  } catch (_) {}
+
+  const prompt = `ابحث بدقة عن جدول رحلة الطيران رقم "${flightNo}" بتاريخ "${dateKey}"${fromCode ? ` من مطار ${fromCode}` : ""}${toCode ? ` إلى مطار ${toCode}` : ""}.
+أرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+{
+  "found": true,
+  "flightNumber": "${flightNo}",
+  "scheduledDepartureLocal": "التاريخ والوقت المحلي المجدول للإقلاع مثل 2026-12-15 23:50 أو 2026-12-15T23:50:00",
+  "status": "حالة الرحلة مثل Scheduled أو On Time أو Delayed أو Cancelled أو Departed",
+  "notes": "ملاحظة مختصرة عن الموعد أو البوابة إن وجدت"
+}
+إذا لم تجد موعداً مؤكداً للرحلة في هذا التاريخ، اجعل "found": false و "scheduledDepartureLocal": "".`;
+
+  const result = await callGeminiApi({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  });
+
+  const parsed = parseJsonLoose(extractGeminiText(result));
+  if (!parsed || !parsed.found || !parsed.scheduledDepartureLocal) {
+    return null;
+  }
+
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: parsed }));
+  } catch (_) {}
+
+  return parsed;
+}
+
+async function checkAndSyncLiveFlightsForBooking(booking) {
+  if (!booking || !Array.isArray(booking.stations) || ntFlightSyncRunning) return;
+  const flightEntries = booking.stations
+    .map((st, idx) => ({ st, idx }))
+    .filter((entry) => entry.st && entry.st.type === "flight" && entry.st.flightNumber && entry.st.departureText);
+
+  if (!flightEntries.length) return;
+
+  ntFlightSyncRunning = true;
+  const oldAlert = document.getElementById("nt-live-flight-schedule-alert");
+  if (oldAlert) oldAlert.remove();
+
+  const changes = [];
+  let anyStationUpdated = false;
+
+  try {
+    for (const entry of flightEntries) {
+      const { st } = entry;
+      const oldRaw = String(st.departureText || "").trim();
+      const oldFormatted = formatArabicDepartureDisplay(oldRaw);
+      const oldTs = parseDepartureDateToTimestamp(oldRaw);
+
+      const liveInfo = await ntQuerySingleFlightSchedule(st);
+      if (!liveInfo || !liveInfo.scheduledDepartureLocal) continue;
+
+      const newRaw = String(liveInfo.scheduledDepartureLocal || "").trim();
+      const newFormatted = formatArabicDepartureDisplay(newRaw);
+      const newTs = parseDepartureDateToTimestamp(newRaw);
+
+      // مقارنة الموعد الفعلي (بتفارق يتجاوز دقيقة واحدة لتجنب الفروقات الشكلية)
+      const timeChanged =
+        oldTs !== null && newTs !== null
+          ? Math.abs(newTs - oldTs) > 60 * 1000
+          : newFormatted !== oldFormatted && !newFormatted.includes("غير محدد");
+
+      if (timeChanged) {
+        st.departureText = newRaw;
+        anyStationUpdated = true;
+        changes.push({
+          flightNumber: st.flightNumber,
+          route: `${st.fromAirport || "—"} ➔ ${st.toAirport || "—"}`,
+          oldFormatted,
+          newFormatted
+        });
+      }
+    }
+
+    if (anyStationUpdated && changes.length > 0) {
+      // حفظ الموعد المحدث في قاعدة البيانات مباشرة حتى يبقى متزامناً
+      try {
+        await apiRequest("/api/bookings", {
+          method: "POST",
+          body: JSON.stringify(booking)
+        });
+        const idxInList = bookings.findIndex((b) => b.id === booking.id);
+        if (idxInList !== -1) {
+          bookings[idxInList] = booking;
+        }
+      } catch (dbErr) {
+        console.warn("Could not persist updated flight time to DB:", dbErr);
+      }
+
+      if (activeCustomerBooking && activeCustomerBooking.id === booking.id) {
+        renderCustomerDashboard(booking);
+        ntBuildFlightLiveAlertBanner(changes);
+        showToast("تم تحديث موعد الطيران تلقائياً حسب جدول الرحلة");
+      }
+    }
+  } catch (err) {
+    console.warn("Live flight schedule check skipped:", err);
+  } finally {
+    ntFlightSyncRunning = false;
+  }
+}
+
 
 function logoutCustomerPortal() {
   activeCustomerBooking = null;
