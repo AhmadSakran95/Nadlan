@@ -669,22 +669,46 @@ async function handleExtractFileSelected(event) {
 
     let prompt = "";
     if (extractTargetType === "flight") {
-      prompt = `استخرج بيانات تذكرة الطيران بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+      prompt = `استخرج بيانات تذكرة الطيران بدقة وأرجع JSON فقط بدون أي نص إضافي.
+إذا كانت رحلة الذهاب أو العودة تحتوي على كونيكشين (أكثر من طائرة/مقطع)، ضع كل طائرة كعنصر مستقل بالترتيب في outboundSegments و returnSegments:
 {
   "passengers": ["اسم المسافر 1", "اسم المسافر 2"],
-  "fromAirport": "رمز مطار الذهاب مثل TLV",
-  "toAirport": "رمز مطار الوصول مثل BUS",
-  "flightNumber": "رقم رحلة الذهاب مثل KL 462",
-  "airlinePnr": "رمز PNR الذهاب",
-  "baggage": "تفاصيل الحقائب",
-  "departureText": "تاريخ ووقت إقلاع الذهاب",
+  "finalDestinationCity": "المدينة النهائية للوجهة إن وجدت",
+  "outboundSegments": [
+    {
+      "fromAirport": "رمز مطار الإقلاع مثل TLV",
+      "toAirport": "رمز مطار الوصول أو التوقف مثل IST",
+      "flightNumber": "رقم الطائرة مثل TK 789",
+      "airlinePnr": "رمز PNR إن وجد",
+      "baggage": "الحقائب إن وجدت",
+      "departureText": "تاريخ ووقت الإقلاع",
+      "connectionAfter": "إذا كان هناك كونيكشين بعد هذه الطائرة اكتب: كونيكشين عبر IST (مدة التوقف ...)"
+    }
+  ],
   "isRoundTrip": true,
-  "returnFromAirport": "رمز مطار العودة إن وجد",
-  "returnToAirport": "رمز مطار الوصول للعودة إن وجد",
-  "returnFlightNumber": "رقم رحلة العودة إن وجد",
-  "returnAirlinePnr": "رمز PNR العودة إن وجد",
-  "returnDepartureText": "تاريخ ووقت إقلاع العودة إن وجد",
-  "returnBaggage": "حقائب العودة إن وجدت"
+  "returnSegments": [
+    {
+      "fromAirport": "رمز مطار الإقلاع في العودة",
+      "toAirport": "رمز مطار الوصول أو التوقف في العودة",
+      "flightNumber": "رقم الطائرة في العودة",
+      "airlinePnr": "رمز PNR إن وجد",
+      "baggage": "الحقائب إن وجدت",
+      "departureText": "تاريخ ووقت الإقلاع في العودة",
+      "connectionAfter": "إذا كان هناك كونيكشين بعد هذه الطائرة اكتب: كونيكشين عبر ... (مدة التوقف ...)"
+    }
+  ],
+  "fromAirport": "رمز مطار بداية الذهاب",
+  "toAirport": "رمز مطار نهاية الذهاب",
+  "flightNumber": "رقم أول رحلة ذهاب",
+  "airlinePnr": "رمز PNR",
+  "baggage": "الحقائب",
+  "departureText": "موعد أول إقلاع",
+  "returnFromAirport": "رمز مطار بداية العودة",
+  "returnToAirport": "رمز مطار نهاية العودة",
+  "returnFlightNumber": "رقم أول رحلة عودة",
+  "returnAirlinePnr": "رمز PNR العودة",
+  "returnDepartureText": "موعد أول إقلاع في العودة",
+  "returnBaggage": "حقائب العودة"
 }`;
     } else if (extractTargetType === "hotel") {
       prompt = `استخرج بيانات حجز الفندق بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
@@ -755,6 +779,23 @@ async function handleExtractFileSelected(event) {
   }
 }
 
+function buildFlightSegmentStation(seg, fallbackPnr, fallbackBaggage, legLabel, connNote) {
+  const st = createStationObject("flight");
+  st.fromAirport = String(seg.fromAirport || "").trim().toUpperCase();
+  st.toAirport = String(seg.toAirport || "").trim().toUpperCase();
+  st.flightNumber = String(seg.flightNumber || "").trim().toUpperCase();
+  st.airlinePnr = String(seg.airlinePnr || fallbackPnr || "").trim().toUpperCase();
+  st.baggage = String(seg.baggage || fallbackBaggage || "").trim();
+  st.departureText = String(seg.departureText || "").trim();
+
+  const noteParts = [];
+  if (legLabel) noteParts.push(legLabel);
+  if (connNote) noteParts.push(connNote);
+  if (seg.notes) noteParts.push(String(seg.notes).trim());
+  st.notes = noteParts.join(" • ");
+  return st;
+}
+
 function applyExtractedFlightData(data) {
   if (Array.isArray(data.passengers) && data.passengers.length > 0) {
     const cleanPassengers = data.passengers.map((p) => String(p || "").trim()).filter(Boolean);
@@ -774,59 +815,120 @@ function applyExtractedFlightData(data) {
     }
   }
 
-  const toCode = String(data.toAirport || "").trim().toUpperCase();
-  const mappedCity = mapAirportCodeToCity(toCode);
-  const destInput = document.getElementById("main-destination");
-  if (mappedCity && destInput) {
-    destInput.value = mappedCity;
-  }
+  let rawOutbound = Array.isArray(data.outboundSegments)
+    ? data.outboundSegments.filter((s) => s && (s.fromAirport || s.toAirport || s.flightNumber || s.departureText))
+    : [];
 
-  let flightIdx = currentStations.findIndex((s) => s.type === "flight");
-  if (flightIdx === -1) {
-    currentStations.unshift(createStationObject("flight"));
-    flightIdx = 0;
+  if (!rawOutbound.length && (data.fromAirport || data.toAirport || data.flightNumber || data.departureText)) {
+    rawOutbound = [
+      {
+        fromAirport: data.fromAirport,
+        toAirport: data.toAirport,
+        flightNumber: data.flightNumber,
+        airlinePnr: data.airlinePnr,
+        baggage: data.baggage,
+        departureText: data.departureText
+      }
+    ];
   }
-
-  const st = currentStations[flightIdx];
-  st.fromAirport = String(data.fromAirport || st.fromAirport || "").trim().toUpperCase();
-  st.toAirport = toCode || st.toAirport;
-  st.flightNumber = String(data.flightNumber || st.flightNumber || "").trim().toUpperCase();
-  st.airlinePnr = String(data.airlinePnr || st.airlinePnr || "").trim().toUpperCase();
-  st.baggage = String(data.baggage || st.baggage || "").trim();
-  st.departureText = String(data.departureText || st.departureText || "").trim();
 
   const hasReturn = Boolean(
     data.isRoundTrip ||
+      (Array.isArray(data.returnSegments) && data.returnSegments.length > 0) ||
       data.returnFlightNumber ||
       data.returnDepartureText ||
       data.returnFromAirport ||
       data.returnToAirport
   );
 
-  if (hasReturn) {
-    st.notes = st.notes ? `${st.notes} • ذهاب وعودة` : "ذهاب وعودة";
+  let rawReturn = Array.isArray(data.returnSegments)
+    ? data.returnSegments.filter((s) => s && (s.fromAirport || s.toAirport || s.flightNumber || s.departureText))
+    : [];
 
-    let lastFlightIdx = -1;
-    for (let i = currentStations.length - 1; i > flightIdx; i--) {
-      if (currentStations[i].type === "flight") {
-        lastFlightIdx = i;
-        break;
+  if (!rawReturn.length && hasReturn) {
+    const lastOutTo = rawOutbound.length ? rawOutbound[rawOutbound.length - 1].toAirport : data.toAirport;
+    const firstOutFrom = rawOutbound.length ? rawOutbound[0].fromAirport : data.fromAirport;
+    rawReturn = [
+      {
+        fromAirport: data.returnFromAirport || lastOutTo,
+        toAirport: data.returnToAirport || firstOutFrom,
+        flightNumber: data.returnFlightNumber,
+        airlinePnr: data.returnAirlinePnr || data.airlinePnr,
+        baggage: data.returnBaggage || data.baggage,
+        departureText: data.returnDepartureText
       }
+    ];
+  }
+
+  const finalOutTo = rawOutbound.length ? String(rawOutbound[rawOutbound.length - 1].toAirport || "").trim().toUpperCase() : String(data.toAirport || "").trim().toUpperCase();
+  const mappedCity = mapAirportCodeToCity(finalOutTo);
+  const destInput = document.getElementById("main-destination");
+  if (destInput) {
+    if (data.finalDestinationCity && !destInput.value.trim()) {
+      destInput.value = String(data.finalDestinationCity).trim();
+    } else if (mappedCity) {
+      destInput.value = mappedCity;
+    }
+  }
+
+  const generatedFlightStations = [];
+
+  rawOutbound.forEach((seg, idx) => {
+    const isConnected = rawOutbound.length > 1;
+    const legLabel = isConnected
+      ? `ذهاب (طائرة ${idx + 1} من ${rawOutbound.length})`
+      : hasReturn
+      ? "رحلة الذهاب"
+      : "رحلة طيران";
+
+    let connNote = "";
+    if (idx < rawOutbound.length - 1) {
+      const nextSeg = rawOutbound[idx + 1] || {};
+      const hubCode = String(seg.toAirport || nextSeg.fromAirport || "").trim().toUpperCase();
+      connNote = seg.connectionAfter
+        ? String(seg.connectionAfter).trim()
+        : `كونيكشين عبر ${hubCode || "مطار التوقف"}`;
+    } else if (isConnected) {
+      connNote = "وصول الوجهة بعد الكونيكشين";
     }
 
-    if (lastFlightIdx === -1) {
-      currentStations.push(createStationObject("flight"));
-      lastFlightIdx = currentStations.length - 1;
+    generatedFlightStations.push(
+      buildFlightSegmentStation(seg, data.airlinePnr, data.baggage, legLabel, connNote)
+    );
+  });
+
+  rawReturn.forEach((seg, idx) => {
+    const isConnected = rawReturn.length > 1;
+    const legLabel = isConnected
+      ? `عودة (طائرة ${idx + 1} من ${rawReturn.length})`
+      : "رحلة العودة";
+
+    let connNote = "";
+    if (idx < rawReturn.length - 1) {
+      const nextSeg = rawReturn[idx + 1] || {};
+      const hubCode = String(seg.toAirport || nextSeg.fromAirport || "").trim().toUpperCase();
+      connNote = seg.connectionAfter
+        ? String(seg.connectionAfter).trim()
+        : `كونيكشين عبر ${hubCode || "مطار التوقف"}`;
+    } else if (isConnected) {
+      connNote = "وصول العودة بعد الكونيكشين";
     }
 
-    const retSt = currentStations[lastFlightIdx];
-    retSt.fromAirport = String(data.returnFromAirport || toCode || retSt.fromAirport || "").trim().toUpperCase();
-    retSt.toAirport = String(data.returnToAirport || data.fromAirport || retSt.toAirport || "").trim().toUpperCase();
-    retSt.flightNumber = String(data.returnFlightNumber || retSt.flightNumber || "").trim().toUpperCase();
-    retSt.airlinePnr = String(data.returnAirlinePnr || data.airlinePnr || retSt.airlinePnr || "").trim().toUpperCase();
-    retSt.baggage = String(data.returnBaggage || data.baggage || retSt.baggage || "").trim();
-    retSt.departureText = String(data.returnDepartureText || retSt.departureText || "").trim();
-    retSt.notes = retSt.notes ? `${retSt.notes} • رحلة العودة` : "رحلة العودة";
+    generatedFlightStations.push(
+      buildFlightSegmentStation(seg, data.returnAirlinePnr || data.airlinePnr, data.returnBaggage || data.baggage, legLabel, connNote)
+    );
+  });
+
+  if (generatedFlightStations.length > 0) {
+    const firstFlightIdx = currentStations.findIndex((s) => s.type === "flight");
+    const nonFlightStations = currentStations.filter((s) => s.type !== "flight");
+    if (firstFlightIdx === -1) {
+      currentStations = [...generatedFlightStations, ...nonFlightStations];
+    } else {
+      const before = currentStations.slice(0, firstFlightIdx).filter((s) => s.type !== "flight");
+      const after = currentStations.slice(firstFlightIdx).filter((s) => s.type !== "flight");
+      currentStations = [...before, ...generatedFlightStations, ...after];
+    }
   }
 }
 
@@ -1537,6 +1639,17 @@ function renderCustomerDashboard(booking) {
             </div>
             ${ntCustomerVoucherUi(idx, "flight", booking)}
           </div>
+          ${
+            (String(st.notes || "").toLowerCase().includes("كونيكشين") ||
+              (stations[idx + 1] && stations[idx + 1].type === "flight" &&
+                (String(st.notes || "").includes("ذهاب") === String(stations[idx + 1].notes || "").includes("ذهاب")) &&
+                (String(st.notes || "").includes("عودة") === String(stations[idx + 1].notes || "").includes("عودة"))))
+              ? `<div class="my-2 px-4 py-2 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-black flex items-center justify-center gap-2">
+                  <span>🔄</span>
+                  <span>كونيكشين (تبديل/متابعة طائرة) إلى المحطة التالية</span>
+                </div>`
+              : ""
+          }
         `;
       }
 
