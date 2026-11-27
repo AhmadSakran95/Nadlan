@@ -1213,6 +1213,72 @@ function getCheckinFlightCodes(booking) {
   };
 }
 
+function formatFlightDepartureDisplay(depText) {
+  const raw = String(depText || "").trim();
+  if (!raw) return "غير محدد";
+
+  const monthsMap = {
+    jan: "01", january: "01",
+    feb: "02", february: "02",
+    mar: "03", march: "03",
+    apr: "04", april: "04",
+    may: "05",
+    jun: "06", june: "06",
+    jul: "07", july: "07",
+    aug: "08", august: "08",
+    sep: "09", sept: "09", september: "09",
+    oct: "10", october: "10",
+    nov: "11", november: "11",
+    dec: "12", december: "12"
+  };
+
+  const timeMatch = raw.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
+  const timePart = timeMatch
+    ? `${String(timeMatch[1]).padStart(2, "0")}:${String(timeMatch[2]).padStart(2, "0")}`
+    : "";
+
+  let day = "";
+  let month = "";
+  let year = "";
+
+  const monthNameMatch = raw.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?\b/);
+  if (monthNameMatch) {
+    day = String(monthNameMatch[1]).padStart(2, "0");
+    month = monthsMap[monthNameMatch[2].toLowerCase()] || "";
+    if (month) {
+      if (monthNameMatch[3]) {
+        year = monthNameMatch[3];
+      } else {
+        const now = new Date();
+        const candidateYear = now.getFullYear();
+        const candidate = new Date(`${candidateYear}-${month}-${day}T${timePart || "09:00"}:00`);
+        year = String(candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000 ? candidateYear + 1 : candidateYear);
+      }
+    }
+  } else {
+    const ymdMatch = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+    if (ymdMatch) {
+      year = ymdMatch[1];
+      month = String(ymdMatch[2]).padStart(2, "0");
+      day = String(ymdMatch[3]).padStart(2, "0");
+    } else {
+      const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+      if (dmyMatch) {
+        day = String(dmyMatch[1]).padStart(2, "0");
+        month = String(dmyMatch[2]).padStart(2, "0");
+        year = dmyMatch[3];
+      }
+    }
+  }
+
+  if (day && month && year) {
+    const dateFormatted = `${day}-${month}-${year}`;
+    return timePart ? `${dateFormatted} | ${timePart}` : dateFormatted;
+  }
+
+  return raw;
+}
+
 function parseDepartureDateToTimestamp(departureText) {
   if (!departureText) return null;
   const raw = String(departureText).trim();
@@ -1463,7 +1529,7 @@ function renderCustomerDashboard(booking) {
               </div>
               <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
                 <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.departureText || "غير محدد")}</span>
+                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(formatFlightDepartureDisplay(st.departureText))}</span>
               </div>
             </div>
 
