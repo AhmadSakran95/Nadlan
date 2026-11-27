@@ -33,8 +33,300 @@
     };
   </script>
   <link rel="stylesheet" href="/css/styles.css" />
+
+  <style id="nadlan-themes-style">
+    :root {
+      --nt-header-bg: linear-gradient(to left, #071324, #0f2544, #16335b);
+      --nt-body-bg: linear-gradient(135deg, #f8fafc 0%, #eff6ff 45%, #f1f5f9 100%);
+      --nt-accent: #f59e0b;
+      --nt-accent-hover: #d97706;
+      --nt-primary: #1e40af;
+      --nt-primary-hover: #1d4ed8;
+      --nt-card-bg: #ffffff;
+      --nt-card-border: #e2e8f0;
+      --nt-text: #0f172a;
+      --nt-muted: #64748b;
+    }
+
+    /* ثيم 1: Royal Gold & Navy (كحلي ملكي وذهبي فاخر - الافتراضي) */
+    body[data-theme="royal-gold"] {
+      --nt-header-bg: linear-gradient(to left, #071324, #0f2544, #16335b);
+      --nt-body-bg: linear-gradient(135deg, #f8fafc 0%, #eff6ff 45%, #f1f5f9 100%);
+      --nt-accent: #f59e0b;
+      --nt-accent-hover: #d97706;
+      --nt-primary: #1e40af;
+      --nt-primary-hover: #1d4ed8;
+      --nt-card-bg: #ffffff;
+      --nt-card-border: #e2e8f0;
+      --nt-text: #0f172a;
+      --nt-muted: #64748b;
+    }
+
+    /* ثيم 2: Emerald Luxe Resort (زمردي منتجعات فخمة وذهبي ناعم) */
+    body[data-theme="emerald-luxe"] {
+      --nt-header-bg: linear-gradient(to left, #042824, #09453e, #0d5c52);
+      --nt-body-bg: linear-gradient(135deg, #f6fdfb 0%, #ecfdf5 50%, #f0f9ff 100%);
+      --nt-accent: #eab308;
+      --nt-accent-hover: #ca8a04;
+      --nt-primary: #0f766e;
+      --nt-primary-hover: #115e59;
+      --nt-card-bg: #ffffff;
+      --nt-card-border: #d1fae5;
+      --nt-text: #062825;
+      --nt-muted: #4b6b66;
+    }
+
+    /* ثيم 3: Obsidian Midnight VIP (ليلي فخم داكن مع ذهبي وشعاع سماوي) */
+    body[data-theme="obsidian-vip"] {
+      --nt-header-bg: linear-gradient(to left, #05070d, #0d1322, #151e33);
+      --nt-body-bg: linear-gradient(135deg, #070b14 0%, #0d1322 55%, #090e1a 100%);
+      --nt-accent: #fbbf24;
+      --nt-accent-hover: #f59e0b;
+      --nt-primary: #3b82f6;
+      --nt-primary-hover: #2563eb;
+      --nt-card-bg: #111827;
+      --nt-card-border: #1e293b;
+      --nt-text: #f8fafc;
+      --nt-muted: #94a3b8;
+    }
+
+    body {
+      background: var(--nt-body-bg) !important;
+      color: var(--nt-text) !important;
+      transition: background 0.3s ease, color 0.25s ease;
+    }
+
+    body > header {
+      background: var(--nt-header-bg) !important;
+      transition: background 0.3s ease;
+    }
+
+    body[data-theme="obsidian-vip"] .bg-white {
+      background-color: var(--nt-card-bg) !important;
+      color: var(--nt-text) !important;
+    }
+    body[data-theme="obsidian-vip"] .bg-slate-50,
+    body[data-theme="obsidian-vip"] .bg-slate-50\/70,
+    body[data-theme="obsidian-vip"] .bg-slate-50\/60 {
+      background-color: #0b111e !important;
+      color: var(--nt-text) !important;
+    }
+    body[data-theme="obsidian-vip"] .bg-slate-100 {
+      background-color: #1e293b !important;
+      color: #e2e8f0 !important;
+    }
+    body[data-theme="obsidian-vip"] .border-slate-200,
+    body[data-theme="obsidian-vip"] .border-slate-100,
+    body[data-theme="obsidian-vip"] .border-slate-300 {
+      border-color: #1e293b !important;
+    }
+    body[data-theme="obsidian-vip"] .text-slate-900,
+    body[data-theme="obsidian-vip"] .text-slate-950 {
+      color: #f8fafc !important;
+    }
+    body[data-theme="obsidian-vip"] .text-slate-800,
+    body[data-theme="obsidian-vip"] .text-slate-700 {
+      color: #e2e8f0 !important;
+    }
+    body[data-theme="obsidian-vip"] .text-slate-600,
+    body[data-theme="obsidian-vip"] .text-slate-500 {
+      color: #94a3b8 !important;
+    }
+    body[data-theme="obsidian-vip"] input,
+    body[data-theme="obsidian-vip"] textarea,
+    body[data-theme="obsidian-vip"] select {
+      background-color: #0b111e !important;
+      color: #f8fafc !important;
+      border-color: #334155 !important;
+    }
+  </style>
+
+
+  <style id="nadlan-professional-polish">
+    :root {
+      --nt-radius: 22px;
+      --nt-shadow: 0 12px 34px rgba(15, 23, 42, .07);
+      --nt-shadow-hover: 0 18px 42px rgba(15, 23, 42, .12);
+      --nt-line: #e5eaf1;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Cairo", sans-serif !important;
+      letter-spacing: -.01em;
+      background:
+        radial-gradient(ellipse at 8% 0%, rgba(191,219,254,.38), transparent 32%),
+        radial-gradient(ellipse at 96% 12%, rgba(251,191,36,.10), transparent 25%),
+        #f5f7fb !important;
+    }
+
+    body > header {
+      background: linear-gradient(112deg, #071324 0%, #102846 55%, #173d65 100%) !important;
+      border-bottom: 1px solid rgba(255,255,255,.13) !important;
+      box-shadow: 0 10px 30px rgba(5, 16, 33, .18) !important;
+    }
+    body > header .max-w-7xl { min-height: 82px; }
+    body > header h1 { letter-spacing: -.045em; }
+    body > header p { color: #c4d2e3 !important; line-height: 1.7; }
+
+    main { padding-top: 30px !important; padding-bottom: 48px !important; }
+    section { scroll-margin-top: 24px; }
+
+    /* Main surfaces */
+    main section > .bg-white,
+    #admin-section .bg-white,
+    #customer-dashboard .bg-white {
+      border: 1px solid var(--nt-line) !important;
+      border-radius: 24px !important;
+      box-shadow: var(--nt-shadow) !important;
+      transition: box-shadow .22s ease, transform .22s ease, border-color .22s ease;
+    }
+    #admin-section .bg-white:hover,
+    #customer-dashboard > .bg-white:hover {
+      box-shadow: var(--nt-shadow-hover) !important;
+    }
+    #customer-login-card {
+      border-radius: 28px !important;
+      box-shadow: 0 24px 65px rgba(15, 35, 65, .12) !important;
+      border-color: #dce5f0 !important;
+      padding: clamp(24px, 4vw, 38px) !important;
+      position: relative;
+      overflow: hidden;
+    }
+    #customer-login-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 5px;
+      background: linear-gradient(90deg, #d99a22, #f4cf78, #2e6b9f);
+    }
+
+    /* Headings and section rhythm */
+    h2, h3 { letter-spacing: -.025em; }
+    #admin-section h2, #customer-dashboard h3 { line-height: 1.45; }
+    #admin-section .border-b,
+    #customer-dashboard .border-b { border-color: #edf1f6 !important; }
+
+    /* Inputs */
+    input:not([type="hidden"]):not([type="file"]),
+    textarea, select {
+      border: 1px solid #d6deea !important;
+      border-radius: 13px !important;
+      background: #fbfcfe !important;
+      color: #172338 !important;
+      min-height: 43px;
+      transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    textarea { line-height: 1.8; }
+    input::placeholder, textarea::placeholder { color: #98a5b7 !important; font-weight: 500; }
+    input:focus, textarea:focus, select:focus {
+      border-color: #b88935 !important;
+      background: #fff !important;
+      box-shadow: 0 0 0 4px rgba(217, 166, 75, .14) !important;
+      outline: none !important;
+    }
+    label { color: #34445a !important; margin-bottom: 6px !important; }
+
+    /* Buttons */
+    button, a[class*="rounded"] {
+      transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, background-color .18s ease;
+    }
+    button:not(:disabled):hover {
+      filter: brightness(1.035);
+    }
+    button:not(:disabled):active { transform: translateY(1px) scale(.99); }
+    button:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(217, 166, 75, .5) !important;
+      outline-offset: 3px;
+    }
+    #tab-customer-btn, #tab-admin-btn { min-height: 40px; }
+    #theme-settings-btn { backdrop-filter: blur(12px); }
+
+    /* Upload/extraction area */
+    #admin-section .border-dashed {
+      background: linear-gradient(135deg, #f8fbff, #f5f8fc) !important;
+      border: 1px dashed #9eb4d0 !important;
+      border-radius: 19px !important;
+    }
+
+    /* Booking and trip content */
+    #bookings-list > *,
+    #customer-stages-list > *,
+    #attractions-4-grid > *,
+    #halal-5-grid > * {
+      border-radius: 17px;
+    }
+    #bookings-list { padding-inline: 2px; }
+    #customer-stages-list { position: relative; }
+    #customer-stages-count, #bookings-count-badge,
+    #customer-pnr-badge, #customer-dest-badge {
+      letter-spacing: .01em;
+    }
+
+    /* Chat panel */
+    #customer-dashboard .lg\\:sticky {
+      overflow: hidden;
+      border-radius: 24px !important;
+      box-shadow: 0 18px 45px rgba(15, 35, 65, .10) !important;
+    }
+    #ai-chat-messages { background: #f7f9fc !important; }
+    #ai-chat-input { background: #fff !important; }
+
+    /* Modal polish */
+    #admin-code-modal > div,
+    #passengers-modal > div,
+    #theme-settings-modal > div {
+      border-radius: 25px !important;
+      box-shadow: 0 28px 90px rgba(0,0,0,.25) !important;
+      border-color: rgba(226,232,240,.9) !important;
+    }
+
+    /* Scrollbars */
+    .custom-scroll { scrollbar-width: thin; scrollbar-color: #b8c5d6 transparent; }
+    .custom-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #b8c5d6; border-radius: 20px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+
+    /* Theme consistency */
+    body[data-theme="royal-gold"] {
+      --nt-accent: #c9953e;
+      --nt-primary: #173d65;
+    }
+    body[data-theme="emerald-luxe"] {
+      --nt-accent: #c6a34a;
+    }
+    body[data-theme="obsidian-vip"] {
+      background: radial-gradient(ellipse at 10% 0%, #17243a, #080d17 62%) !important;
+    }
+    body[data-theme="obsidian-vip"] input:not([type="hidden"]):not([type="file"]),
+    body[data-theme="obsidian-vip"] textarea,
+    body[data-theme="obsidian-vip"] select {
+      background: #0b1423 !important;
+      color: #f8fafc !important;
+      border-color: #334155 !important;
+    }
+
+    @media (max-width: 640px) {
+      main { padding-top: 18px !important; }
+      body > header .max-w-7xl { padding-top: 14px !important; padding-bottom: 14px !important; }
+      body > header p { max-width: 290px; }
+      #admin-section .bg-white,
+      #customer-dashboard .bg-white { border-radius: 19px !important; }
+      #customer-login-card { margin-inline: 2px; }
+      #theme-settings-btn { padding-inline: 11px !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+      }
+    }
+  </style>
+
 </head>
-<body class="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/35 to-slate-100 text-slate-900">
+<body data-theme="royal-gold" class="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/35 to-slate-100 text-slate-900">
   <!-- إشعار نظام مخصص بديل عن alert/confirm -->
   <div id="toast-banner" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden max-w-md w-[92%] px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-2xl border border-slate-700 items-center justify-between gap-3">
     <span id="toast-message"></span>
@@ -75,23 +367,36 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-2 bg-slate-950/60 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 shadow-inner">
+      <div class="flex items-center gap-2.5 flex-wrap">
         <button
           type="button"
-          id="tab-customer-btn"
-          onclick="switchPortal('customer')"
-          class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow cursor-pointer"
+          id="theme-settings-btn"
+          onclick="openThemePopup()"
+          class="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/15 text-amber-300 border border-white/15 text-xs sm:text-sm font-extrabold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+          title="إعدادات المظهر والثيم"
         >
-          🧳 دخول الزبون
+          <span>🎨</span>
+          <span>الثيمات</span>
         </button>
-        <button
-          type="button"
-          id="tab-admin-btn"
-          onclick="switchPortal('admin')"
-          class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition text-slate-200 hover:bg-white/10 cursor-pointer"
-        >
-          🛠️ قسم الإدارة
-        </button>
+
+        <div class="flex items-center gap-2 bg-slate-950/60 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 shadow-inner">
+          <button
+            type="button"
+            id="tab-customer-btn"
+            onclick="switchPortal('customer')"
+            class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow cursor-pointer"
+          >
+            🧳 دخول الزبون
+          </button>
+          <button
+            type="button"
+            id="tab-admin-btn"
+            onclick="switchPortal('admin')"
+            class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition text-slate-200 hover:bg-white/10 cursor-pointer"
+          >
+            🛠️ قسم الإدارة
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -596,6 +901,161 @@
       </div>
     </div>
   </div>
+
+  
+  <!-- نافذة Popup لإعدادات الثيمات -->
+  <div id="theme-settings-modal" onclick="if(event.target===this)closeThemePopup()" class="fixed inset-0 z-50 hidden bg-slate-950/65 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center text-lg font-black">🎨</span>
+          <div>
+            <h3 class="text-base font-black text-slate-900">إعدادات المظهر والثيم</h3>
+            <p class="text-[11px] text-slate-500">اختر التصميم المناسب لهوية <span dir="ltr" class="font-jakarta font-bold">NadlanTours AI</span></p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onclick="closeThemePopup()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div class="space-y-2.5">
+        <!-- الثيم 1 -->
+        <button
+          type="button"
+          data-theme-choice="royal-gold"
+          onclick="selectTheme('royal-gold')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-amber-400 bg-blue-50/40 hover:border-amber-500 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#071324] via-[#1e40af] to-amber-400 shrink-0 shadow-xs"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">1. Royal Gold & Navy</p>
+              <p class="text-[11px] text-slate-500 font-bold">كحلي ملكي وذهبي فاخر — الطابع الرسمي العصري</p>
+            </div>
+          </div>
+          <span class="theme-check-badge px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
+        </button>
+
+        <!-- الثيم 2 -->
+        <button
+          type="button"
+          data-theme-choice="emerald-luxe"
+          onclick="selectTheme('emerald-luxe')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-slate-200 hover:border-teal-500 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#042824] via-[#0f766e] to-yellow-400 shrink-0 shadow-xs"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">2. Emerald Luxe Resort</p>
+              <p class="text-[11px] text-slate-500 font-bold">زمردي منتجعات سياحية هادئ مع لمسة ذهبية</p>
+            </div>
+          </div>
+          <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-black">مفعّل</span>
+        </button>
+
+        <!-- الثيم 3 -->
+        <button
+          type="button"
+          data-theme-choice="obsidian-vip"
+          onclick="selectTheme('obsidian-vip')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-slate-200 hover:border-blue-500 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#05070d] via-[#1e293b] to-amber-400 shrink-0 shadow-xs ring-1 ring-white/20"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">3. Obsidian Midnight VIP</p>
+              <p class="text-[11px] text-slate-500 font-bold">ليلي فخم داكن بتباين عالٍ وإضاءة ذهبية</p>
+            </div>
+          </div>
+          <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
+        </button>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button
+          type="button"
+          onclick="closeThemePopup()"
+          class="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black cursor-pointer"
+        >
+          تم
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const THEME_STORAGE_KEY = "nadlantours_theme_v1";
+      const validThemes = ["royal-gold", "emerald-luxe", "obsidian-vip"];
+      const themeNames = {
+        "royal-gold": "Royal Gold & Navy",
+        "emerald-luxe": "Emerald Luxe Resort",
+        "obsidian-vip": "Obsidian Midnight VIP"
+      };
+
+      function syncThemePopupUI(theme) {
+        document.querySelectorAll(".theme-option-card").forEach((card) => {
+          const isSelected = card.getAttribute("data-theme-choice") === theme;
+          const badge = card.querySelector(".theme-check-badge");
+          if (isSelected) {
+            card.classList.remove("border-slate-200");
+            card.classList.add("border-amber-400", "bg-amber-50/30");
+            if (badge) badge.classList.remove("hidden");
+          } else {
+            card.classList.remove("border-amber-400", "bg-amber-50/30");
+            card.classList.add("border-slate-200");
+            if (badge) badge.classList.add("hidden");
+          }
+        });
+      }
+
+      window.applyTheme = function (theme, notify = false) {
+        const chosen = validThemes.includes(theme) ? theme : "royal-gold";
+        document.body.setAttribute("data-theme", chosen);
+        try {
+          localStorage.setItem(THEME_STORAGE_KEY, chosen);
+        } catch (_) {}
+        syncThemePopupUI(chosen);
+        if (notify && typeof showToast === "function") {
+          showToast("تم تفعيل ثيم " + (themeNames[chosen] || chosen));
+        }
+      };
+
+      window.selectTheme = function (theme) {
+        window.applyTheme(theme, true);
+        window.closeThemePopup();
+      };
+
+      window.openThemePopup = function () {
+        const modal = document.getElementById("theme-settings-modal");
+        const current = document.body.getAttribute("data-theme") || "royal-gold";
+        syncThemePopupUI(current);
+        if (modal) {
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
+        }
+      };
+
+      window.closeThemePopup = function () {
+        const modal = document.getElementById("theme-settings-modal");
+        if (modal) {
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+        }
+      };
+
+      let savedTheme = "royal-gold";
+      try {
+        savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "royal-gold";
+      } catch (_) {}
+      window.applyTheme(savedTheme, false);
+    })();
+  </script>
 
   <script src="/js/app.js" defer></script>
 </body>
