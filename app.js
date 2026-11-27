@@ -232,6 +232,7 @@ async function loadBookings() {
     let result = await apiRequest("/api/bookings");
     bookings = Array.isArray(result.bookings) ? result.bookings : [];
 
+
     const legacyRaw = localStorage.getItem(STORAGE_KEY);
     if (bookings.length === 0 && legacyRaw) {
       let legacyBookings = [];
@@ -595,7 +596,7 @@ function renderStationsEditor() {
             </div>
           </div>
           ${fieldsHtml}
-          ${renderAdminStationAttachmentBox(idx, st.type)}
+          ${ntAdminVoucherUi(idx, st.type)}
         </div>
       `;
     })
@@ -640,6 +641,22 @@ async function handleExtractFileSelected(event) {
   const file = event.target?.files?.[0];
   if (!file) return;
 
+  // حفظ ملف الاستخراج نفسه كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
+  try {
+    const voucherDataUrl = await ntFileToDataUrl(file);
+    const vRecord = {
+      name: file.name,
+      stationType: extractTargetType,
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+      dataUrl: voucherDataUrl
+    };
+    ntSessionVouchers[extractTargetType] = vRecord;
+    const matchedIdx = currentStations.findIndex((s) => s.type === extractTargetType);
+    if (matchedIdx !== -1) {
+      ntSessionVouchers["idx_" + matchedIdx] = vRecord;
+    }
+  } catch (_) {}
+
   syncStationsFromDom();
   const statusBox = document.getElementById("extract-status");
   const statusText = document.getElementById("extract-status-text");
@@ -652,22 +669,46 @@ async function handleExtractFileSelected(event) {
 
     let prompt = "";
     if (extractTargetType === "flight") {
-      prompt = `استخرج بيانات تذكرة الطيران بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+      prompt = `استخرج بيانات تذكرة الطيران بدقة وأرجع JSON فقط بدون أي نص إضافي.
+إذا كانت رحلة الذهاب أو العودة تحتوي على كونيكشين (أكثر من طائرة/مقطع)، ضع كل طائرة كعنصر مستقل بالترتيب في outboundSegments و returnSegments:
 {
   "passengers": ["اسم المسافر 1", "اسم المسافر 2"],
-  "fromAirport": "رمز مطار الذهاب مثل TLV",
-  "toAirport": "رمز مطار الوصول مثل BUS",
-  "flightNumber": "رقم رحلة الذهاب مثل KL 462",
-  "airlinePnr": "رمز PNR الذهاب",
-  "baggage": "تفاصيل الحقائب",
-  "departureText": "تاريخ ووقت إقلاع الذهاب",
+  "finalDestinationCity": "المدينة النهائية للوجهة إن وجدت",
+  "outboundSegments": [
+    {
+      "fromAirport": "رمز مطار الإقلاع مثل TLV",
+      "toAirport": "رمز مطار الوصول أو التوقف مثل IST",
+      "flightNumber": "رقم الطائرة مثل TK 789",
+      "airlinePnr": "رمز PNR إن وجد",
+      "baggage": "الحقائب إن وجدت",
+      "departureText": "تاريخ ووقت الإقلاع",
+      "connectionAfter": "إذا كان هناك كونيكشين بعد هذه الطائرة اكتب: كونيكشين عبر IST (مدة التوقف ...)"
+    }
+  ],
   "isRoundTrip": true,
-  "returnFromAirport": "رمز مطار العودة إن وجد",
-  "returnToAirport": "رمز مطار الوصول للعودة إن وجد",
-  "returnFlightNumber": "رقم رحلة العودة إن وجد",
-  "returnAirlinePnr": "رمز PNR العودة إن وجد",
-  "returnDepartureText": "تاريخ ووقت إقلاع العودة إن وجد",
-  "returnBaggage": "حقائب العودة إن وجدت"
+  "returnSegments": [
+    {
+      "fromAirport": "رمز مطار الإقلاع في العودة",
+      "toAirport": "رمز مطار الوصول أو التوقف في العودة",
+      "flightNumber": "رقم الطائرة في العودة",
+      "airlinePnr": "رمز PNR إن وجد",
+      "baggage": "الحقائب إن وجدت",
+      "departureText": "تاريخ ووقت الإقلاع في العودة",
+      "connectionAfter": "إذا كان هناك كونيكشين بعد هذه الطائرة اكتب: كونيكشين عبر ... (مدة التوقف ...)"
+    }
+  ],
+  "fromAirport": "رمز مطار بداية الذهاب",
+  "toAirport": "رمز مطار نهاية الذهاب",
+  "flightNumber": "رقم أول رحلة ذهاب",
+  "airlinePnr": "رمز PNR",
+  "baggage": "الحقائب",
+  "departureText": "موعد أول إقلاع",
+  "returnFromAirport": "رمز مطار بداية العودة",
+  "returnToAirport": "رمز مطار نهاية العودة",
+  "returnFlightNumber": "رقم أول رحلة عودة",
+  "returnAirlinePnr": "رمز PNR العودة",
+  "returnDepartureText": "موعد أول إقلاع في العودة",
+  "returnBaggage": "حقائب العودة"
 }`;
     } else if (extractTargetType === "hotel") {
       prompt = `استخرج بيانات حجز الفندق بدقة وأرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
@@ -721,6 +762,13 @@ async function handleExtractFileSelected(event) {
       applyExtractedTransferData(data);
     }
 
+    try {
+      const idxAfter = currentStations.findIndex((s) => s.type === extractTargetType);
+      if (idxAfter !== -1 && ntSessionVouchers[extractTargetType]) {
+        ntSessionVouchers["idx_" + idxAfter] = ntSessionVouchers[extractTargetType];
+      }
+    } catch (_) {}
+
     renderStationsEditor();
     showToast("تم استخراج البيانات وتعبئتها بنجاح");
   } catch (err) {
@@ -729,6 +777,23 @@ async function handleExtractFileSelected(event) {
     if (statusBox) statusBox.classList.add("hidden");
     event.target.value = "";
   }
+}
+
+function buildFlightSegmentStation(seg, fallbackPnr, fallbackBaggage, legLabel, connNote) {
+  const st = createStationObject("flight");
+  st.fromAirport = String(seg.fromAirport || "").trim().toUpperCase();
+  st.toAirport = String(seg.toAirport || "").trim().toUpperCase();
+  st.flightNumber = String(seg.flightNumber || "").trim().toUpperCase();
+  st.airlinePnr = String(seg.airlinePnr || fallbackPnr || "").trim().toUpperCase();
+  st.baggage = String(seg.baggage || fallbackBaggage || "").trim();
+  st.departureText = String(seg.departureText || "").trim();
+
+  const noteParts = [];
+  if (legLabel) noteParts.push(legLabel);
+  if (connNote) noteParts.push(connNote);
+  if (seg.notes) noteParts.push(String(seg.notes).trim());
+  st.notes = noteParts.join(" • ");
+  return st;
 }
 
 function applyExtractedFlightData(data) {
@@ -750,59 +815,120 @@ function applyExtractedFlightData(data) {
     }
   }
 
-  const toCode = String(data.toAirport || "").trim().toUpperCase();
-  const mappedCity = mapAirportCodeToCity(toCode);
-  const destInput = document.getElementById("main-destination");
-  if (mappedCity && destInput) {
-    destInput.value = mappedCity;
-  }
+  let rawOutbound = Array.isArray(data.outboundSegments)
+    ? data.outboundSegments.filter((s) => s && (s.fromAirport || s.toAirport || s.flightNumber || s.departureText))
+    : [];
 
-  let flightIdx = currentStations.findIndex((s) => s.type === "flight");
-  if (flightIdx === -1) {
-    currentStations.unshift(createStationObject("flight"));
-    flightIdx = 0;
+  if (!rawOutbound.length && (data.fromAirport || data.toAirport || data.flightNumber || data.departureText)) {
+    rawOutbound = [
+      {
+        fromAirport: data.fromAirport,
+        toAirport: data.toAirport,
+        flightNumber: data.flightNumber,
+        airlinePnr: data.airlinePnr,
+        baggage: data.baggage,
+        departureText: data.departureText
+      }
+    ];
   }
-
-  const st = currentStations[flightIdx];
-  st.fromAirport = String(data.fromAirport || st.fromAirport || "").trim().toUpperCase();
-  st.toAirport = toCode || st.toAirport;
-  st.flightNumber = String(data.flightNumber || st.flightNumber || "").trim().toUpperCase();
-  st.airlinePnr = String(data.airlinePnr || st.airlinePnr || "").trim().toUpperCase();
-  st.baggage = String(data.baggage || st.baggage || "").trim();
-  st.departureText = String(data.departureText || st.departureText || "").trim();
 
   const hasReturn = Boolean(
     data.isRoundTrip ||
+      (Array.isArray(data.returnSegments) && data.returnSegments.length > 0) ||
       data.returnFlightNumber ||
       data.returnDepartureText ||
       data.returnFromAirport ||
       data.returnToAirport
   );
 
-  if (hasReturn) {
-    st.notes = st.notes ? `${st.notes} • ذهاب وعودة` : "ذهاب وعودة";
+  let rawReturn = Array.isArray(data.returnSegments)
+    ? data.returnSegments.filter((s) => s && (s.fromAirport || s.toAirport || s.flightNumber || s.departureText))
+    : [];
 
-    let lastFlightIdx = -1;
-    for (let i = currentStations.length - 1; i > flightIdx; i--) {
-      if (currentStations[i].type === "flight") {
-        lastFlightIdx = i;
-        break;
+  if (!rawReturn.length && hasReturn) {
+    const lastOutTo = rawOutbound.length ? rawOutbound[rawOutbound.length - 1].toAirport : data.toAirport;
+    const firstOutFrom = rawOutbound.length ? rawOutbound[0].fromAirport : data.fromAirport;
+    rawReturn = [
+      {
+        fromAirport: data.returnFromAirport || lastOutTo,
+        toAirport: data.returnToAirport || firstOutFrom,
+        flightNumber: data.returnFlightNumber,
+        airlinePnr: data.returnAirlinePnr || data.airlinePnr,
+        baggage: data.returnBaggage || data.baggage,
+        departureText: data.returnDepartureText
       }
+    ];
+  }
+
+  const finalOutTo = rawOutbound.length ? String(rawOutbound[rawOutbound.length - 1].toAirport || "").trim().toUpperCase() : String(data.toAirport || "").trim().toUpperCase();
+  const mappedCity = mapAirportCodeToCity(finalOutTo);
+  const destInput = document.getElementById("main-destination");
+  if (destInput) {
+    if (data.finalDestinationCity && !destInput.value.trim()) {
+      destInput.value = String(data.finalDestinationCity).trim();
+    } else if (mappedCity) {
+      destInput.value = mappedCity;
+    }
+  }
+
+  const generatedFlightStations = [];
+
+  rawOutbound.forEach((seg, idx) => {
+    const isConnected = rawOutbound.length > 1;
+    const legLabel = isConnected
+      ? `ذهاب (طائرة ${idx + 1} من ${rawOutbound.length})`
+      : hasReturn
+      ? "رحلة الذهاب"
+      : "رحلة طيران";
+
+    let connNote = "";
+    if (idx < rawOutbound.length - 1) {
+      const nextSeg = rawOutbound[idx + 1] || {};
+      const hubCode = String(seg.toAirport || nextSeg.fromAirport || "").trim().toUpperCase();
+      connNote = seg.connectionAfter
+        ? String(seg.connectionAfter).trim()
+        : `كونيكشين عبر ${hubCode || "مطار التوقف"}`;
+    } else if (isConnected) {
+      connNote = "وصول الوجهة بعد الكونيكشين";
     }
 
-    if (lastFlightIdx === -1) {
-      currentStations.push(createStationObject("flight"));
-      lastFlightIdx = currentStations.length - 1;
+    generatedFlightStations.push(
+      buildFlightSegmentStation(seg, data.airlinePnr, data.baggage, legLabel, connNote)
+    );
+  });
+
+  rawReturn.forEach((seg, idx) => {
+    const isConnected = rawReturn.length > 1;
+    const legLabel = isConnected
+      ? `عودة (طائرة ${idx + 1} من ${rawReturn.length})`
+      : "رحلة العودة";
+
+    let connNote = "";
+    if (idx < rawReturn.length - 1) {
+      const nextSeg = rawReturn[idx + 1] || {};
+      const hubCode = String(seg.toAirport || nextSeg.fromAirport || "").trim().toUpperCase();
+      connNote = seg.connectionAfter
+        ? String(seg.connectionAfter).trim()
+        : `كونيكشين عبر ${hubCode || "مطار التوقف"}`;
+    } else if (isConnected) {
+      connNote = "وصول العودة بعد الكونيكشين";
     }
 
-    const retSt = currentStations[lastFlightIdx];
-    retSt.fromAirport = String(data.returnFromAirport || toCode || retSt.fromAirport || "").trim().toUpperCase();
-    retSt.toAirport = String(data.returnToAirport || data.fromAirport || retSt.toAirport || "").trim().toUpperCase();
-    retSt.flightNumber = String(data.returnFlightNumber || retSt.flightNumber || "").trim().toUpperCase();
-    retSt.airlinePnr = String(data.returnAirlinePnr || data.airlinePnr || retSt.airlinePnr || "").trim().toUpperCase();
-    retSt.baggage = String(data.returnBaggage || data.baggage || retSt.baggage || "").trim();
-    retSt.departureText = String(data.returnDepartureText || retSt.departureText || "").trim();
-    retSt.notes = retSt.notes ? `${retSt.notes} • رحلة العودة` : "رحلة العودة";
+    generatedFlightStations.push(
+      buildFlightSegmentStation(seg, data.returnAirlinePnr || data.airlinePnr, data.returnBaggage || data.baggage, legLabel, connNote)
+    );
+  });
+
+  if (generatedFlightStations.length > 0) {
+    const firstFlightIdx = currentStations.findIndex((s) => s.type === "flight");
+    const nonFlightStations = currentStations.filter((s) => s.type !== "flight");
+    if (firstFlightIdx === -1) {
+      currentStations = [...generatedFlightStations, ...nonFlightStations];
+    } else {
+      const before = currentStations.slice(0, firstFlightIdx).filter((s) => s.type !== "flight");
+      const after = currentStations.slice(firstFlightIdx).filter((s) => s.type !== "flight");
+      currentStations = [...before, ...generatedFlightStations, ...after];
+    }
   }
 }
 
@@ -899,6 +1025,15 @@ async function saveBooking() {
   };
 
   try {
+    const existingBooking = bookings.find((b) => b.id === bookingObj.id || (bookingObj.pnr && b.pnr === bookingObj.pnr));
+    const mergedVouchers = {
+      ...(existingBooking && existingBooking.vouchers && typeof existingBooking.vouchers === "object" ? existingBooking.vouchers : {}),
+      ...(typeof ntSessionVouchers === "object" ? ntSessionVouchers : {})
+    };
+    if (Object.keys(mergedVouchers).length > 0) {
+      bookingObj.vouchers = mergedVouchers;
+    }
+
     await apiRequest("/api/bookings", {
       method: "POST",
       body: JSON.stringify(bookingObj)
@@ -922,6 +1057,7 @@ async function saveBooking() {
 function editBooking(bookingId) {
   const b = bookings.find((item) => item.id === bookingId);
   if (!b) return;
+  ntSessionVouchers = (b.vouchers && typeof b.vouchers === "object") ? { ...b.vouchers } : {};
 
   document.getElementById("editing-booking-id").value = b.id;
   document.getElementById("customer-first-name").value = b.firstName || "";
@@ -947,6 +1083,7 @@ function cancelEditBooking() {
 }
 
 function resetAdminForm() {
+  ntSessionVouchers = {};
   document.getElementById("editing-booking-id").value = "";
   document.getElementById("customer-first-name").value = "";
   document.getElementById("customer-last-name").value = "";
@@ -1214,6 +1351,81 @@ function getCheckinFlightCodes(booking) {
   };
 }
 
+function formatArabicDepartureDisplay(rawVal) {
+  if (!rawVal) return "غير محدد";
+  const str = String(rawVal).trim();
+  const monthsMap = {
+    jan: 1, january: 1,
+    feb: 2, february: 2,
+    mar: 3, march: 3,
+    apr: 4, april: 4,
+    may: 5,
+    jun: 6, june: 6,
+    jul: 7, july: 7,
+    aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12
+  };
+
+  let day = null, month = null, year = null;
+  let hour = null, minute = null;
+
+  // استخراج الوقت (24 ساعة أو 12 ساعة AM/PM)
+  const time12Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)\b/i);
+  const time24Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/);
+
+  if (time12Match) {
+    let h = parseInt(time12Match[1], 10);
+    minute = parseInt(time12Match[2], 10);
+    const mer = time12Match[3].toLowerCase();
+    if ((mer === "pm" || mer === "م" || mer === "مساء" || mer === "مساءً") && h < 12) h += 12;
+    if ((mer === "am" || mer === "ص" || mer === "صباحا" || mer === "صباحاً") && h === 12) h = 0;
+    hour = h;
+  } else if (time24Match) {
+    hour = parseInt(time24Match[1], 10);
+    minute = parseInt(time24Match[2], 10);
+  }
+
+  // استخراج التاريخ (YYYY-MM-DD أو DD-MM-YYYY أو DD/MM/YYYY أو DD Mon YYYY)
+  const ymdMatch = str.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+  const dmyMatch = str.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  const textMonthMatch = str.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:[,\s]+(\d{4}))?\b/);
+
+  if (ymdMatch) {
+    year = parseInt(ymdMatch[1], 10);
+    month = parseInt(ymdMatch[2], 10);
+    day = parseInt(ymdMatch[3], 10);
+  } else if (dmyMatch) {
+    day = parseInt(dmyMatch[1], 10);
+    month = parseInt(dmyMatch[2], 10);
+    year = parseInt(dmyMatch[3], 10);
+  } else if (textMonthMatch) {
+    day = parseInt(textMonthMatch[1], 10);
+    month = monthsMap[textMonthMatch[2].toLowerCase()] || null;
+    year = textMonthMatch[3] ? parseInt(textMonthMatch[3], 10) : new Date().getFullYear();
+  }
+
+  if (!day || !month || !year) {
+    return str;
+  }
+
+  const dd = String(day).padStart(2, "0");
+  const mm = String(month).padStart(2, "0");
+  const datePart = `${dd}-${mm}-${year}`;
+
+  if (hour === null || minute === null || Number.isNaN(hour) || Number.isNaN(minute)) {
+    return datePart;
+  }
+
+  const period = hour >= 12 ? "مساءً" : "صباحاً";
+  const hh = String(hour).padStart(2, "0");
+  const minStr = String(minute).padStart(2, "0");
+
+  return `${datePart} | ${hh}:${minStr} ${period}`;
+}
+
 function parseDepartureDateToTimestamp(departureText) {
   if (!departureText) return null;
   const raw = String(departureText).trim();
@@ -1335,16 +1547,23 @@ function renderCheckinAlertBanner(booking) {
     const dayWord = daysLeft === 1 ? "يوم" : daysLeft <= 10 ? "أيام" : "يوماً";
 
     banner.classList.remove("hidden");
-    banner.className = "bg-gradient-to-l from-brand-800 via-brand-700 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md border border-brand-600 flex flex-wrap items-center justify-between gap-4";
-    if (badgeEl) badgeEl.textContent = "⏳ العد التنازلي للرحلة";
-    if (titleEl) titleEl.textContent = `متبقي على رحلتك ${daysLeft} ${dayWord}!`;
+    banner.className = "bg-gradient-to-l from-slate-950 via-brand-900 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-lg border border-amber-400/40 flex flex-wrap items-center justify-between gap-4";
+    if (badgeEl) {
+      badgeEl.className = "px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black";
+      badgeEl.textContent = "⏳ العد التنازلي للرحلة";
+    }
+    if (titleEl) {
+      titleEl.className = "text-base sm:text-lg font-black text-white";
+      titleEl.textContent = `متبقي على رحلتك ${daysLeft} ${dayWord}!`;
+    }
     if (descEl) {
-      descEl.textContent = `باقي على موعد إقلاع رحلتك ${daysLeft} ${dayWord} (${codes.outboundStop?.departureText || "الموعد المحدد"}) — سيُفتح الشيك إن قبل الرحلة بـ 24 ساعة أو أقل.`;
+      descEl.className = "text-xs sm:text-sm text-slate-100 font-bold mt-1";
+      descEl.textContent = `باقي على موعد إقلاع رحلتك ${daysLeft} ${dayWord} (${codes.outboundStop?.departureText ? formatArabicDepartureDisplay(codes.outboundStop.departureText) : "الموعد المحدد"}) — سيُفتح الشيك إن قبل الرحلة بـ 24 ساعة أو أقل.`;
     }
     if (codesEl) {
       codesEl.innerHTML = `
-        <span class="px-3 py-1 rounded-xl bg-amber-400 text-slate-950 font-black">⏳ باقي ${daysLeft} ${dayWord}</span>
-        <span class="px-3 py-1 rounded-xl bg-white/15 text-amber-300 border border-white/20">الوجهة: ${escapeHtml(booking.destination)}</span>
+        <span class="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-black shadow-2xs">⏳ باقي ${daysLeft} ${dayWord}</span>
+        <span class="px-3 py-1.5 rounded-xl bg-amber-300/20 text-amber-200 border border-amber-300/50 text-xs font-black">الوجهة: ${escapeHtml(booking.destination)}</span>
       `;
     }
     if (copyCheckinBtn) copyCheckinBtn.classList.add("hidden");
@@ -1430,156 +1649,255 @@ function renderCustomerDashboard(booking) {
     return;
   }
 
-  stagesList.innerHTML = stations
-    .map((st, idx) => {
-      if (st.type === "flight") {
-        const checkinInfo = resolveAirlineCheckinInfo(st.flightNumber, st.notes);
-        const fromCode = st.fromAirport || "—";
-        const toCode = st.toAirport || "—";
-        const fromCity = mapAirportCodeToCity(fromCode);
-        const toCity = mapAirportCodeToCity(toCode);
+  // تحديد اتجاه مقطع الطيران (ذهاب أو عودة) بدقة حتى لو أُدخل يدوياً بدون كلمة ذهاب/عودة
+  function getFlightLegDirection(st, flightIdxInAllFlights, totalFlightsCount) {
+    const notes = String(st.notes || "").toLowerCase();
+    if (notes.includes("عودة") || notes.includes("return")) return "return";
+    if (notes.includes("ذهاب") || notes.includes("outbound")) return "outbound";
+    // إذا أُدخلت 4 مقاطع يدوياً بدون كتابة ذهاب/عودة: أول مقطعين ذهاب والمقطعين الباقيين عودة
+    if (totalFlightsCount === 4) {
+      return flightIdxInAllFlights < 2 ? "outbound" : "return";
+    }
+    return "outbound";
+  }
 
-        return `
-          <div class="bg-white rounded-3xl border border-sky-200/90 p-5 space-y-4 shadow-2xs">
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-xl bg-sky-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
-              </div>
-              <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
-                <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
-                <span class="text-sky-600">➔</span>
-                <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
-              </div>
-            </div>
+  // تجميع مقاطع الطيران المتصلة (كونيكشين) ضمن مجموعة واحدة لكل اتجاه على حدة
+  function isConnectionBetweenFlights(currSt, nextSt, currFlightOrder, nextFlightOrder, totalFlightsCount) {
+    if (!currSt || !nextSt || currSt.type !== "flight" || nextSt.type !== "flight") return false;
+    const dir1 = getFlightLegDirection(currSt, currFlightOrder, totalFlightsCount);
+    const dir2 = getFlightLegDirection(nextSt, nextFlightOrder, totalFlightsCount);
+    // لا ندمج الذهاب مع العودة أبداً
+    if (dir1 !== dir2) return false;
+    const n1 = String(currSt.notes || "").toLowerCase();
+    const n2 = String(nextSt.notes || "").toLowerCase();
+    if (n1.includes("كونيكشين") || n2.includes("كونيكشين")) return true;
+    if (dir1 === "outbound" || dir1 === "return") return true;
+    return false;
+  }
 
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">رقم الطيران</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.flightNumber || "غير محدد")}</span>
-              </div>
-              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">رمز PNR الطيران</span>
-                <span class="text-xs sm:text-sm font-black text-brand-800">${escapeHtml(st.airlinePnr || booking.pnr || "—")}</span>
-              </div>
-              <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.departureText || "غير محدد")}</span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div class="bg-sky-50/70 border border-sky-100 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-sky-800">🧳 الحقائب المسموحة</span>
-                <span class="text-xs font-extrabold text-slate-900">${escapeHtml(st.baggage || "حسب تذكرة الطيران")}</span>
-              </div>
-              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">📌 ملاحظات الرحلة</span>
-                <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "رحلة مؤكدة")}</span>
-              </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onclick="openPassengersModal()"
-                  class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
-                >
-                  👥 المسافرين
-                </button>
-                ${
-                  checkinInfo?.url
-                    ? `<a href="${escapeHtml(checkinInfo.url)}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold transition inline-flex items-center gap-1.5">✈️ شيك إن (${escapeHtml(checkinInfo.name)})</a>`
-                    : ""
-                }
-              </div>
-            </div>
-            ${renderCustomerStationAttachmentBox(idx, "flight", booking)}
-          </div>
-        `;
-      }
-
-      if (st.type === "hotel") {
-        const starsText = st.stars || "5 نجوم";
-        const starsCountMatch = starsText.match(/(\d)/);
-        const starsNum = starsCountMatch ? Math.min(5, Math.max(1, parseInt(starsCountMatch[1], 10))) : 5;
-        const starsVisual = "★".repeat(starsNum);
-
-        return `
-          <div class="bg-white rounded-3xl border border-indigo-200/90 p-5 space-y-4 shadow-2xs">
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-xl bg-indigo-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-indigo-900 bg-indigo-100 px-3 py-1 rounded-full">🏨 إقامة فندقية</span>
-              </div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black" title="${escapeHtml(starsText)}">${escapeHtml(starsText)} (${starsVisual})</span>
-                ${
-                  st.nights
-                    ? `<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-black">${escapeHtml(st.nights)}</span>`
-                    : ""
-                }
-              </div>
-            </div>
-
-            <div>
-              <span class="block text-[11px] font-bold text-slate-500 mb-0.5">اسم الفندق</span>
-              <h4 class="text-base font-black text-slate-900">${escapeHtml(st.name || "فندق")}</h4>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-indigo-800">📥 تاريخ الدخول (Check-in)</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkIn || "غير محدد")}</span>
-              </div>
-              <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-indigo-800">📤 تاريخ الخروج (Check-out)</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkOut || "غير محدد")}</span>
-              </div>
-            </div>
-
-            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-              <span class="block text-[11px] font-bold text-slate-500">📝 تفاصيل وملاحظات الإقامة</span>
-              <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "إقامة مؤكدة")}</span>
-            </div>
-            ${renderCustomerStationAttachmentBox(idx, "hotel", booking)}
-          </div>
-        `;
-      }
-
-      if (st.type === "transfer") {
-        return `
-          <div class="bg-white rounded-3xl border border-amber-200/90 p-5 space-y-3 shadow-2xs">
-            <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-amber-950 bg-amber-100 px-3 py-1 rounded-full">🚐 توصيل ومواصلات</span>
-              </div>
-              ${st.pickupTime ? `<span class="text-xs font-extrabold text-slate-700 bg-slate-100 px-3 py-1 rounded-full">${escapeHtml(st.pickupTime)}</span>` : ""}
-            </div>
-            <p class="text-sm font-black text-slate-900">${escapeHtml(st.fromLocation || "—")} <span class="text-amber-600 mx-1">➔</span> ${escapeHtml(st.toLocation || "—")}</p>
-            ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
-            ${renderCustomerStationAttachmentBox(idx, "transfer", booking)}
-          </div>
-        `;
-      }
+  function renderSingleStationCard(st, idx) {
+    if (st.type === "flight") {
+      const checkinInfo = resolveAirlineCheckinInfo(st.flightNumber, st.notes);
+      const fromCode = st.fromAirport || "—";
+      const toCode = st.toAirport || "—";
+      const fromCity = mapAirportCodeToCity(fromCode);
+      const toCity = mapAirportCodeToCity(toCode);
 
       return `
-        <div class="bg-white rounded-3xl border border-emerald-200/90 p-5 space-y-3 shadow-2xs">
-          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+        <div class="bg-white rounded-2xl border border-sky-200/90 p-4 sm:p-5 space-y-3.5 shadow-2xs">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
             <div class="flex items-center gap-2">
-              <span class="w-7 h-7 rounded-xl bg-emerald-700 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-              <span class="text-xs font-black text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full">🗺️ جولة سياحية</span>
+              <span class="w-7 h-7 rounded-xl bg-sky-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
+              <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
             </div>
-            ${st.dateText ? `<span class="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full">${escapeHtml(st.dateText)}</span>` : ""}
+            <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
+              <span class="inline-flex items-center gap-2">
+                <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
+                <svg viewBox="0 0 28 14" class="w-6 h-3.5 text-sky-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="25" y1="7" x2="3" y2="7" />
+                  <polyline points="8,2 3,7 8,12" />
+                </svg>
+                <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
+              </span>
+            </div>
           </div>
-          <p class="text-sm font-black text-slate-900">${escapeHtml(st.title || "جولة سياحية")}</p>
-          ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">رقم الطيران</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.flightNumber || "غير محدد")}</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">رمز PNR الطيران</span>
+              <span class="text-xs sm:text-sm font-black text-brand-800">${escapeHtml(st.airlinePnr || booking.pnr || "—")}</span>
+            </div>
+            <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900" dir="ltr">${escapeHtml(formatArabicDepartureDisplay(st.departureText))}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div class="bg-sky-50/70 border border-sky-100 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-sky-800">🧳 الحقائب المسموحة</span>
+              <span class="text-xs font-extrabold text-slate-900">${escapeHtml(st.baggage || "حسب تذكرة الطيران")}</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">📌 ملاحظات الرحلة</span>
+              <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "رحلة مؤكدة")}</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onclick="openPassengersModal()"
+                class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
+              >
+                👥 المسافرين
+              </button>
+              ${
+                checkinInfo?.url
+                  ? `<a href="${escapeHtml(checkinInfo.url)}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold transition inline-flex items-center gap-1.5">✈️ شيك إن (${escapeHtml(checkinInfo.name)})</a>`
+                  : ""
+              }
+            </div>
+          </div>
+          ${ntCustomerVoucherUi(idx, "flight", booking)}
         </div>
       `;
-    })
-    .join("");
+    }
+
+    if (st.type === "hotel") {
+      const starsText = st.stars || "5 نجوم";
+      const starsCountMatch = starsText.match(/(\d)/);
+      const starsNum = starsCountMatch ? Math.min(5, Math.max(1, parseInt(starsCountMatch[1], 10))) : 5;
+      const starsVisual = "★".repeat(starsNum);
+
+      return `
+        <div class="bg-white rounded-3xl border border-indigo-200/90 p-5 space-y-4 shadow-2xs">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-xl bg-indigo-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
+              <span class="text-xs font-black text-indigo-900 bg-indigo-100 px-3 py-1 rounded-full">🏨 إقامة فندقية</span>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black" title="${escapeHtml(starsText)}">${escapeHtml(starsText)} (${starsVisual})</span>
+              ${
+                st.nights
+                  ? `<span class="px-3.5 py-1 rounded-xl bg-indigo-900 text-white text-xs font-black shadow-2xs">🌙 عدد الليالي: ${escapeHtml(st.nights)}</span>`
+                  : ""
+              }
+            </div>
+          </div>
+
+          <div>
+            <span class="block text-[11px] font-bold text-slate-500 mb-0.5">اسم الفندق</span>
+            <h4 class="text-base font-black text-slate-900">${escapeHtml(st.name || "فندق")}</h4>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-indigo-800">📥 تاريخ الدخول (Check-in)</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkIn || "غير محدد")}</span>
+            </div>
+            <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-indigo-800">📤 تاريخ الخروج (Check-out)</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkOut || "غير محدد")}</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+            <span class="block text-[11px] font-bold text-slate-500">📝 تفاصيل وملاحظات الإقامة</span>
+            <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "إقامة مؤكدة")}</span>
+          </div>
+          ${ntCustomerVoucherUi(idx, "hotel", booking)}
+        </div>
+      `;
+    }
+
+    if (st.type === "transfer") {
+      return `
+        <div class="bg-white rounded-3xl border border-amber-200/90 p-5 space-y-3 shadow-2xs">
+          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center">${idx + 1}</span>
+              <span class="text-xs font-black text-amber-950 bg-amber-100 px-3 py-1 rounded-full">🚐 توصيل ومواصلات</span>
+            </div>
+            ${st.pickupTime ? `<span class="text-xs font-extrabold text-slate-700 bg-slate-100 px-3 py-1 rounded-full">${escapeHtml(st.pickupTime)}</span>` : ""}
+          </div>
+          <p class="text-sm font-black text-slate-900">${escapeHtml(st.fromLocation || "—")} <span class="text-amber-600 mx-1">➔</span> ${escapeHtml(st.toLocation || "—")}</p>
+          ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+          ${ntCustomerVoucherUi(idx, "transfer", booking)}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="bg-white rounded-3xl border border-emerald-200/90 p-5 space-y-3 shadow-2xs">
+        <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-xl bg-emerald-700 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
+            <span class="text-xs font-black text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full">🗺️ جولة سياحية</span>
+          </div>
+          ${st.dateText ? `<span class="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full">${escapeHtml(st.dateText)}</span>` : ""}
+        </div>
+        <p class="text-sm font-black text-slate-900">${escapeHtml(st.title || "جولة سياحية")}</p>
+        ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+      </div>
+    `;
+  }
+
+  const allFlightIndices = stations
+    .map((s, idx) => (s.type === "flight" ? idx : -1))
+    .filter((idx) => idx !== -1);
+  const totalFlightsCount = allFlightIndices.length;
+
+  const renderedBlocks = [];
+  let i = 0;
+  while (i < stations.length) {
+    const st = stations[i];
+    if (st.type === "flight") {
+      const currOrder = allFlightIndices.indexOf(i);
+      const group = [{ st, idx: i, flightOrder: currOrder }];
+      while (
+        i + 1 < stations.length &&
+        isConnectionBetweenFlights(
+          stations[i],
+          stations[i + 1],
+          allFlightIndices.indexOf(i),
+          allFlightIndices.indexOf(i + 1),
+          totalFlightsCount
+        )
+      ) {
+        i++;
+        group.push({ st: stations[i], idx: i, flightOrder: allFlightIndices.indexOf(i) });
+      }
+
+      if (group.length > 1) {
+        const groupDir = getFlightLegDirection(group[0].st, group[0].flightOrder, totalFlightsCount);
+        const isReturnLeg = groupDir === "return";
+        const legTitle = isReturnLeg
+          ? "رحلة العودة كونيكشين"
+          : "رحلة الذهاب كونيكشين";
+
+        const innerHtml = group
+          .map((item, gIdx) => {
+            const cardHtml = renderSingleStationCard(item.st, item.idx);
+            const hasDividerAfter = gIdx < group.length - 1;
+            const hubCode = item.st.toAirport || group[gIdx + 1]?.st?.fromAirport || "";
+            const dividerHtml = hasDividerAfter
+              ? `<div class="my-2.5 flex items-center gap-2 text-[11px] font-black text-sky-900">
+                  <div class="h-px flex-1 bg-sky-200"></div>
+                  <span class="px-3 py-1 rounded-full bg-white border border-sky-200 shadow-2xs">🔄 كونيكشين${hubCode ? ` عبر ${escapeHtml(hubCode)}` : ""}</span>
+                  <div class="h-px flex-1 bg-sky-200"></div>
+                </div>`
+              : "";
+            return cardHtml + dividerHtml;
+          })
+          .join("");
+
+        renderedBlocks.push(`
+          <div class="rounded-3xl bg-sky-50/50 border border-sky-200 p-3 sm:p-4 space-y-2 shadow-2xs">
+            <div class="flex items-center justify-between px-1 pb-1">
+              <span class="text-xs font-black text-sky-950">✈️ ${escapeHtml(legTitle)}</span>
+              <span class="text-[11px] font-extrabold text-sky-800 bg-sky-100 px-2.5 py-0.5 rounded-full">مقاطع متصلة</span>
+            </div>
+            ${innerHtml}
+          </div>
+        `);
+      } else {
+        renderedBlocks.push(renderSingleStationCard(st, i));
+      }
+      i++;
+    } else {
+      renderedBlocks.push(renderSingleStationCard(st, i));
+      i++;
+    }
+  }
+
+  stagesList.innerHTML = renderedBlocks.join("");
 }
 
 // =======================================================================
@@ -2031,46 +2349,36 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 
+
+
+
+
+
+
 // =======================================================================
-// إرفاق ملفات المحطات (طيران / فندق / توصيل) — تحميل PDF فقط للزبون
+// نظام فاوشرات الحجز (طيران / فندق / توصيل) — عبر قاعدة البيانات فقط (بدون localStorage)
 // =======================================================================
-const NT_ATTACH_STORAGE_KEY = "nadlantours_station_attachments_v1";
+let ntSessionVouchers = {};
 
-function ntLoadAttachmentsMap() {
-  try {
-    return JSON.parse(localStorage.getItem(NT_ATTACH_STORAGE_KEY) || "{}") || {};
-  } catch (_) {
-    return {};
-  }
+function ntFindVoucherRecord(booking, stationType, index) {
+  const vObj = booking && booking.vouchers && typeof booking.vouchers === "object"
+    ? booking.vouchers
+    : (!booking ? ntSessionVouchers : null);
+
+  if (!vObj) return null;
+  if (vObj["idx_" + index] && vObj["idx_" + index].dataUrl) return vObj["idx_" + index];
+  if (vObj[stationType] && vObj[stationType].dataUrl) return vObj[stationType];
+  return null;
 }
 
-function ntSaveAttachmentsMap(map) {
-  try {
-    localStorage.setItem(NT_ATTACH_STORAGE_KEY, JSON.stringify(map));
-  } catch (_) {}
+function ntIsPdfVoucher(rec) {
+  if (!rec) return false;
+  const mime = String(rec.mimeType || rec.type || "").toLowerCase();
+  const name = String(rec.name || "").toLowerCase();
+  return mime.includes("pdf") || name.endsWith(".pdf");
 }
 
-function ntGetAttachmentKey(bookingOrFallback) {
-  if (bookingOrFallback && bookingOrFallback.pnr) {
-    return String(bookingOrFallback.pnr).trim().toUpperCase();
-  }
-  if (activeCustomerBooking && activeCustomerBooking.pnr) {
-    return String(activeCustomerBooking.pnr).trim().toUpperCase();
-  }
-  const editId = (document.getElementById("editing-booking-id")?.value || "").trim();
-  const pnr = (document.getElementById("booking-pnr")?.value || "").trim().toUpperCase();
-  const last = (document.getElementById("customer-last-name")?.value || "").trim();
-  return editId || pnr || last || "default_booking";
-}
-
-function ntIsPdfFile(fileObj) {
-  if (!fileObj) return false;
-  const mime = String(fileObj.mimeType || fileObj.type || "").toLowerCase();
-  const name = String(fileObj.name || "").toLowerCase();
-  return mime === "application/pdf" || name.endsWith(".pdf");
-}
-
-function ntReadFileAsDataUrl(file) {
+function ntFileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -2079,148 +2387,121 @@ function ntReadFileAsDataUrl(file) {
   });
 }
 
-async function ntHandleStationUpload(event, index, stationType) {
+async function ntUploadStationVoucher(event, index, stationType) {
   const file = event?.target?.files?.[0];
   if (!file) return;
+
   try {
-    const dataUrl = await ntReadFileAsDataUrl(file);
-    const map = ntLoadAttachmentsMap();
-    const key = ntGetAttachmentKey();
-    if (!map[key]) map[key] = {};
+    const dataUrl = await ntFileToDataUrl(file);
     const record = {
       name: file.name,
-      type: stationType,
+      stationType,
       mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
       dataUrl
     };
-    map[key][stationType] = record;
-    map[key]["idx_" + index] = record;
-    ntSaveAttachmentsMap(map);
+
+    ntSessionVouchers[stationType] = record;
+    ntSessionVouchers["idx_" + index] = record;
+
+    // إذا كان الحجز محفوظاً مسبقاً في قاعدة البيانات، نحدّثه فوراً في القاعدة أيضاً
+    const editId = document.getElementById("editing-booking-id")?.value?.trim();
+    const pnrVal = document.getElementById("booking-pnr")?.value?.trim()?.toUpperCase();
+    const targetBooking = bookings.find(
+      (b) => (editId && b.id === editId) || (pnrVal && String(b.pnr || "").toUpperCase() === pnrVal)
+    );
+    if (targetBooking) {
+      targetBooking.vouchers = {
+        ...(targetBooking.vouchers || {}),
+        [stationType]: record,
+        ["idx_" + index]: record
+      };
+      await apiRequest("/api/bookings", {
+        method: "POST",
+        body: JSON.stringify(targetBooking)
+      });
+    }
+
     renderStationsEditor();
     showToast(
-      ntIsPdfFile(record)
-        ? "تم إرفاق ملف PDF — يمكن للزبون تحميله"
-        : "تم إرفاق صورة — الصور للعرض فقط ولا تُحمّل للزبون"
+      ntIsPdfVoucher(record)
+        ? "تم تجهيز الفاوشر (PDF) — اضغط 'حفظ الحجز' لتثبيته في قاعدة البيانات"
+        : "تم تجهيز صورة الفاوشر — الصور للعرض فقط ولا يُحمّل للزبون"
     );
   } catch (_) {
-    showToast("حدث خطأ أثناء رفع الملف");
+    showToast("حدث خطأ أثناء قراءة الفاوشر");
   }
   event.target.value = "";
 }
 
-function ntRemoveStationFile(index, stationType) {
-  const map = ntLoadAttachmentsMap();
-  const key = ntGetAttachmentKey();
-  if (map[key]) {
-    delete map[key][stationType];
-    delete map[key]["idx_" + index];
-    ntSaveAttachmentsMap(map);
-  }
+function ntDeleteStationVoucher(index, stationType) {
+  delete ntSessionVouchers[stationType];
+  delete ntSessionVouchers["idx_" + index];
   renderStationsEditor();
-  showToast("تم حذف المرفق");
+  showToast("تم حذف الفاوشر من الجلسة الحالية");
 }
 
-function ntDownloadStationPdf(stationType, index) {
-  const map = ntLoadAttachmentsMap();
-  const key = ntGetAttachmentKey(activeCustomerBooking);
-  const files = map[key] || {};
-  const rec = files[stationType] || files["idx_" + index];
-
+function ntDownloadVoucherPdf(stationType, index) {
+  const rec = ntFindVoucherRecord(activeCustomerBooking, stationType, index);
   if (!rec || !rec.dataUrl) {
-    showToast("لا يوجد ملف مرفق لهذه المحطة");
+    showToast("لا يوجد فاوشر مرفق لهذا القسم في قاعدة البيانات");
     return;
   }
-  if (!ntIsPdfFile(rec)) {
-    showToast("عذراً: التحميل متاح لملفات PDF فقط، والصور للعرض فقط");
+  if (!ntIsPdfVoucher(rec)) {
+    showToast("التحميل متاح لملفات PDF فقط، والصور للعرض فقط");
     return;
   }
 
+  const fileName = rec.name.toLowerCase().endsWith(".pdf") ? rec.name : `${rec.name}.pdf`;
   const link = document.createElement("a");
   link.href = rec.dataUrl;
-  link.download = rec.name.toLowerCase().endsWith(".pdf") ? rec.name : `${rec.name}.pdf`;
+  link.download = fileName;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  showToast(`جاري تحميل ملف PDF: ${link.download}`);
+  showToast(`جاري تحميل الفاوشر: ${fileName}`);
 }
 
-function renderAdminStationAttachmentBox(idx, stationType) {
-  if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
-  const map = ntLoadAttachmentsMap();
-  const key = ntGetAttachmentKey();
-  const rec = (map[key] && (map[key][stationType] || map[key]["idx_" + idx])) || null;
-  const inputId = `nt-st-file-${idx}`;
-  const labelMap = { flight: "الطيران", hotel: "الفندق", transfer: "التوصيل" };
-  const label = labelMap[stationType] || "المحطة";
-
-  if (!rec || !rec.dataUrl) {
-    return `
-      <div class="mt-3 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
-        <span class="text-xs font-bold text-slate-600">📎 مرفق ${escapeHtml(label)}: <span class="text-slate-400">لم يُرفع ملف (PDF أو صورة)</span></span>
-        <label for="${inputId}" class="px-3 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer">
-          ⬆️ رفع ملف (${escapeHtml(label)})
-        </label>
-        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntHandleStationUpload(event, ${idx}, '${stationType}')" />
-      </div>
-    `;
-  }
-
-  const isPdf = ntIsPdfFile(rec);
-  const statusBadge = isPdf
-    ? `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black">PDF — مسموح للزبون بالتحميل</span>`
-    : `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-black">صورة — عرض فقط (لا يُحمّل للزبون)</span>`;
-
-  return `
-    <div class="mt-3 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
-      <div class="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
-        <span>📎 ${escapeHtml(rec.name || "ملف مرفق")}</span>
-        ${statusBadge}
-      </div>
-      <div class="flex items-center gap-1.5">
-        <label for="${inputId}" class="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-black cursor-pointer">تغيير</label>
-        <button type="button" onclick="ntRemoveStationFile(${idx}, '${stationType}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black cursor-pointer">حذف</button>
-        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntHandleStationUpload(event, ${idx}, '${stationType}')" />
-      </div>
-    </div>
-  `;
+function ntAdminVoucherUi(idx, stationType) {
+  return "";
 }
 
-function renderCustomerStationAttachmentBox(idx, stationType, booking) {
+function ntCustomerVoucherUi(idx, stationType, booking) {
   if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
-  const map = ntLoadAttachmentsMap();
-  const key = ntGetAttachmentKey(booking);
-  const rec = (map[key] && (map[key][stationType] || map[key]["idx_" + idx])) || null;
-  const labelMap = { flight: "تذكرة الطيران", hotel: "حجز الفندق", transfer: "مستند التوصيل" };
-  const docLabel = labelMap[stationType] || "المستند";
+  const rec = ntFindVoucherRecord(booking, stationType, idx);
+  const labelMap = {
+    flight: "فاوشر الطيران",
+    hotel: "فاوشر الفندق",
+    transfer: "فاوشر التوصيل"
+  };
+  const label = labelMap[stationType];
 
   if (!rec || !rec.dataUrl) {
     return `
       <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-        <span class="text-xs font-bold text-slate-400">📄 ${escapeHtml(docLabel)}: لم يُرفع ملف بعد</span>
+        <span class="text-xs font-bold text-slate-400">📄 ${escapeHtml(label)}: لم يُرفع ملف بعد</span>
         <span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-extrabold">🔒 غير متوفر</span>
       </div>
     `;
   }
 
-  if (ntIsPdfFile(rec)) {
+  if (ntIsPdfVoucher(rec)) {
     return `
       <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-        <span class="text-xs font-extrabold text-brand-900">📄 ${escapeHtml(docLabel)} (${escapeHtml(rec.name || "PDF")})</span>
+        <span class="text-xs font-extrabold text-brand-900">📄 ${escapeHtml(label)} (${escapeHtml(rec.name || "PDF")})</span>
         <button
           type="button"
-          onclick="ntDownloadStationPdf('${stationType}', ${idx})"
+          onclick="ntDownloadVoucherPdf('${stationType}', ${idx})"
           class="px-3.5 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black shadow-xs transition cursor-pointer"
         >
-          ⬇️ تحميل PDF
+          ⬇️ تحميل الفاوشر (PDF)
         </button>
       </div>
     `;
   }
 
-  // صورة: يُمنع التحميل تماماً ولا يُعرض زر تحميل
   return `
     <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-      <span class="text-xs font-extrabold text-slate-700">🖼️ ${escapeHtml(docLabel)} (صورة — للعرض فقط)</span>
+      <span class="text-xs font-extrabold text-slate-700">🖼️ ${escapeHtml(label)} (صورة — للعرض فقط)</span>
       <span class="px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 text-xs font-black">🚫 التحميل لملفات PDF فقط</span>
     </div>
   `;
