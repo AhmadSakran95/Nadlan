@@ -289,6 +289,7 @@ app.post("/api/gemini", async (req, res) => {
   }
 
   if (shouldFallbackToGroq && groqKey) {
+    console.log("Fallback to Groq triggered");
     const groqResult = await callGroqFallback(req.body, groqKey);
     if (groqResult.ok) {
       if (cacheKey && groqResult.geminiFormatted) {
