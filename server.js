@@ -170,6 +170,12 @@ function buildGroqMessagesFromGeminiBody(body) {
     }
   }
 
+  // تأكد أن أول رسالة بعد system هي user لتجنب رفض Groq
+  const firstNonSystemIdx = messages.findIndex((m) => m.role !== "system");
+  if (firstNonSystemIdx !== -1 && messages[firstNonSystemIdx].role === "assistant") {
+    messages.splice(firstNonSystemIdx, 1);
+  }
+
   const wantsJson = body?.generationConfig?.responseMimeType === "application/json";
   return { messages, hasPdf, hasImage, wantsJson };
 }
@@ -266,7 +272,12 @@ app.post("/api/gemini", async (req, res) => {
       }
 
       geminiErrorMsg = data?.error?.message || `Gemini HTTP ${response.status}`;
-      if (response.status === 429 || response.status >= 500 || response.status === 404) {
+      if (
+        response.status === 400 ||
+        response.status === 404 ||
+        response.status === 429 ||
+        response.status >= 500
+      ) {
         shouldFallbackToGroq = true;
       } else {
         return res.status(response.status).json({ error: geminiErrorMsg });
@@ -286,7 +297,7 @@ app.post("/api/gemini", async (req, res) => {
       return res.json(groqResult.geminiFormatted);
     }
     return res.status(429).json({
-      error: `انتهت حصة Gemini (${geminiErrorMsg}) وتعذر التحويل إلى Groq (${groqResult.reason}).`
+      error: `تعذر إتمام الطلب عبر Gemini (${geminiErrorMsg}) و Groq (${groqResult.reason}).`
     });
   }
 
