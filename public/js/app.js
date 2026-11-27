@@ -972,10 +972,23 @@ async function deleteBooking(bookingId) {
   }
 }
 
+function buildCustomerAutoLoginUrl(b) {
+  const baseUrl =
+    window.location.origin && window.location.origin.startsWith("http")
+      ? `${window.location.origin}/`
+      : "https://nadlan-production-89b4d3fc.up.railway.app/";
+  const url = new URL(baseUrl);
+  url.searchParams.set("pnr", String(b.pnr || "").trim().toUpperCase());
+  url.searchParams.set("last", String(b.lastName || "").trim());
+  return url.toString();
+}
+
 function renderGeneratedMessage(b) {
   const box = document.getElementById("generated-message-box");
   const pre = document.getElementById("generated-message-text");
   if (!box || !pre) return;
+
+  const magicLink = buildCustomerAutoLoginUrl(b);
 
   const lines = [
     `مرحباً ${b.firstName} ${b.lastName}، أهلاً بك في ندلان تورز (Nadlantours) ✈️`,
@@ -983,7 +996,9 @@ function renderGeneratedMessage(b) {
     `رمز الدخول / PNR: ${b.pnr}`,
     `اسم العائلة للدخول: ${b.lastName}`,
     `عدد المسافرين: ${(b.passengers || []).length}`,
-    ...(b.notes ? [`ملاحظات: ${b.notes}`] : [])
+    ...(b.notes ? [`ملاحظات: ${b.notes}`] : []),
+    `رابط الدخول المباشر لحجزك:`,
+    magicLink
   ];
 
   pre.textContent = lines.join("\n");
@@ -1513,7 +1528,7 @@ function renderCustomerDashboard(booking) {
               </div>
               <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
                 <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
-                <span class="text-sky-600">⬅</span>
+                <span class="text-sky-600">➔</span>
                 <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
               </div>
             </div>
@@ -2084,10 +2099,49 @@ async function handleAiChatSubmit(event) {
 // =======================================================================
 // تهيئة التطبيق عند التحميل (الصفحة الرئيسية: دخول الزبون بـ PNR واسم العائلة)
 // =======================================================================
+function autoLoginFromUrlQuery() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const qPnr = String(params.get("pnr") || params.get("PNR") || "").trim().toUpperCase();
+    const qLast = String(params.get("last") || params.get("lastName") || params.get("family") || "").trim();
+
+    if (!qPnr && !qLast) return false;
+
+    const pnrInput = document.getElementById("login-pnr");
+    const lastInput = document.getElementById("login-last-name");
+    if (pnrInput && qPnr) pnrInput.value = qPnr;
+    if (lastInput && qLast) lastInput.value = qLast;
+
+    if (qPnr && qLast) {
+      const found = bookings.find(
+        (b) =>
+          String(b.pnr || "").trim().toUpperCase() === qPnr &&
+          String(b.lastName || "").trim().toLowerCase() === qLast.toLowerCase()
+      );
+
+      if (found) {
+        openBookingInCustomerPortal(found.id);
+        try {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (_) {}
+        return true;
+      }
+
+      const errBox = document.getElementById("login-error-msg");
+      if (errBox) {
+        errBox.textContent = "تمت تعبئة بيانات الدخول من الرابط، ولم يتم العثور على حجز مطابق حالياً.";
+        errBox.classList.remove("hidden");
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   renderStationsEditor();
   await loadBookings();
   renderBookingsList();
   renderQuickDemoBookings();
   switchPortal("customer");
+  autoLoginFromUrlQuery();
 });
