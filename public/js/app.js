@@ -232,7 +232,6 @@ async function loadBookings() {
     let result = await apiRequest("/api/bookings");
     bookings = Array.isArray(result.bookings) ? result.bookings : [];
 
-
     const legacyRaw = localStorage.getItem(STORAGE_KEY);
     if (bookings.length === 0 && legacyRaw) {
       let legacyBookings = [];
@@ -613,10 +612,56 @@ function onFlightToAirportChange(idx) {
 }
 
 // =======================================================================
-// استخراج تلقائي من ملف PDF أو صورة (طيران / فندق / توصيل)
+// استخراج تلقائي من ملف PDF أو صورة (رفع ملف أو لصق صورة مباشرة Ctrl+V)
 // =======================================================================
+let pasteExtractTargetType = null;
+let pasteModalSelectedFile = null;
+
+function setPasteExtractTarget(targetType) {
+  pasteExtractTargetType = targetType || null;
+}
+
+function openPasteExtractModal(targetType = null) {
+  if (targetType) {
+    pasteExtractTargetType = targetType;
+  }
+  pasteModalSelectedFile = null;
+
+  const modal = document.getElementById("paste-extract-modal");
+  const selectEl = document.getElementById("paste-extract-type-select");
+  const previewWrap = document.getElementById("paste-extract-preview-wrap");
+  const previewImg = document.getElementById("paste-extract-preview-img");
+  const confirmBtn = document.getElementById("paste-extract-confirm-btn");
+  const hintEl = document.getElementById("paste-extract-hint");
+
+  if (selectEl && pasteExtractTargetType) {
+    selectEl.value = pasteExtractTargetType;
+  }
+  if (previewWrap) previewWrap.classList.add("hidden");
+  if (previewImg) previewImg.src = "";
+  if (confirmBtn) confirmBtn.disabled = true;
+  if (hintEl) {
+    hintEl.textContent = "اضغط Ctrl+V (أو Cmd+V على Mac) في أي مكان داخل هذه النافذة للصق الصورة مباشرة من الحافظة.";
+  }
+
+  if (modal) {
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+  }
+}
+
+function closePasteExtractModal() {
+  pasteModalSelectedFile = null;
+  const modal = document.getElementById("paste-extract-modal");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+  }
+}
+
 function triggerExtract(targetType) {
   extractTargetType = targetType;
+  pasteExtractTargetType = targetType;
   const fileInput = document.getElementById("extract-file-input");
   if (fileInput) {
     fileInput.value = "";
@@ -637,17 +682,46 @@ function fileToBase64Data(file) {
   });
 }
 
-async function handleExtractFileSelected(event) {
-  const file = event.target?.files?.[0];
-  if (!file) return;
+function extractImageFileFromClipboardEvent(event) {
+  const clipboardData = event?.clipboardData || window.clipboardData;
+  if (!clipboardData) return null;
 
-  // حفظ ملف الاستخراج نفسه كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
+  const items = Array.from(clipboardData.items || []);
+  for (const item of items) {
+    if (item.kind === "file" && String(item.type || "").toLowerCase().startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) {
+        const ext = (file.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
+        return new File([file], `pasted-${Date.now()}.${ext}`, {
+          type: file.type || "image/png"
+        });
+      }
+    }
+  }
+
+  const files = Array.from(clipboardData.files || []);
+  const imgFile = files.find((f) => String(f.type || "").toLowerCase().startsWith("image/"));
+  if (imgFile) {
+    const ext = (imgFile.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
+    return new File([imgFile], imgFile.name || `pasted-${Date.now()}.${ext}`, {
+      type: imgFile.type || "image/png"
+    });
+  }
+
+  return null;
+}
+
+async function processExtractedFile(file, targetType) {
+  if (!file) return;
+  extractTargetType = targetType || extractTargetType || "flight";
+
+  // حفظ ملف/صورة الاستخراج كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
   try {
     const voucherDataUrl = await ntFileToDataUrl(file);
     const vRecord = {
       name: file.name,
       stationType: extractTargetType,
-      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
       dataUrl: voucherDataUrl
     };
     ntSessionVouchers[extractTargetType] = vRecord;
@@ -665,7 +739,7 @@ async function handleExtractFileSelected(event) {
 
   try {
     const base64Data = await fileToBase64Data(file);
-    const mimeType = file.type || "application/pdf";
+    const mimeType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png");
 
     let prompt = "";
     if (extractTargetType === "flight") {
@@ -750,7 +824,7 @@ async function handleExtractFileSelected(event) {
     const data = parseJsonLoose(rawText);
 
     if (!data) {
-      showToast("لم يتمكن النظام من قراءة البيانات من الملف، يمكنك إدخالها يدوياً");
+      showToast("لم يتمكن النظام من قراءة البيانات من الصورة، يمكنك إدخالها يدوياً");
       return;
     }
 
@@ -772,12 +846,94 @@ async function handleExtractFileSelected(event) {
     renderStationsEditor();
     showToast("تم استخراج البيانات وتعبئتها بنجاح");
   } catch (err) {
-    showToast("حدث خطأ أثناء استخراج البيانات من الملف");
+    showToast("حدث خطأ أثناء استخراج البيانات من الصورة");
   } finally {
     if (statusBox) statusBox.classList.add("hidden");
+  }
+}
+
+async function handleExtractFileSelected(event) {
+  const file = event.target?.files?.[0];
+  if (!file) return;
+  try {
+    await processExtractedFile(file, extractTargetType);
+  } finally {
     event.target.value = "";
   }
 }
+
+async function confirmPastedImageExtraction() {
+  if (!pasteModalSelectedFile) {
+    showToast("يرجى لصق صورة أولاً باستخدام Ctrl+V");
+    return;
+  }
+  const selectEl = document.getElementById("paste-extract-type-select");
+  const chosenType = selectEl?.value || pasteExtractTargetType || "flight";
+  const fileToProcess = pasteModalSelectedFile;
+  closePasteExtractModal();
+  await processExtractedFile(fileToProcess, chosenType);
+}
+
+document.addEventListener("paste", async (event) => {
+  const adminSec = document.getElementById("admin-section");
+  const isAdminVisible = adminSec && !adminSec.classList.contains("hidden");
+  if (!isAdminVisible) return;
+
+  const activeTag = document.activeElement?.tagName?.toLowerCase() || "";
+  const isTypingInTextInput =
+    (activeTag === "input" && !["file", "checkbox", "radio", "button"].includes((document.activeElement.type || "").toLowerCase())) ||
+    activeTag === "textarea" ||
+    activeTag === "select" ||
+    document.activeElement?.isContentEditable;
+
+  const pastedImage = extractImageFileFromClipboardEvent(event);
+  if (!pastedImage) return;
+
+  const pasteModal = document.getElementById("paste-extract-modal");
+  const isPasteModalOpen = pasteModal && !pasteModal.classList.contains("hidden");
+
+  if (!isPasteModalOpen && isTypingInTextInput && !pasteExtractTargetType) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (isPasteModalOpen) {
+    pasteModalSelectedFile = pastedImage;
+    const previewWrap = document.getElementById("paste-extract-preview-wrap");
+    const previewImg = document.getElementById("paste-extract-preview-img");
+    const confirmBtn = document.getElementById("paste-extract-confirm-btn");
+    const hintEl = document.getElementById("paste-extract-hint");
+    try {
+      const url = await ntFileToDataUrl(pastedImage);
+      if (previewImg) previewImg.src = url;
+      if (previewWrap) previewWrap.classList.remove("hidden");
+      if (confirmBtn) confirmBtn.disabled = false;
+      if (hintEl) hintEl.textContent = `تم التقاط الصورة (${pastedImage.name}). اختر نوع الاستخراج واضغط "استخراج الآن".`;
+    } catch (_) {
+      showToast("تعذر معاينة الصورة الملصوقة");
+    }
+    return;
+  }
+
+  if (pasteExtractTargetType) {
+    await processExtractedFile(pastedImage, pasteExtractTargetType);
+  } else {
+    openPasteExtractModal("flight");
+    pasteModalSelectedFile = pastedImage;
+    const previewWrap = document.getElementById("paste-extract-preview-wrap");
+    const previewImg = document.getElementById("paste-extract-preview-img");
+    const confirmBtn = document.getElementById("paste-extract-confirm-btn");
+    const hintEl = document.getElementById("paste-extract-hint");
+    try {
+      const url = await ntFileToDataUrl(pastedImage);
+      if (previewImg) previewImg.src = url;
+      if (previewWrap) previewWrap.classList.remove("hidden");
+      if (confirmBtn) confirmBtn.disabled = false;
+      if (hintEl) hintEl.textContent = `تم التقاط الصورة (${pastedImage.name}). اختر نوع الاستخراج واضغط "استخراج الآن".`;
+    } catch (_) {}
+  }
+});
 
 function buildFlightSegmentStation(seg, fallbackPnr, fallbackBaggage, legLabel, connNote) {
   const st = createStationObject("flight");
@@ -1351,145 +1507,174 @@ function getCheckinFlightCodes(booking) {
   };
 }
 
-function formatArabicDepartureDisplay(rawVal) {
-  if (!rawVal) return "غير محدد";
+function parseFlexibleDateTime(rawVal) {
+  if (!rawVal) return null;
   const str = String(rawVal).trim();
+  if (!str) return null;
+
   const monthsMap = {
-    jan: 1, january: 1,
-    feb: 2, february: 2,
-    mar: 3, march: 3,
-    apr: 4, april: 4,
-    may: 5,
-    jun: 6, june: 6,
-    jul: 7, july: 7,
-    aug: 8, august: 8,
-    sep: 9, sept: 9, september: 9,
-    oct: 10, october: 10,
-    nov: 11, november: 11,
-    dec: 12, december: 12
+    jan: 1, january: 1, جانفي: 1, يناير: 1,
+    feb: 2, february: 2, فيفري: 2, فبراير: 2,
+    mar: 3, march: 3, مارس: 3, آذار: 3,
+    apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
+    may: 5, ماي: 5, مايو: 5, أيار: 5,
+    jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
+    jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
+    aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
+    sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
+    oct: 10, october: 10, أكتوبر: 10, تشرين الأول: 10,
+    nov: 11, november: 11, نوفمبر: 11, تشرين الثاني: 11,
+    dec: 12, december: 12, ديسمبر: 12, كانون الأول: 12
   };
 
-  let day = null, month = null, year = null;
-  let hour = null, minute = null;
+  let year = null;
+  let month = null;
+  let day = null;
+  let hour = null;
+  let minute = null;
+  let second = 0;
 
-  // استخراج الوقت (24 ساعة أو 12 ساعة AM/PM)
-  const time12Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)\b/i);
-  const time24Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/);
+  const time12Match = str.match(
+    /(?:^|[\sT,@\-–|])(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)\b/i
+  );
+  const time24Match = str.match(
+    /(?:^|[\sT,@\-–|])(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\s*(?:am|pm|ص|م|صباحا|صباحاً|مساء|مساءً))\b/i
+  );
 
   if (time12Match) {
     let h = parseInt(time12Match[1], 10);
     minute = parseInt(time12Match[2], 10);
-    const mer = time12Match[3].toLowerCase();
-    if ((mer === "pm" || mer === "م" || mer === "مساء" || mer === "مساءً") && h < 12) h += 12;
-    if ((mer === "am" || mer === "ص" || mer === "صباحا" || mer === "صباحاً") && h === 12) h = 0;
+    second = time12Match[3] ? parseInt(time12Match[3], 10) : 0;
+    const mer = time12Match[4].toLowerCase();
+    const isPm = mer === "pm" || mer === "م" || mer === "مساء" || mer === "مساءً";
+    const isAm = mer === "am" || mer === "ص" || mer === "صباحا" || mer === "صباحاً";
+    if (isPm && h < 12) h += 12;
+    if (isAm && h === 12) h = 0;
     hour = h;
   } else if (time24Match) {
     hour = parseInt(time24Match[1], 10);
     minute = parseInt(time24Match[2], 10);
+    second = time24Match[3] ? parseInt(time24Match[3], 10) : 0;
   }
 
-  // استخراج التاريخ (YYYY-MM-DD أو DD-MM-YYYY أو DD/MM/YYYY أو DD Mon YYYY)
-  const ymdMatch = str.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
-  const dmyMatch = str.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
-  const textMonthMatch = str.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:[,\s]+(\d{4}))?\b/);
+  const cleanedForDate = str
+    .replace(/\b(?:sun|mon|tue|wed|thu|fri|sat|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b,?/gi, " ")
+    .replace(/(?:^|[\sT,@\-–|])\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)?/gi, " ")
+    .trim();
+
+  const ymdMatch = cleanedForDate.match(/\b(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/);
+  const dmyMatch = cleanedForDate.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  const monthDayYearMatch = cleanedForDate.match(
+    /\b([A-Za-z\u0600-\u06FF]+)[,\s]+(\d{1,2})(?:st|nd|rd|th)?(?:[,\s]+(\d{4}))?\b/i
+  );
+  const dayMonthYearMatch = cleanedForDate.match(
+    /\b(\d{1,2})(?:st|nd|rd|th)?[\s,/-]+([A-Za-z\u0600-\u06FF]+)(?:[,\s/-]+(\d{4}))?\b/i
+  );
 
   if (ymdMatch) {
     year = parseInt(ymdMatch[1], 10);
     month = parseInt(ymdMatch[2], 10);
     day = parseInt(ymdMatch[3], 10);
   } else if (dmyMatch) {
-    day = parseInt(dmyMatch[1], 10);
-    month = parseInt(dmyMatch[2], 10);
+    const p1 = parseInt(dmyMatch[1], 10);
+    const p2 = parseInt(dmyMatch[2], 10);
     year = parseInt(dmyMatch[3], 10);
-  } else if (textMonthMatch) {
-    day = parseInt(textMonthMatch[1], 10);
-    month = monthsMap[textMonthMatch[2].toLowerCase()] || null;
-    year = textMonthMatch[3] ? parseInt(textMonthMatch[3], 10) : new Date().getFullYear();
+    if (p1 > 12) {
+      day = p1;
+      month = p2;
+    } else if (p2 > 12) {
+      month = p1;
+      day = p2;
+    } else {
+      day = p1;
+      month = p2;
+    }
+  } else if (monthDayYearMatch && monthsMap[monthDayYearMatch[1].toLowerCase()]) {
+    month = monthsMap[monthDayYearMatch[1].toLowerCase()];
+    day = parseInt(monthDayYearMatch[2], 10);
+    year = monthDayYearMatch[3] ? parseInt(monthDayYearMatch[3], 10) : null;
+  } else if (dayMonthYearMatch && monthsMap[dayMonthYearMatch[2].toLowerCase()]) {
+    day = parseInt(dayMonthYearMatch[1], 10);
+    month = monthsMap[dayMonthYearMatch[2].toLowerCase()];
+    year = dayMonthYearMatch[3] ? parseInt(dayMonthYearMatch[3], 10) : null;
   }
 
-  if (!day || !month || !year) {
-    return str;
+  if (day && month && !year) {
+    const now = new Date();
+    year = now.getFullYear();
+    const hTest = hour ?? 9;
+    const mTest = minute ?? 0;
+    const candidate = new Date(year, month - 1, day, hTest, mTest, second);
+    if (candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000) {
+      year += 1;
+    }
   }
 
-  const dd = String(day).padStart(2, "0");
-  const mm = String(month).padStart(2, "0");
-  const datePart = `${dd}-${mm}-${year}`;
+  if (year && month && day) {
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    const hasTime = hour !== null && minute !== null && !Number.isNaN(hour) && !Number.isNaN(minute);
+    const dt = new Date(
+      year,
+      month - 1,
+      day,
+      hasTime ? hour : 9,
+      hasTime ? minute : 0,
+      hasTime ? second : 0
+    );
+    if (Number.isNaN(dt.getTime())) return null;
+    return {
+      date: dt,
+      timestamp: dt.getTime(),
+      year,
+      month,
+      day,
+      hour: hasTime ? hour : null,
+      minute: hasTime ? minute : null,
+      hasTime
+    };
+  }
 
-  if (hour === null || minute === null || Number.isNaN(hour) || Number.isNaN(minute)) {
+  const parsedNative = Date.parse(str);
+  if (!Number.isNaN(parsedNative)) {
+    const dt = new Date(parsedNative);
+    return {
+      date: dt,
+      timestamp: dt.getTime(),
+      year: dt.getFullYear(),
+      month: dt.getMonth() + 1,
+      day: dt.getDate(),
+      hour: dt.getHours(),
+      minute: dt.getMinutes(),
+      hasTime: true
+    };
+  }
+
+  return null;
+}
+
+function formatArabicDepartureDisplay(rawVal) {
+  if (!rawVal) return "غير محدد";
+  const parsed = parseFlexibleDateTime(rawVal);
+  if (!parsed) return String(rawVal).trim();
+
+  const dd = String(parsed.day).padStart(2, "0");
+  const mm = String(parsed.month).padStart(2, "0");
+  const datePart = `${dd}-${mm}-${parsed.year}`;
+
+  if (!parsed.hasTime) {
     return datePart;
   }
 
-  const period = hour >= 12 ? "مساءً" : "صباحاً";
-  const hh = String(hour).padStart(2, "0");
-  const minStr = String(minute).padStart(2, "0");
+  const period = parsed.hour >= 12 ? "مساءً" : "صباحاً";
+  const hh = String(parsed.hour).padStart(2, "0");
+  const minStr = String(parsed.minute).padStart(2, "0");
 
   return `${datePart} | ${hh}:${minStr} ${period}`;
 }
 
 function parseDepartureDateToTimestamp(departureText) {
-  if (!departureText) return null;
-  const raw = String(departureText).trim();
-
-  const monthsMap = {
-    jan: "01", january: "01",
-    feb: "02", february: "02",
-    mar: "03", march: "03",
-    apr: "04", april: "04",
-    may: "05",
-    jun: "06", june: "06",
-    jul: "07", july: "07",
-    aug: "08", august: "08",
-    sep: "09", sept: "09", september: "09",
-    oct: "10", october: "10",
-    nov: "11", november: "11",
-    dec: "12", december: "12"
-  };
-
-  const timeMatch = raw.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
-  const hh = timeMatch ? String(timeMatch[1]).padStart(2, "0") : "09";
-  const mm = timeMatch ? String(timeMatch[2]).padStart(2, "0") : "00";
-  const ss = timeMatch && timeMatch[3] ? String(timeMatch[3]).padStart(2, "0") : "00";
-
-  const monthNameMatch = raw.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?\b/);
-  if (monthNameMatch) {
-    const day = String(monthNameMatch[1]).padStart(2, "0");
-    const monthKey = monthNameMatch[2].toLowerCase();
-    const month = monthsMap[monthKey];
-    if (month) {
-      let year = monthNameMatch[3];
-      if (!year) {
-        const now = new Date();
-        year = String(now.getFullYear());
-        const candidate = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`);
-        if (candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000) {
-          year = String(now.getFullYear() + 1);
-        }
-      }
-      const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
-      if (!Number.isNaN(ts)) return ts;
-    }
-  }
-
-  const ymdMatch = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
-  if (ymdMatch) {
-    const year = ymdMatch[1];
-    const month = String(ymdMatch[2]).padStart(2, "0");
-    const day = String(ymdMatch[3]).padStart(2, "0");
-    const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
-    if (!Number.isNaN(ts)) return ts;
-  }
-
-  const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
-  if (dmyMatch) {
-    const day = String(dmyMatch[1]).padStart(2, "0");
-    const month = String(dmyMatch[2]).padStart(2, "0");
-    const year = dmyMatch[3];
-    const ts = new Date(`${year}-${month}-${day}T${hh}:${mm}:${ss}`).getTime();
-    if (!Number.isNaN(ts)) return ts;
-  }
-
-  const directTs = Date.parse(raw);
-  return Number.isNaN(directTs) ? null : directTs;
+  const parsed = parseFlexibleDateTime(departureText);
+  return parsed ? parsed.timestamp : null;
 }
 
 function renderCheckinAlertBanner(booking) {
@@ -1649,24 +1834,20 @@ function renderCustomerDashboard(booking) {
     return;
   }
 
-  // تحديد اتجاه مقطع الطيران (ذهاب أو عودة) بدقة حتى لو أُدخل يدوياً بدون كلمة ذهاب/عودة
   function getFlightLegDirection(st, flightIdxInAllFlights, totalFlightsCount) {
     const notes = String(st.notes || "").toLowerCase();
     if (notes.includes("عودة") || notes.includes("return")) return "return";
     if (notes.includes("ذهاب") || notes.includes("outbound")) return "outbound";
-    // إذا أُدخلت 4 مقاطع يدوياً بدون كتابة ذهاب/عودة: أول مقطعين ذهاب والمقطعين الباقيين عودة
     if (totalFlightsCount === 4) {
       return flightIdxInAllFlights < 2 ? "outbound" : "return";
     }
     return "outbound";
   }
 
-  // تجميع مقاطع الطيران المتصلة (كونيكشين) ضمن مجموعة واحدة لكل اتجاه على حدة
   function isConnectionBetweenFlights(currSt, nextSt, currFlightOrder, nextFlightOrder, totalFlightsCount) {
     if (!currSt || !nextSt || currSt.type !== "flight" || nextSt.type !== "flight") return false;
     const dir1 = getFlightLegDirection(currSt, currFlightOrder, totalFlightsCount);
     const dir2 = getFlightLegDirection(nextSt, nextFlightOrder, totalFlightsCount);
-    // لا ندمج الذهاب مع العودة أبداً
     if (dir1 !== dir2) return false;
     const n1 = String(currSt.notes || "").toLowerCase();
     const n2 = String(nextSt.notes || "").toLowerCase();
@@ -2348,13 +2529,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   switchPortal("customer");
 });
 
-
-
-
-
-
-
-
 // =======================================================================
 // نظام فاوشرات الحجز (طيران / فندق / توصيل) — عبر قاعدة البيانات فقط (بدون localStorage)
 // =======================================================================
@@ -2403,7 +2577,6 @@ async function ntUploadStationVoucher(event, index, stationType) {
     ntSessionVouchers[stationType] = record;
     ntSessionVouchers["idx_" + index] = record;
 
-    // إذا كان الحجز محفوظاً مسبقاً في قاعدة البيانات، نحدّثه فوراً في القاعدة أيضاً
     const editId = document.getElementById("editing-booking-id")?.value?.trim();
     const pnrVal = document.getElementById("booking-pnr")?.value?.trim()?.toUpperCase();
     const targetBooking = bookings.find(
@@ -2506,3 +2679,1228 @@ function ntCustomerVoucherUi(idx, stationType, booking) {
     </div>
   `;
 }
+Your HTML file is ready
+
+
+index
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NadlanTours AI — نظام إدارة الحجوزات ومساعد السفر الذكي</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            cairo: ["Cairo", "sans-serif"],
+            jakarta: ["Plus Jakarta Sans", "sans-serif"]
+          },
+          colors: {
+            brand: {
+              50: "#eff6ff",
+              100: "#dbeafe",
+              200: "#bfdbfe",
+              500: "#2563eb",
+              600: "#1d4ed8",
+              700: "#1e40af",
+              800: "#1e3a8a",
+              900: "#0b192c"
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="/css/styles.css" />
+
+  <style id="nadlan-active-themes">
+    /* 1. ثيم اللوغو الأساسي (زمردي ندلان + ذهبي + فحمي) */
+    body,
+    body[data-theme="navy-white-gold"] {
+      --nt-header-bg: linear-gradient(to left, #062a27, #0b4f4a, #2f3a3d);
+      --nt-body-bg: linear-gradient(145deg, #f3f8f7 0%, #e8f2f0 50%, #f7f9f8 100%);
+      --nt-primary: #0b4f4a;
+      --nt-primary-hover: #093e3a;
+      --nt-primary-soft: #d6f0ed;
+      --nt-primary-tint: #eefaf8;
+      --nt-accent: #f4ad27;
+      --nt-accent-hover: #e59a1c;
+      --nt-accent-soft: #fef3d6;
+      --nt-accent-text: #784504;
+      --nt-card-bg: #ffffff;
+      --nt-surface-soft: #f8fafc;
+      --nt-border: #e2e8f0;
+      --nt-text: #2f3a3d;
+      --nt-muted: #64748b;
+    }
+
+    /* 2. ثيم كحلي مع أبيض وذهبي */
+    body[data-theme="navy-white-gold"] {
+      --nt-header-bg: linear-gradient(to left, #071630, #0f2954, #173a73);
+      --nt-body-bg: linear-gradient(145deg, #ffffff 0%, #f4f7fc 55%, #edf2fa 100%);
+      --nt-primary: #0f2954;
+      --nt-primary-hover: #091b38;
+      --nt-primary-soft: #dce7fa;
+      --nt-primary-tint: #f4f8ff;
+      --nt-accent: #eab308;
+      --nt-accent-hover: #ca8a04;
+      --nt-accent-soft: #fef9c3;
+      --nt-accent-text: #713f12;
+      --nt-card-bg: #ffffff;
+      --nt-surface-soft: #f8faff;
+      --nt-border: #dbe3f0;
+      --nt-text: #0f2954;
+      --nt-muted: #4b5e7a;
+    }
+
+    /* 3. ثيم زمردي منتجعات فخمة */
+    body[data-theme="emerald-luxe"] {
+      --nt-header-bg: linear-gradient(to left, #042824, #09453e, #0d5c52);
+      --nt-body-bg: linear-gradient(135deg, #f6fdfb 0%, #ecfdf5 50%, #f0f9ff 100%);
+      --nt-primary: #0f766e;
+      --nt-primary-hover: #115e59;
+      --nt-primary-soft: #ccfbf1;
+      --nt-primary-tint: #f0fdfa;
+      --nt-accent: #eab308;
+      --nt-accent-hover: #ca8a04;
+      --nt-accent-soft: #fef9c3;
+      --nt-accent-text: #713f12;
+      --nt-card-bg: #ffffff;
+      --nt-surface-soft: #f7fcfa;
+      --nt-border: #d1fae5;
+      --nt-text: #062825;
+      --nt-muted: #4b6b66;
+    }
+
+    /* 4. ثيم ليلي فخم داكن */
+    body[data-theme="obsidian-vip"] {
+      --nt-header-bg: linear-gradient(to left, #05070d, #0d1322, #151e33);
+      --nt-body-bg: linear-gradient(135deg, #070b14 0%, #0d1322 55%, #090e1a 100%);
+      --nt-primary: #2563eb;
+      --nt-primary-hover: #1d4ed8;
+      --nt-primary-soft: #1e3a8a;
+      --nt-primary-tint: #0f172a;
+      --nt-accent: #fbbf24;
+      --nt-accent-hover: #f59e0b;
+      --nt-accent-soft: #451a03;
+      --nt-accent-text: #fde68a;
+      --nt-card-bg: #111827;
+      --nt-surface-soft: #0b111e;
+      --nt-border: #1e293b;
+      --nt-text: #f8fafc;
+      --nt-muted: #94a3b8;
+    }
+
+    body {
+      background: var(--nt-body-bg);
+      color: var(--nt-text);
+      transition: background 0.25s ease, color 0.2s ease;
+    }
+
+    body > header {
+      background: var(--nt-header-bg);
+      border-bottom: 2px solid color-mix(in srgb, var(--nt-accent) 45%, transparent);
+      transition: background 0.25s ease;
+    }
+
+    .bg-brand-700 { background-color: var(--nt-primary); }
+    .hover\:bg-brand-800:hover { background-color: var(--nt-primary-hover); }
+    .bg-brand-600 { background-color: var(--nt-primary); }
+    .hover\:bg-brand-700:hover { background-color: var(--nt-primary-hover); }
+    .text-brand-700, .text-brand-800, .text-brand-900 { color: var(--nt-primary); }
+    .bg-brand-100 { background-color: var(--nt-primary-soft); }
+    .bg-brand-50 { background-color: var(--nt-primary-tint); }
+    .border-brand-200 { border-color: var(--nt-border); }
+    .border-brand-400 { border-color: var(--nt-primary); }
+    .focus\:border-brand-600:focus { border-color: var(--nt-primary); }
+
+    .from-amber-400.to-amber-300 {
+      background-image: linear-gradient(to right, var(--nt-accent), var(--nt-accent-hover));
+      color: #071630;
+    }
+    .bg-amber-400 { background-color: var(--nt-accent); color: #071630; }
+    .hover\:bg-amber-500:hover { background-color: var(--nt-accent-hover); }
+    .text-amber-400, .text-amber-300 { color: var(--nt-accent); }
+    .bg-amber-100 { background-color: var(--nt-accent-soft); }
+    .text-amber-900, .text-amber-950 { color: var(--nt-accent-text); }
+
+    body[data-theme="obsidian-vip"] .bg-white {
+      background-color: var(--nt-card-bg);
+      color: var(--nt-text);
+    }
+    body[data-theme="obsidian-vip"] .bg-slate-50,
+    body[data-theme="obsidian-vip"] .bg-slate-50\/70,
+    body[data-theme="obsidian-vip"] .bg-slate-50\/60 {
+      background-color: var(--nt-surface-soft);
+      color: var(--nt-text);
+    }
+    body[data-theme="obsidian-vip"] .bg-slate-100 {
+      background-color: #1e293b;
+      color: #e2e8f0;
+    }
+    body[data-theme="obsidian-vip"] .border-slate-200,
+    body[data-theme="obsidian-vip"] .border-slate-100,
+    body[data-theme="obsidian-vip"] .border-slate-300 {
+      border-color: var(--nt-border);
+    }
+    body[data-theme="obsidian-vip"] .text-slate-900,
+    body[data-theme="obsidian-vip"] .text-slate-950,
+    body[data-theme="obsidian-vip"] .text-slate-800,
+    body[data-theme="obsidian-vip"] .text-slate-700 {
+      color: var(--nt-text);
+    }
+    body[data-theme="obsidian-vip"] .text-slate-600,
+    body[data-theme="obsidian-vip"] .text-slate-500 {
+      color: var(--nt-muted);
+    }
+    body[data-theme="obsidian-vip"] input,
+    body[data-theme="obsidian-vip"] textarea,
+    body[data-theme="obsidian-vip"] select {
+      background-color: var(--nt-surface-soft);
+      color: var(--nt-text);
+      border-color: #334155;
+    }
+
+    @media (max-width: 640px) {
+      input, textarea, select {
+        font-size: 16px;
+      }
+      #ai-chat-drawer {
+        height: 68dvh;
+        max-height: 68dvh;
+      }
+    }
+  </style>
+</head>
+<body data-theme="nadlan-logo" class="min-h-screen flex flex-col text-slate-900">
+  <!-- إشعار نظام مخصص بديل عن alert/confirm -->
+  <div id="toast-banner" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden max-w-md w-[92%] px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-bold shadow-2xl border border-slate-700 items-center justify-between gap-3">
+    <span id="toast-message"></span>
+    <button type="button" onclick="hideToast()" class="text-amber-300 hover:text-amber-200 text-xs font-extrabold px-2 py-1 rounded-lg bg-slate-800">إغلاق</button>
+  </div>
+
+  <!-- الشريط العلوي -->
+  <header class="bg-gradient-to-l from-[#071324] via-[#0f2544] to-[#16335b] text-white shadow-xl border-b border-blue-400/20 relative overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.14),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.12),transparent_40%)] pointer-events-none"></div>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4 relative z-10">
+      <div class="flex items-center gap-3.5">
+        <!-- شعار NadlanTours AI -->
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 p-[1.5px] shadow-lg shadow-amber-500/20 shrink-0">
+          <div class="w-full h-full rounded-[14px] bg-[#09182d] flex items-center justify-center relative">
+            <svg viewBox="0 0 36 36" class="w-7 h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="18" cy="18" r="14" stroke="url(#nt-grad)" stroke-width="1.6" stroke-dasharray="3 2.5"/>
+              <path d="M9 21.5L26.5 11.5L21 25L17.2 20.4L13.5 23L14.2 18.2L9 21.5Z" fill="url(#nt-grad)"/>
+              <circle cx="26.5" cy="9.5" r="2.2" fill="#38bdf8"/>
+              <defs>
+                <linearGradient id="nt-grad" x1="8" y1="10" x2="28" y2="26" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#FDE68A"/>
+                  <stop offset="0.55" stop-color="#F59E0B"/>
+                  <stop offset="1" stop-color="#38BDF8"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 dir="ltr" class="font-jakarta text-xl sm:text-2xl font-extrabold tracking-tight flex items-center gap-1.5">
+              <span class="text-white">Nadlan<span class="text-amber-400">Tours</span></span>
+              <span class="px-2 py-0.5 rounded-lg bg-gradient-to-r from-sky-400 to-blue-500 text-slate-950 text-xs font-black tracking-wider shadow-xs">AI</span>
+            </h1>
+            <span class="hidden sm:inline-block text-[11px] px-2.5 py-0.5 rounded-full bg-[#e59a1c]/20 text-[#fbd06b] font-extrabold border border-[#f4ad27]/40">ندلان تورز للسياحة والسفر</span>
+          </div>
+          <p class="text-xs text-slate-300 mt-0.5">منصة السفر الذكية — إدارة الحجوزات، استخراج التذاكر، وبوابة الزبون التفاعلية</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <button
+          type="button"
+          id="theme-settings-btn"
+          onclick="openThemePopup()"
+          class="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/15 text-amber-300 border border-white/15 text-xs sm:text-sm font-extrabold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+          title="إعدادات المظهر والثيم"
+        >
+          <span>🎨</span>
+          <span>الثيمات</span>
+        </button>
+
+        <div class="flex items-center gap-2 bg-slate-950/60 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 shadow-inner">
+          <button
+            type="button"
+            id="tab-customer-btn"
+            onclick="switchPortal('customer')"
+            class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow cursor-pointer"
+          >
+            🧳 دخول الزبون
+          </button>
+          <button
+            type="button"
+            id="tab-admin-btn"
+            onclick="switchPortal('admin')"
+            class="px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition text-slate-200 hover:bg-white/10 cursor-pointer"
+          >
+            🛠️ قسم الإدارة
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- المحتوى الرئيسي -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+    <!-- ==================== قسم الإدارة ==================== -->
+    <section id="admin-section" class="hidden space-y-6">
+      <!-- شريط علوي داخل قسم الإدارة للتنقل بين إضافة الحجز ومكان إدارة الزبائن المخصص -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            id="admin-tab-customers-btn"
+            onclick="switchAdminSubView('customers')"
+            class="px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-brand-700 text-white shadow cursor-pointer flex items-center gap-1.5"
+          >
+            <span>👥 إدارة الزبائن</span>
+            <span id="admin-customers-pill-count" class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">0</span>
+          </button>
+          <button
+            type="button"
+            id="admin-tab-form-btn"
+            onclick="switchAdminSubView('form')"
+            class="px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer flex items-center gap-1.5"
+          >
+            <span>➕ إضافة / تعديل حجز</span>
+          </button>
+        </div>
+        <p id="admin-subview-hint" class="text-xs font-bold text-slate-500">مكان مخصص لإدارة جميع الزبائن وحجوزاتهم</p>
+      </div>
+
+      <!-- مكان مخصص بالكامل لإدارة الزبائن -->
+      <div id="admin-customers-workspace" class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h2 class="text-lg sm:text-xl font-black text-slate-900">👥 إدارة الزبائن</h2>
+            <p class="text-xs text-slate-500">محل مخصص لمتابعة الزبائن، تعديل حجوزاتهم، نسخ الرسالة، أو فتح رحلة الزبون مباشرة</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="bookings-count-badge" class="px-3 py-1 rounded-full bg-brand-100 text-brand-800 text-xs font-black">0 حجوزات</span>
+            <button
+              type="button"
+              onclick="switchAdminSubView('form')"
+              class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
+            >
+              + حجز جديد
+            </button>
+          </div>
+        </div>
+
+        <div class="relative">
+          <input
+            type="text"
+            id="bookings-search-input"
+            oninput="renderBookingsList()"
+            placeholder="🔍 ابحث بالاسم، العائلة، PNR، أو الوجهة..."
+            class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-xs sm:text-sm font-bold"
+          />
+        </div>
+
+        <div id="bookings-list" class="grid grid-cols-1 md:grid-cols-2 gap-3.5 max-h-[780px] overflow-y-auto custom-scroll pr-1"></div>
+      </div>
+
+      <!-- مساحة إضافة / تعديل الحجز -->
+      <div id="admin-form-workspace" class="hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- نموذج إضافة / تعديل الحجز -->
+        <div class="lg:col-span-12 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <h2 id="form-heading" class="text-lg font-black text-slate-900">إضافة حجز جديد</h2>
+              <p class="text-xs text-slate-500">يُسجل الحجز باسم الزبون الرئيسي مع حفظ جميع المسافرين واستخراج البيانات تلقائياً</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onclick="applyStandardTemplate()"
+                class="px-3 py-2 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 text-xs font-extrabold transition cursor-pointer"
+              >
+                📋 القالب القياسي
+              </button>
+              <button
+                type="button"
+                id="btn-cancel-edit"
+                onclick="cancelEditBooking()"
+                class="hidden px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold transition cursor-pointer"
+              >
+                ✖ إلغاء التعديل
+              </button>
+            </div>
+          </div>
+
+          <input type="hidden" id="editing-booking-id" value="" />
+
+          <!-- بيانات الزبون الرئيسي -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">الاسم الأول للزبون *</label>
+              <input
+                type="text"
+                id="customer-first-name"
+                placeholder="مثال: أحمد"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">اسم العائلة للزبون *</label>
+              <input
+                type="text"
+                id="customer-last-name"
+                placeholder="مثال: محاجنة"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">المدينة / الوجهة الرئيسية</label>
+              <input
+                type="text"
+                id="main-destination"
+                placeholder="مثال: باتومي أو دبي"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">رمز الحجز / PNR للدخول</label>
+              <input
+                type="text"
+                id="booking-pnr"
+                placeholder="يُولّد تلقائياً مثل NDL10 أو أدخل PNR"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-extrabold uppercase"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-slate-700 mb-1">أسماء جميع المسافرين (سطر لكل مسافر)</label>
+              <textarea
+                id="passengers-list-input"
+                rows="2"
+                placeholder="أحمد محاجنة&#10;سارة محاجنة"
+                class="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-xs font-bold"
+              ></textarea>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-extrabold text-slate-700 mb-1">ملاحظات الزبون / الحجز</label>
+            <textarea
+              id="booking-notes-input"
+              rows="2"
+              placeholder="مثال: غرفة متصلة، طلب خاص، موعد وصول مرن..."
+              class="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-xs font-bold"
+            ></textarea>
+          </div>
+
+          <!-- استخراج تلقائي من ملف PDF أو صورة -->
+          <div class="bg-slate-50 border border-dashed border-brand-400 rounded-2xl p-4 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-xs sm:text-sm font-black text-brand-900">⚡ استخراج تلقائي من ملف PDF أو صورة</h3>
+                <p class="text-[11px] text-slate-600">يدعم تذاكر الطيران (ذهاب وعودة، رقم الرحلة، PNR، الحقائب، المسافرين) والفنادق والتوصيل — ويمكنك لصق صورة مباشرة بـ Ctrl+V</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="triggerExtract('flight')" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-extrabold cursor-pointer">
+                  ✈️ استخراج طيران
+                </button>
+                <button type="button" onclick="triggerExtract('hotel')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold cursor-pointer">
+                  🏨 استخراج فندق
+                </button>
+                <button type="button" onclick="triggerExtract('transfer')" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold cursor-pointer">
+                  🚐 استخراج توصيل
+                </button>
+                <button type="button" onclick="openPasteExtractModal()" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-extrabold cursor-pointer">
+                  📋 لصق صورة (Ctrl+V)
+                </button>
+              </div>
+            </div>
+            <input
+              type="file"
+              id="extract-file-input"
+              accept="application/pdf,image/*"
+              onchange="handleExtractFileSelected(event)"
+              class="hidden"
+            />
+            <div id="extract-status" class="hidden text-xs font-bold text-brand-800 bg-brand-100/70 px-3 py-2 rounded-xl items-center gap-2">
+              <span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>
+              <span id="extract-status-text">جاري تحليل الملف واستخراج البيانات...</span>
+            </div>
+          </div>
+
+          <!-- أزرار إضافة المحطات بالترتيب -->
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-black text-slate-900">محطات الرحلة بالترتيب</h3>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="addStation('flight')" class="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-xs font-extrabold cursor-pointer">+ طيران</button>
+                <button type="button" onclick="addStation('hotel')" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-extrabold cursor-pointer">+ فندق</button>
+                <button type="button" onclick="addStation('transfer')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-extrabold cursor-pointer">+ توصيل</button>
+                <button type="button" onclick="addStation('tour')" class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-extrabold cursor-pointer">+ جولة</button>
+              </div>
+            </div>
+
+            <div id="stations-container" class="space-y-3"></div>
+          </div>
+
+          <div class="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
+            <button
+              type="button"
+              onclick="saveBooking()"
+              class="px-6 py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-black shadow-md transition cursor-pointer"
+            >
+              💾 حفظ الحجز وتوليد الرسالة
+            </button>
+          </div>
+
+          <!-- بطاقة الرسالة الجاهزة للنسخ -->
+          <div id="generated-message-box" class="hidden bg-amber-50/90 border border-amber-300 rounded-2xl p-4 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-black text-amber-950">📩 رسالة جاهزة لإرسالها للزبون</span>
+              <button
+                type="button"
+                onclick="copyGeneratedMessage()"
+                class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-extrabold cursor-pointer"
+              >
+                📋 نسخ الرسالة
+              </button>
+            </div>
+            <pre id="generated-message-text" class="whitespace-pre-wrap text-xs leading-relaxed text-slate-800 font-bold bg-white p-3 rounded-xl border border-amber-200"></pre>
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ==================== قسم الزبون ==================== -->
+    <section id="customer-section" class="space-y-6">
+      <!-- شاشة تسجيل دخول الزبون -->
+      <div id="customer-login-card" class="max-w-lg mx-auto bg-white rounded-3xl shadow-md border border-slate-200 p-6 sm:p-8 space-y-5">
+        <div class="text-center space-y-2">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-brand-800 to-slate-900 text-amber-400 flex items-center justify-center text-2xl font-black shadow-md border border-brand-700/30">✈️</div>
+          <h2 class="text-xl font-black text-slate-900">بوابة الزبون — <span dir="ltr" class="font-jakarta text-brand-700">NadlanTours AI</span></h2>
+          <p class="text-xs sm:text-sm text-slate-500">أدخل رمز الحجز / PNR واسم العائلة لعرض تفاصيل رحلتك ومساعدك الذكي</p>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-extrabold text-slate-700 mb-1">رمز الحجز / PNR</label>
+            <input
+              type="text"
+              id="login-pnr"
+              placeholder="مثال: NDL10"
+              class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-extrabold uppercase"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-extrabold text-slate-700 mb-1">اسم العائلة</label>
+            <input
+              type="text"
+              id="login-last-name"
+              placeholder="مثال: محاجنة"
+              class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-bold"
+            />
+          </div>
+          <button
+            type="button"
+            onclick="loginCustomerPortal()"
+            class="w-full py-3 rounded-2xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-black shadow-md transition cursor-pointer"
+          >
+            دخول إلى رحلتي 🚀
+          </button>
+        </div>
+
+        <div id="login-error-msg" class="hidden text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl"></div>
+
+        <!-- وصول سريع للحجوزات التجريبية / المحفوظة -->
+        <div class="pt-3 border-t border-slate-100 space-y-2">
+          <p class="text-[11px] font-extrabold text-slate-400">حجوزات سريعة للمعاينة:</p>
+          <div id="quick-demo-bookings" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- لوحة رحلة الزبون -->
+      <div id="customer-dashboard" class="hidden space-y-6">
+        <div id="checkin-alert-banner" class="hidden rounded-3xl p-4 sm:p-5 shadow-lg">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span id="checkin-alert-badge" class="px-2.5 py-0.5 rounded-full bg-slate-950 text-amber-300 text-[11px] font-black">🔥 فتح الشيك إن!</span>
+                <h3 id="checkin-alert-title" class="text-base sm:text-lg font-black">رحلتك اقتربت وبوابة الشيك إن مفتوحة الآن!</h3>
+              </div>
+              <p id="checkin-alert-desc" class="text-xs sm:text-sm font-bold text-slate-900"></p>
+              <div id="checkin-alert-codes" class="flex flex-wrap items-center gap-2 pt-1 text-xs font-black"></div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <a
+                id="btn-airline-checkin-link"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="hidden px-4 py-2.5 rounded-2xl bg-brand-800 hover:bg-brand-900 text-white text-xs font-extrabold shadow transition items-center gap-1.5"
+              >
+                <span>✈️ شيك إن</span>
+                <span id="btn-airline-checkin-name" class="text-amber-300"></span>
+              </a>
+              <button
+                type="button"
+                id="btn-copy-checkin-info"
+                onclick="copyCheckinCodesInfo()"
+                class="px-4 py-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 text-amber-300 text-xs font-extrabold shadow transition cursor-pointer"
+              >
+                📋 نسخ بيانات الشيك إن
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- رأس بطاقة الزبون -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="customer-welcome-name" class="text-xl font-black text-slate-900"></span>
+              <span id="customer-pnr-badge" class="px-3 py-1 rounded-full bg-brand-100 text-brand-800 text-xs font-black"></span>
+              <span id="customer-dest-badge" class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-extrabold inline-flex items-center gap-1.5"></span>
+            </div>
+            <p class="text-xs text-slate-500">تفاصيل المسار، الطقس، الأماكن السياحية، المطاعم الحلال، وفيوز الكهرباء للوجهة</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onclick="openPassengersModal()"
+              class="px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black shadow-sm transition cursor-pointer"
+            >
+              👥 المسافرين
+            </button>
+            <button
+              type="button"
+              onclick="logoutCustomerPortal()"
+              class="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition cursor-pointer"
+            >
+              خروج
+            </button>
+          </div>
+        </div>
+
+        <!-- بطاقة ملاحظات الحجز للزبون -->
+        <div id="customer-notes-card" class="hidden bg-amber-50 border-2 border-amber-400 rounded-3xl p-4 sm:p-5 shadow-sm space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black">📝 ملاحظات الحجز</span>
+          </div>
+          <p id="customer-notes-text" class="text-xs sm:text-sm font-extrabold text-slate-900 leading-relaxed whitespace-pre-wrap"></p>
+        </div>
+
+        <!-- المحطات -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between px-1">
+            <h3 class="text-base font-black text-slate-900">🧭 برنامج ومحطات الرحلة</h3>
+            <span id="customer-stages-count" class="text-xs font-extrabold text-brand-700 bg-brand-100/80 px-3 py-1 rounded-full"></span>
+          </div>
+          <div id="customer-stages-list" class="space-y-4"></div>
+        </div>
+
+        <!-- الطقس لـ 5 أيام -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-black text-slate-900">🌤️ توقعات الطقس لـ 5 أيام</h3>
+            <span id="weather-city-label" class="text-xs font-extrabold text-brand-700 bg-brand-50 px-3 py-1 rounded-full"></span>
+          </div>
+          <div id="weather-5days-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3"></div>
+        </div>
+
+        <!-- أبرز 4 مناطق سياحية + أفضل 5 مطاعم حلال -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+            <h3 class="text-base font-black text-slate-900">🏛️ أبرز 4 مناطق سياحية موصى بزيارتها</h3>
+            <div id="attractions-4-grid" class="space-y-3"></div>
+          </div>
+
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+            <h3 class="text-base font-black text-slate-900">🍽️ أفضل 5 مطاعم حلال بتقييم</h3>
+            <div id="halal-5-grid" class="space-y-3"></div>
+          </div>
+        </div>
+
+        <!-- فيوز الكهرباء والجهد مع رسومات مبسطة -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-black text-slate-900">🔌 فيوز الكهرباء والجهد في الوجهة</h3>
+            <span id="plug-voltage-badge" class="text-xs font-black px-3 py-1 rounded-full bg-amber-100 text-amber-900"></span>
+          </div>
+          <div id="power-info-card" class="grid grid-cols-1 md:grid-cols-12 gap-5 items-center"></div>
+        </div>
+      </div>
+
+      <!-- ويدجت الشات العائم على الجنب مع رسالة المساعدة -->
+      <div id="floating-ai-chat-widget" class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2.5 w-auto max-w-[calc(100vw-2.5rem)]">
+        <!-- رسالة منبثقة جانبية للسؤال عن الحاجة للمساعدة -->
+        <div id="ai-side-prompt-msg" class="hidden bg-white text-slate-900 border-2 border-amber-400 rounded-2xl rounded-br-sm p-3.5 shadow-2xl max-w-[270px] space-y-2 transition">
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-xs font-black text-brand-900">👋 عندك سؤال؟</span>
+            <button
+              type="button"
+              onclick="hideAiPromptBubble(event)"
+              class="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-black flex items-center justify-center shrink-0 cursor-pointer"
+              title="إخفاء"
+            >
+              ✕
+            </button>
+          </div>
+          <p class="text-[11px] font-bold text-slate-600 leading-relaxed">
+            محتاج مساعدة؟ اسألني عن رحلتك أو الشيك إن ✨
+          </p>
+          <button
+            type="button"
+            onclick="openFloatingChat()"
+            class="w-full py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
+          >
+            تحدث مع المساعد الذكي
+          </button>
+        </div>
+
+        <!-- نافذة الشات الجانبية -->
+        <div id="ai-chat-drawer" class="hidden w-[360px] sm:w-[390px] max-w-[calc(100vw-2.5rem)] shrink-0 bg-white rounded-3xl shadow-2xl border border-slate-200 flex-col h-[520px] max-h-[75vh]">
+          <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-l from-[#071324] via-brand-900 to-brand-800 text-white rounded-t-3xl">
+            <div class="flex items-center gap-2.5">
+              <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 flex items-center justify-center font-black shadow-xs">🤖</span>
+              <div>
+                <h3 class="text-sm font-black flex items-center gap-1.5"><span>مساعد</span> <span dir="ltr" class="font-jakarta text-amber-300">NadlanTours AI</span></h3>
+                <p class="text-[11px] text-sky-200">يساعدك في مواعيد رحلتك، الشيك إن، والوجهة</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                onclick="resetAiChat()"
+                class="text-[11px] px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 font-bold cursor-pointer"
+              >
+                جديد
+              </button>
+              <button
+                type="button"
+                onclick="closeFloatingChat()"
+                class="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-black flex items-center justify-center cursor-pointer"
+                title="تصغير الشات"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div id="ai-chat-messages" class="flex-1 p-4 space-y-3 overflow-y-auto custom-scroll bg-slate-50/60"></div>
+
+          <!-- أسئلة سريعة جاهزة أعلى حقل الإدخال -->
+          <div id="ai-quick-questions" class="px-3 pt-2.5 pb-1.5 border-t border-slate-100 bg-white flex items-center gap-1.5 overflow-x-auto custom-scroll">
+            <button
+              type="button"
+              onclick="sendQuickAiQuestion('وينتا رحلتي؟ وكم باقي عليها؟')"
+              class="shrink-0 px-3 py-1.5 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 text-[11px] font-extrabold transition cursor-pointer"
+            >
+              📅 وينتا رحلتي؟
+            </button>
+            <button
+              type="button"
+              onclick="sendQuickAiQuestion('كيف أعمل شيك إن؟ وما هو رمز PNR واسم العائلة؟')"
+              class="shrink-0 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 text-[11px] font-extrabold transition cursor-pointer"
+            >
+              ✈️ طريقة الشيك إن
+            </button>
+            <button
+              type="button"
+              onclick="sendQuickAiQuestion('ما هي تفاصيل الفندق والمواصلات؟')"
+              class="shrink-0 px-3 py-1.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[11px] font-extrabold transition cursor-pointer"
+            >
+              🏨 الفندق والتوصيل
+            </button>
+            <button
+              type="button"
+              onclick="sendQuickAiQuestion('ما هي الحقائب المسموحة لي في الرحلة؟')"
+              class="shrink-0 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-[11px] font-extrabold transition cursor-pointer"
+            >
+              🧳 الحقائب المسموحة
+            </button>
+          </div>
+
+          <form onsubmit="handleAiChatSubmit(event)" class="p-3 pt-1.5 flex items-center gap-2 bg-white rounded-b-3xl">
+            <input
+              type="text"
+              id="ai-chat-input"
+              placeholder="اسأل مثل: وينتا رحلتي؟ أو كيف أعمل شيك إن؟"
+              class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 outline-none text-xs sm:text-sm font-bold"
+            />
+            <button
+              type="submit"
+              class="px-4 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs sm:text-sm font-black cursor-pointer"
+            >
+              إرسال
+            </button>
+          </form>
+        </div>
+
+        <!-- زر الرسالة العائم الصغير على الجنب -->
+        <button
+          type="button"
+          id="ai-floating-fab"
+          onclick="toggleFloatingChat()"
+          aria-label="فتح الرسائل"
+          class="group w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 via-amber-300 to-orange-400 hover:from-amber-300 hover:to-amber-500 text-slate-950 shadow-2xl border-2 border-white/90 flex items-center justify-center transition transform hover:scale-105 cursor-pointer"
+        >
+          <svg viewBox="0 0 24 24" class="w-6 h-6" fill="currentColor" aria-hidden="true">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8A2.5 2.5 0 0 1 17.5 16H9.41l-3.7 3.7A1 1 0 0 1 4 19V5.5Z"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- نافذة كود الدخول لقسم الإدارة -->
+  <div id="admin-code-modal" class="fixed inset-0 z-50 hidden bg-slate-950/65 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-black">🔐</span>
+          <h3 class="text-base font-black text-slate-900">كود دخول الإدارة</h3>
+        </div>
+        <button
+          type="button"
+          onclick="closeAdminCodeModal()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <form onsubmit="submitAdminCode(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-extrabold text-slate-700 mb-1">أدخل كود الإدارة</label>
+          <input
+            type="password"
+            id="admin-code-input"
+            placeholder="أدخل الكود السري"
+            autocomplete="off"
+            class="w-full px-4 py-2.5 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-sm font-extrabold"
+          />
+        </div>
+        <p id="admin-code-error" class="hidden text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl">
+          كود الإدارة غير صحيح
+        </p>
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onclick="closeAdminCodeModal()"
+            class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold cursor-pointer"
+          >
+            إلغاء
+          </button>
+          <button
+            type="submit"
+            class="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer"
+          >
+            دخول
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- نافذة منبثقة (Popup) لعرض جميع المسافرين -->
+  <div id="passengers-modal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-lg font-black text-slate-900">👥 قائمة جميع المسافرين</h3>
+        <button
+          type="button"
+          onclick="closePassengersModal()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+      <div id="passengers-modal-list" class="space-y-2 max-h-72 overflow-y-auto custom-scroll"></div>
+      <div class="pt-2 flex justify-end">
+        <button
+          type="button"
+          onclick="closePassengersModal()"
+          class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer"
+        >
+          إغلاق
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- نافذة لصق صورة للاستخراج التلقائي -->
+  <div id="paste-extract-modal" onclick="if(event.target===this)closePasteExtractModal()" class="fixed inset-0 z-50 hidden bg-slate-950/65 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-black">📋</span>
+          <h3 class="text-base font-black text-slate-900">لصق صورة للاستخراج التلقائي</h3>
+        </div>
+        <button
+          type="button"
+          onclick="closePasteExtractModal()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div>
+        <label class="block text-xs font-extrabold text-slate-700 mb-1">نوع البيانات في الصورة</label>
+        <select
+          id="paste-extract-type-select"
+          onchange="setPasteExtractTarget(this.value)"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-extrabold bg-white"
+        >
+          <option value="flight">✈️ تذكرة / حجز طيران</option>
+          <option value="hotel">🏨 حجز فندق</option>
+          <option value="transfer">🚐 توصيل / مواصلات</option>
+        </select>
+      </div>
+
+      <div
+        id="paste-extract-dropzone"
+        tabindex="0"
+        class="border-2 border-dashed border-slate-300 hover:border-brand-600 rounded-2xl p-4 text-center bg-slate-50 space-y-3 focus:outline-none focus:border-brand-700"
+      >
+        <p id="paste-extract-hint" class="text-xs font-bold text-slate-600">
+          اضغط Ctrl+V (أو Cmd+V على Mac) في أي مكان داخل هذه النافذة للصق الصورة مباشرة من الحافظة.
+        </p>
+        <div id="paste-extract-preview-wrap" class="hidden">
+          <img
+            id="paste-extract-preview-img"
+            src=""
+            alt="معاينة الصورة الملصوقة"
+            class="max-h-52 mx-auto rounded-xl border border-slate-200 shadow-2xs object-contain"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-1">
+        <button
+          type="button"
+          onclick="closePasteExtractModal()"
+          class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold cursor-pointer"
+        >
+          إلغاء
+        </button>
+        <button
+          id="paste-extract-confirm-btn"
+          type="button"
+          disabled
+          onclick="confirmPastedImageExtraction()"
+          class="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black cursor-pointer"
+        >
+          ✨ استخراج الآن
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      let promptTimer = null;
+      let promptDismissed = false;
+
+      window.openFloatingChat = function () {
+        const drawer = document.getElementById("ai-chat-drawer");
+        const bubble = document.getElementById("ai-side-prompt-msg");
+        if (bubble) bubble.classList.add("hidden");
+        if (drawer) {
+          drawer.classList.remove("hidden");
+          drawer.classList.add("flex");
+        }
+        setTimeout(() => {
+          const inp = document.getElementById("ai-chat-input");
+          if (inp) {
+            inp.focus();
+            inp.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+        }, 120);
+      };
+
+      window.closeFloatingChat = function () {
+        const drawer = document.getElementById("ai-chat-drawer");
+        if (drawer) {
+          drawer.classList.add("hidden");
+          drawer.classList.remove("flex");
+        }
+      };
+
+      window.toggleFloatingChat = function () {
+        const drawer = document.getElementById("ai-chat-drawer");
+        if (!drawer) return;
+        const isOpen = !drawer.classList.contains("hidden");
+        if (isOpen) {
+          window.closeFloatingChat();
+        } else {
+          window.openFloatingChat();
+        }
+      };
+
+      window.hideAiPromptBubble = function (e) {
+        if (e) e.stopPropagation();
+        promptDismissed = true;
+        const bubble = document.getElementById("ai-side-prompt-msg");
+        if (bubble) bubble.classList.add("hidden");
+      };
+
+      window.triggerAiHelpPrompt = function () {
+        if (promptDismissed) return;
+        const drawer = document.getElementById("ai-chat-drawer");
+        if (drawer && !drawer.classList.contains("hidden")) return;
+        const bubble = document.getElementById("ai-side-prompt-msg");
+        if (bubble) {
+          bubble.classList.remove("hidden");
+        }
+      };
+
+      clearTimeout(promptTimer);
+      promptTimer = setTimeout(() => {
+        window.triggerAiHelpPrompt();
+      }, 2200);
+    })();
+  </script>
+
+  <script src="/js/app.js" defer></script>
+
+  <!-- نافذة Popup لإعدادات الثيمات -->
+  <div id="theme-settings-modal" onclick="if(event.target===this)closeThemePopup()" class="fixed inset-0 z-50 hidden bg-slate-950/65 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center text-lg font-black">🎨</span>
+          <div>
+            <h3 class="text-base font-black text-slate-900">إعدادات المظهر والثيم</h3>
+            <p class="text-[11px] text-slate-500">اختر الثيم المناسب لتطبيق فوراً</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onclick="closeThemePopup()"
+          class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div class="space-y-2.5">
+        <button
+          type="button"
+          data-theme-choice="nadlan-logo"
+          onclick="selectTheme('nadlan-logo')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-slate-200 hover:border-amber-400 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#062a27] via-[#0b4f4a] to-[#f4ad27] shrink-0"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">1. Royal Horizon — أفق ندلان</p>
+              <p class="text-[11px] text-slate-500 font-bold">زمردي ملكي وذهبي دافئ بإطلالة راقية</p>
+            </div>
+          </div>
+          <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
+        </button>
+
+        <button
+          type="button"
+          data-theme-choice="navy-white-gold"
+          onclick="selectTheme('navy-white-gold')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-slate-200 hover:border-amber-400 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#071630] via-[#ffffff] to-[#eab308] border border-slate-200 shrink-0"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">2. كحلي مع أبيض وذهبي</p>
+              <p class="text-[11px] text-slate-500 font-bold">كحلي ملكي، خلفية بيضاء نقية، ولمسات ذهبية</p>
+            </div>
+          </div>
+          <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
+        </button>
+
+        <button
+          type="button"
+          data-theme-choice="emerald-luxe"
+          onclick="selectTheme('emerald-luxe')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-slate-200 hover:border-amber-400 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#042824] via-[#0f766e] to-[#eab308] shrink-0"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">3. Emerald Luxe Resort</p>
+              <p class="text-[11px] text-slate-500 font-bold">زمردي منتجعات فخمة مع لمسة ذهبية</p>
+            </div>
+          </div>
+          <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
+        </button>
+
+        <button
+          type="button"
+          data-theme-choice="obsidian-vip"
+          onclick="selectTheme('obsidian-vip')"
+          class="theme-option-card w-full text-right p-3.5 rounded-2xl border-2 border-slate-200 hover:border-amber-400 transition flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#05070d] via-[#1e293b] to-[#fbbf24] shrink-0"></div>
+            <div>
+              <p class="text-sm font-black text-slate-900">4. Obsidian Midnight VIP</p>
+              <p class="text-[11px] text-slate-500 font-bold">ليلي داكن بتباين عالٍ وإضاءة ذهبية</p>
+            </div>
+          </div>
+          <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
+        </button>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button
+          type="button"
+          onclick="closeThemePopup()"
+          class="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer"
+        >
+          تم
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script id="nadlan-theme-controller">
+    (function () {
+      const THEME_KEY = "nadlantours_theme_v2";
+      const VALID = ["nadlan-logo", "navy-white-gold", "emerald-luxe", "obsidian-vip"];
+      const LABELS = {
+        "nadlan-logo": "Royal Horizon — أفق ندلان",
+        "navy-white-gold": "كحلي مع أبيض وذهبي",
+        "emerald-luxe": "Emerald Luxe Resort",
+        "obsidian-vip": "Obsidian Midnight VIP"
+      };
+
+      function syncThemeUI(theme) {
+        document.querySelectorAll(".theme-option-card").forEach((card) => {
+          const active = card.getAttribute("data-theme-choice") === theme;
+          const badge = card.querySelector(".theme-check-badge");
+          card.classList.toggle("border-amber-400", active);
+          card.classList.toggle("bg-amber-50/40", active);
+          card.classList.toggle("border-slate-200", !active);
+          if (badge) badge.classList.toggle("hidden", !active);
+        });
+      }
+
+      window.applyTheme = function (theme, notify) {
+        const chosen = VALID.includes(theme) ? theme : "navy-white-gold";
+        document.body.setAttribute("data-theme", chosen);
+        try { localStorage.setItem(THEME_KEY, chosen); } catch (_) {}
+        syncThemeUI(chosen);
+        if (notify && typeof showToast === "function") {
+          showToast("تم تفعيل: " + (LABELS[chosen] || chosen));
+        }
+      };
+
+      window.selectTheme = function (theme) {
+        window.applyTheme(theme, true);
+        window.closeThemePopup();
+      };
+
+      window.openThemePopup = function () {
+        const modal = document.getElementById("theme-settings-modal");
+        syncThemeUI(document.body.getAttribute("data-theme") || "navy-white-gold");
+        if (modal) {
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
+        }
+      };
+
+      window.closeThemePopup = function () {
+        const modal = document.getElementById("theme-settings-modal");
+        if (modal) {
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+        }
+      };
+
+      let saved = "navy-white-gold";
+      try { saved = localStorage.getItem(THEME_KEY) || "navy-white-gold"; } catch (_) {}
+      window.applyTheme(saved, false);
+    })();
+  </script>
+
+  <script id="nadlan-admin-customers-hub">
+    (function () {
+      window.switchAdminSubView = function (view) {
+        const customersWs = document.getElementById("admin-customers-workspace");
+        const formWs = document.getElementById("admin-form-workspace");
+        const tabCustomers = document.getElementById("admin-tab-customers-btn");
+        const tabForm = document.getElementById("admin-tab-form-btn");
+        const hint = document.getElementById("admin-subview-hint");
+
+        const isCustomers = view !== "form";
+        if (customersWs) customersWs.classList.toggle("hidden", !isCustomers);
+        if (formWs) formWs.classList.toggle("hidden", isCustomers);
+
+        if (tabCustomers) {
+          tabCustomers.className = isCustomers
+            ? "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-brand-700 text-white shadow cursor-pointer flex items-center gap-1.5"
+            : "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer flex items-center gap-1.5";
+        }
+        if (tabForm) {
+          tabForm.className = !isCustomers
+            ? "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-brand-700 text-white shadow cursor-pointer flex items-center gap-1.5"
+            : "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer flex items-center gap-1.5";
+        }
+        if (hint) {
+          hint.textContent = isCustomers
+            ? "مكان مخصص لإدارة جميع الزبائن وحجوزاتهم"
+            : "نموذج إضافة أو تعديل تفاصيل الحجز والمحطات";
+        }
+      };
+
+      function syncCustomersCountPill() {
+        const badge = document.getElementById("bookings-count-badge");
+        const pill = document.getElementById("admin-customers-pill-count");
+        if (badge && pill) {
+          const match = (badge.textContent || "").match(/\d+/);
+          pill.textContent = match ? match[0] : "0";
+        }
+      }
+
+      const observer = new MutationObserver(syncCustomersCountPill);
+      const badgeEl = document.getElementById("bookings-count-badge");
+      if (badgeEl) {
+        observer.observe(badgeEl, { childList: true, characterData: true, subtree: true });
+      }
+
+      const origStartEdit = window.startEditBooking;
+      if (typeof origStartEdit === "function") {
+        window.startEditBooking = function (...args) {
+          window.switchAdminSubView("form");
+          return origStartEdit.apply(this, args);
+        };
+      }
+
+      document.addEventListener("click", function (e) {
+        const btn = e.target.closest("button, a");
+        if (!btn) return;
+        const txt = (btn.textContent || "").trim();
+        if (txt.includes("تعديل") && btn.closest("#bookings-list")) {
+          window.switchAdminSubView("form");
+        }
+      });
+
+      window.switchAdminSubView("customers");
+      syncCustomersCountPill();
+    })();
+  </script>
+</body>
+</html>
