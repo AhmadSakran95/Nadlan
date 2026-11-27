@@ -641,7 +641,7 @@ async function handleExtractFileSelected(event) {
   const file = event.target?.files?.[0];
   if (!file) return;
 
-  // حفظ ملف الاستخراج نفسه كفاوشر تلقائياً حتى لا يضطر المستخدم لرفعه مرتين
+  // حفظ ملف الاستخراج نفسه كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
   try {
     const voucherDataUrl = await ntFileToDataUrl(file);
     const vRecord = {
@@ -650,15 +650,11 @@ async function handleExtractFileSelected(event) {
       mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
       dataUrl: voucherDataUrl
     };
-    const vMap = ntReadVoucherMap();
-    const vKeys = ntGetActiveAdminKeys();
-    for (const k of vKeys) {
-      if (!vMap[k]) vMap[k] = {};
-      vMap[k][extractTargetType] = vRecord;
+    ntSessionVouchers[extractTargetType] = vRecord;
+    const matchedIdx = currentStations.findIndex((s) => s.type === extractTargetType);
+    if (matchedIdx !== -1) {
+      ntSessionVouchers["idx_" + matchedIdx] = vRecord;
     }
-    if (!vMap["__LATEST_BY_TYPE__"]) vMap["__LATEST_BY_TYPE__"] = {};
-    vMap["__LATEST_BY_TYPE__"][extractTargetType] = vRecord;
-    ntWriteVoucherMap(vMap);
   } catch (_) {}
 
   syncStationsFromDom();
@@ -741,6 +737,13 @@ async function handleExtractFileSelected(event) {
     } else {
       applyExtractedTransferData(data);
     }
+
+    try {
+      const idxAfter = currentStations.findIndex((s) => s.type === extractTargetType);
+      if (idxAfter !== -1 && ntSessionVouchers[extractTargetType]) {
+        ntSessionVouchers["idx_" + idxAfter] = ntSessionVouchers[extractTargetType];
+      }
+    } catch (_) {}
 
     renderStationsEditor();
     showToast("تم استخراج البيانات وتعبئتها بنجاح");
