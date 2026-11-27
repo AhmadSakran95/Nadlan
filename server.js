@@ -289,8 +289,8 @@ console.log("HIT /api/gemini - geminiKey exists:", Boolean(geminiKey), "groqKey 
     }
   }
 
-  if (shouldFallbackToGroq && groqKey) {
-    console.log("Fallback to Groq triggered");
+if (shouldFallbackToGroq && groqKey) {
+    console.log("Fallback to Groq triggered | geminiError:", geminiErrorMsg);
     const groqResult = await callGroqFallback(req.body, groqKey);
     if (groqResult.ok) {
       if (cacheKey && groqResult.geminiFormatted) {
@@ -298,6 +298,7 @@ console.log("HIT /api/gemini - geminiKey exists:", Boolean(geminiKey), "groqKey 
       }
       return res.json(groqResult.geminiFormatted);
     }
+    console.error("Groq fallback failed reason:", groqResult.reason);
     return res.status(429).json({
       error: `تعذر إتمام الطلب عبر Gemini (${geminiErrorMsg}) و Groq (${groqResult.reason}).`
     });
