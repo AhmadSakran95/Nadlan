@@ -723,7 +723,7 @@
           </div>
 
           <!-- شات مساعد ندلان تورز الذكي -->
-          <div class="lg:col-span-5 lg:sticky lg:top-6 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[540px]">
+          <div id="ai-chat-panel" class="bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[540px]">
             <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-l from-[#071324] via-brand-900 to-brand-800 text-white rounded-t-3xl">
               <div class="flex items-center gap-2.5">
                 <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-amber-500 text-slate-950 flex items-center justify-center font-black shadow-xs">🤖</span>
@@ -1058,5 +1058,116 @@
   </script>
 
   <script src="/js/app.js" defer></script>
+
+<style>
+  /* Floating customer-support chat */
+  #ai-chat-panel.ai-floating-panel {
+    position: fixed !important;
+    right: max(22px, env(safe-area-inset-right)) !important;
+    bottom: max(92px, calc(env(safe-area-inset-bottom) + 82px)) !important;
+    z-index: 9998 !important;
+    width: min(390px, calc(100vw - 28px)) !important;
+    height: min(560px, calc(100dvh - 125px)) !important;
+    max-height: 560px !important;
+    display: none;
+    border: 1px solid rgba(203,213,225,.9) !important;
+    box-shadow: 0 24px 75px rgba(7,19,36,.24) !important;
+    overflow: hidden !important;
+    border-radius: 24px !important;
+  }
+  #ai-chat-panel.ai-floating-panel.ai-chat-open { display: flex !important; }
+  #ai-chat-launcher {
+    position: fixed;
+    right: max(22px, env(safe-area-inset-right));
+    bottom: max(20px, env(safe-area-inset-bottom));
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    border: 0;
+    border-radius: 999px;
+    padding: 9px 17px 9px 10px;
+    color: #fff;
+    background: linear-gradient(135deg, #071324, #17466b);
+    box-shadow: 0 12px 32px rgba(7,19,36,.28);
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  #ai-chat-launcher:hover { transform: translateY(-3px); box-shadow: 0 16px 38px rgba(7,19,36,.34); }
+  #ai-chat-launcher .chat-launcher-icon {
+    width: 44px; height: 44px; display: grid; place-items: center;
+    border-radius: 50%; color: #071324; font-size: 22px;
+    background: linear-gradient(135deg, #ffe2a0, #d9a64b);
+  }
+  #ai-chat-launcher .chat-launcher-copy { text-align: right; line-height: 1.25; }
+  #ai-chat-launcher .chat-launcher-copy strong { display:block; font-size:14px; font-weight:900; }
+  #ai-chat-launcher .chat-launcher-copy small { display:block; margin-top:3px; color:#d9e8f6; font-size:11px; }
+  #ai-chat-close {
+    border: 0; width: 30px; height: 30px; border-radius: 9px;
+    color: white; background: rgba(255,255,255,.13);
+    font-size: 19px; line-height: 1; cursor:pointer;
+  }
+  @media (max-width: 480px) {
+    #ai-chat-panel.ai-floating-panel {
+      right: 10px !important; bottom: calc(env(safe-area-inset-bottom) + 78px) !important;
+      width: calc(100vw - 20px) !important;
+      height: min(70dvh, 570px) !important;
+    }
+    #ai-chat-launcher { right: 14px; bottom: calc(env(safe-area-inset-bottom) + 14px); }
+  }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const panel = document.getElementById('ai-chat-panel');
+  if (!panel || document.getElementById('ai-chat-launcher')) return;
+
+  // Detach the chat from the dashboard columns and make it a floating widget.
+  document.body.appendChild(panel);
+  panel.classList.add('ai-floating-panel');
+
+  const launcher = document.createElement('button');
+  launcher.type = 'button';
+  launcher.id = 'ai-chat-launcher';
+  launcher.setAttribute('aria-label', 'افتح مساعد NadlanTours');
+  launcher.setAttribute('aria-expanded', 'false');
+  launcher.innerHTML = `
+    <span class="chat-launcher-icon" aria-hidden="true">💬</span>
+    <span class="chat-launcher-copy">
+      <strong>أي مساعدة؟</strong>
+      <small>مساعدك الذكي جاهز لمساعدتك</small>
+    </span>`;
+  document.body.appendChild(launcher);
+
+  const header = panel.querySelector('.p-4.border-b');
+  if (header && !document.getElementById('ai-chat-close')) {
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.id = 'ai-chat-close';
+    close.setAttribute('aria-label', 'إغلاق المحادثة');
+    close.textContent = '×';
+    header.appendChild(close);
+    close.addEventListener('click', closeChat);
+  }
+
+  function openChat() {
+    panel.classList.add('ai-chat-open');
+    launcher.setAttribute('aria-expanded', 'true');
+    launcher.querySelector('.chat-launcher-copy strong').textContent = 'المحادثة مفتوحة';
+    const input = document.getElementById('ai-chat-input');
+    if (input) setTimeout(() => input.focus(), 120);
+  }
+  function closeChat() {
+    panel.classList.remove('ai-chat-open');
+    launcher.setAttribute('aria-expanded', 'false');
+    launcher.querySelector('.chat-launcher-copy strong').textContent = 'أي مساعدة؟';
+  }
+  launcher.addEventListener('click', function () {
+    if (panel.classList.contains('ai-chat-open')) closeChat();
+    else openChat();
+  });
+});
+</script>
+
 </body>
 </html>
