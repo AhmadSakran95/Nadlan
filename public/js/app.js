@@ -1512,21 +1512,21 @@ function parseFlexibleDateTime(rawVal) {
   const str = String(rawVal).trim();
   if (!str) return null;
 
-  const monthsMap = {
-    jan: 1, january: 1, جانفي: 1, يناير: 1,
-    feb: 2, february: 2, فيفري: 2, فبراير: 2,
-    mar: 3, march: 3, مارس: 3, آذار: 3,
-    apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
-    may: 5, ماي: 5, مايو: 5, أيار: 5,
-    jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
-    jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
-    aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
-    sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
-    oct: 10, october: 10, أكتوبر: 10, تشرين الأول: 10,
-    nov: 11, november: 11, نوفمبر: 11, تشرين الثاني: 11,
-    dec: 12, december: 12, ديسمبر: 12, كانون الأول: 12
-  };
-
+const monthsMap = {
+  jan: 1, january: 1, جانفي: 1, يناير: 1,
+  feb: 2, february: 2, فيفري: 2, فبراير: 2,
+  mar: 3, march: 3, مارس: 3, آذار: 3,
+  apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
+  may: 5, ماي: 5, مايو: 5, أيار: 5,
+  jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
+  jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
+  aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
+  sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
+  oct: 10, october: 10, أكتوبر: 10, "تشرين الأول": 10,
+  nov: 11, november: 11, نوفمبر: 11, "تشرين الثاني": 11,
+  dec: 12, december: 12, ديسمبر: 12, "كانون الأول": 12
+};
+  
   let year = null;
   let month = null;
   let day = null;
