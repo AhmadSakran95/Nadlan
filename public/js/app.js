@@ -1760,7 +1760,7 @@ function renderCustomerDashboard(booking) {
               <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black" title="${escapeHtml(starsText)}">${escapeHtml(starsText)} (${starsVisual})</span>
               ${
                 st.nights
-                  ? `<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-black">${escapeHtml(st.nights)}</span>`
+                  ? `<span class="px-3.5 py-1 rounded-xl bg-indigo-900 text-white text-xs font-black shadow-2xs">🌙 عدد الليالي: ${escapeHtml(st.nights)}</span>`
                   : ""
               }
             </div>
