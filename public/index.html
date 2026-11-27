@@ -43,7 +43,7 @@
   <style id="nadlan-active-themes">
     /* 1. ثيم اللوغو الأساسي (زمردي ندلان + ذهبي + فحمي) */
     body,
-    body[data-theme="nadlan-logo"] {
+    body[data-theme="navy-white-gold"] {
       --nt-header-bg: linear-gradient(to left, #062a27, #0b4f4a, #2f3a3d);
       --nt-body-bg: linear-gradient(145deg, #f3f8f7 0%, #e8f2f0 50%, #f7f9f8 100%);
       --nt-primary: #0b4f4a;
@@ -925,8 +925,8 @@
           <div class="flex items-center gap-3">
             <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#062a27] via-[#0b4f4a] to-[#f4ad27] shrink-0"></div>
             <div>
-              <p class="text-sm font-black text-slate-900">1. ثيم اللوغو (زمردي وذهبي)</p>
-              <p class="text-[11px] text-slate-500 font-bold">ألوان شعار ندلان تورز الرسمية</p>
+              <p class="text-sm font-black text-slate-900">1. Royal Horizon — أفق ندلان</p>
+              <p class="text-[11px] text-slate-500 font-bold">زمردي ملكي وذهبي دافئ بإطلالة راقية</p>
             </div>
           </div>
           <span class="theme-check-badge hidden px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">مفعّل</span>
@@ -998,7 +998,7 @@
       const THEME_KEY = "nadlantours_theme_v2";
       const VALID = ["nadlan-logo", "navy-white-gold", "emerald-luxe", "obsidian-vip"];
       const LABELS = {
-        "nadlan-logo": "ثيم اللوغو (زمردي وذهبي)",
+        "nadlan-logo": "Royal Horizon — أفق ندلان",
         "navy-white-gold": "كحلي مع أبيض وذهبي",
         "emerald-luxe": "Emerald Luxe Resort",
         "obsidian-vip": "Obsidian Midnight VIP"
@@ -1016,7 +1016,7 @@
       }
 
       window.applyTheme = function (theme, notify) {
-        const chosen = VALID.includes(theme) ? theme : "nadlan-logo";
+        const chosen = VALID.includes(theme) ? theme : "navy-white-gold";
         document.body.setAttribute("data-theme", chosen);
         try { localStorage.setItem(THEME_KEY, chosen); } catch (_) {}
         syncThemeUI(chosen);
@@ -1032,7 +1032,7 @@
 
       window.openThemePopup = function () {
         const modal = document.getElementById("theme-settings-modal");
-        syncThemeUI(document.body.getAttribute("data-theme") || "nadlan-logo");
+        syncThemeUI(document.body.getAttribute("data-theme") || "navy-white-gold");
         if (modal) {
           modal.classList.remove("hidden");
           modal.classList.add("flex");
@@ -1047,8 +1047,8 @@
         }
       };
 
-      let saved = "nadlan-logo";
-      try { saved = localStorage.getItem(THEME_KEY) || "nadlan-logo"; } catch (_) {}
+      let saved = "navy-white-gold";
+      try { saved = localStorage.getItem(THEME_KEY) || "navy-white-gold"; } catch (_) {}
       window.applyTheme(saved, false);
     })();
   </script>
