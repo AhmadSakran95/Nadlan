@@ -1438,18 +1438,44 @@ function renderCustomerDashboard(booking) {
         const fromCity = mapAirportCodeToCity(fromCode);
         const toCity = mapAirportCodeToCity(toCode);
 
+        const isReturnFlight =
+          idx > 0 ||
+          /عود[ةه]|return/i.test(String(st.notes || ""));
+
+        const routeBadgeHtml = isReturnFlight
+          ? `
+            <div class="flex flex-col items-end gap-1 bg-indigo-50/70 px-3.5 py-2 rounded-2xl border border-indigo-200">
+              <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-slate-900">
+                <span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900 text-[11px] font-black">عودة</span>
+                <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-slate-900">
+                <span class="text-indigo-600 font-black">⬅ ➔</span>
+                <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
+              </div>
+            </div>
+          `
+          : `
+            <div class="flex flex-col items-end gap-1 bg-sky-50/70 px-3.5 py-2 rounded-2xl border border-sky-200">
+              <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-slate-900">
+                <span class="px-2 py-0.5 rounded-md bg-sky-100 text-sky-900 text-[11px] font-black">ذهاب</span>
+                <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-slate-900">
+                <span class="text-sky-600 font-black">➔</span>
+                <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
+              </div>
+            </div>
+          `;
+
         return `
           <div class="bg-white rounded-3xl border border-sky-200/90 p-5 space-y-4 shadow-2xs">
             <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <div class="flex items-center gap-2">
                 <span class="w-7 h-7 rounded-xl bg-sky-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
+                <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران${isReturnFlight ? " (عودة)" : " (ذهاب)"}</span>
               </div>
-              <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
-                <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
-                <span class="text-sky-600">➔</span>
-                <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
-              </div>
+              ${routeBadgeHtml}
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
