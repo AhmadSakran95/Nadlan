@@ -595,6 +595,7 @@ function renderStationsEditor() {
             </div>
           </div>
           ${fieldsHtml}
+          ${ntAdminVoucherUi(idx, st.type)}
         </div>
       `;
     })
@@ -972,23 +973,10 @@ async function deleteBooking(bookingId) {
   }
 }
 
-function buildCustomerAutoLoginUrl(b) {
-  const baseUrl =
-    window.location.origin && window.location.origin.startsWith("http")
-      ? `${window.location.origin}/`
-      : "https://nadlan-production-89b4d3fc.up.railway.app/";
-  const url = new URL(baseUrl);
-  url.searchParams.set("pnr", String(b.pnr || "").trim().toUpperCase());
-  url.searchParams.set("last", String(b.lastName || "").trim());
-  return url.toString();
-}
-
 function renderGeneratedMessage(b) {
   const box = document.getElementById("generated-message-box");
   const pre = document.getElementById("generated-message-text");
   if (!box || !pre) return;
-
-  const magicLink = buildCustomerAutoLoginUrl(b);
 
   const lines = [
     `مرحباً ${b.firstName} ${b.lastName}، أهلاً بك في ندلان تورز (Nadlantours) ✈️`,
@@ -996,9 +984,7 @@ function renderGeneratedMessage(b) {
     `رمز الدخول / PNR: ${b.pnr}`,
     `اسم العائلة للدخول: ${b.lastName}`,
     `عدد المسافرين: ${(b.passengers || []).length}`,
-    ...(b.notes ? [`ملاحظات: ${b.notes}`] : []),
-    `رابط الدخول المباشر لحجزك:`,
-    magicLink
+    ...(b.notes ? [`ملاحظات: ${b.notes}`] : [])
   ];
 
   pre.textContent = lines.join("\n");
@@ -1226,72 +1212,6 @@ function getCheckinFlightCodes(booking) {
     returnPnr,
     lastName: booking.lastName || ""
   };
-}
-
-function formatFlightDepartureDisplay(depText) {
-  const raw = String(depText || "").trim();
-  if (!raw) return "غير محدد";
-
-  const monthsMap = {
-    jan: "01", january: "01",
-    feb: "02", february: "02",
-    mar: "03", march: "03",
-    apr: "04", april: "04",
-    may: "05",
-    jun: "06", june: "06",
-    jul: "07", july: "07",
-    aug: "08", august: "08",
-    sep: "09", sept: "09", september: "09",
-    oct: "10", october: "10",
-    nov: "11", november: "11",
-    dec: "12", december: "12"
-  };
-
-  const timeMatch = raw.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
-  const timePart = timeMatch
-    ? `${String(timeMatch[1]).padStart(2, "0")}:${String(timeMatch[2]).padStart(2, "0")}`
-    : "";
-
-  let day = "";
-  let month = "";
-  let year = "";
-
-  const monthNameMatch = raw.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?\b/);
-  if (monthNameMatch) {
-    day = String(monthNameMatch[1]).padStart(2, "0");
-    month = monthsMap[monthNameMatch[2].toLowerCase()] || "";
-    if (month) {
-      if (monthNameMatch[3]) {
-        year = monthNameMatch[3];
-      } else {
-        const now = new Date();
-        const candidateYear = now.getFullYear();
-        const candidate = new Date(`${candidateYear}-${month}-${day}T${timePart || "09:00"}:00`);
-        year = String(candidate.getTime() < now.getTime() - 7 * 24 * 3600 * 1000 ? candidateYear + 1 : candidateYear);
-      }
-    }
-  } else {
-    const ymdMatch = raw.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
-    if (ymdMatch) {
-      year = ymdMatch[1];
-      month = String(ymdMatch[2]).padStart(2, "0");
-      day = String(ymdMatch[3]).padStart(2, "0");
-    } else {
-      const dmyMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
-      if (dmyMatch) {
-        day = String(dmyMatch[1]).padStart(2, "0");
-        month = String(dmyMatch[2]).padStart(2, "0");
-        year = dmyMatch[3];
-      }
-    }
-  }
-
-  if (day && month && year) {
-    const dateFormatted = `${day}-${month}-${year}`;
-    return timePart ? `${dateFormatted} | ${timePart}` : dateFormatted;
-  }
-
-  return raw;
 }
 
 function parseDepartureDateToTimestamp(departureText) {
@@ -1544,7 +1464,7 @@ function renderCustomerDashboard(booking) {
               </div>
               <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
                 <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(formatFlightDepartureDisplay(st.departureText))}</span>
+                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.departureText || "غير محدد")}</span>
               </div>
             </div>
 
@@ -1575,6 +1495,7 @@ function renderCustomerDashboard(booking) {
                 }
               </div>
             </div>
+            ${ntCustomerVoucherUi(idx, "flight", booking)}
           </div>
         `;
       }
@@ -1622,6 +1543,7 @@ function renderCustomerDashboard(booking) {
               <span class="block text-[11px] font-bold text-slate-500">📝 تفاصيل وملاحظات الإقامة</span>
               <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "إقامة مؤكدة")}</span>
             </div>
+            ${ntCustomerVoucherUi(idx, "hotel", booking)}
           </div>
         `;
       }
@@ -1638,6 +1560,7 @@ function renderCustomerDashboard(booking) {
             </div>
             <p class="text-sm font-black text-slate-900">${escapeHtml(st.fromLocation || "—")} <span class="text-amber-600 mx-1">➔</span> ${escapeHtml(st.toLocation || "—")}</p>
             ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+            ${ntCustomerVoucherUi(idx, "transfer", booking)}
           </div>
         `;
       }
@@ -1706,6 +1629,17 @@ async function fetchDestinationIntelligence(city) {
 
   document.getElementById("weather-city-label").textContent = cleanCity;
 
+  const cacheKey = DEST_CACHE_PREFIX + cleanCity.toLowerCase();
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const parsedCache = JSON.parse(cached);
+      if (parsedCache && parsedCache.data) {
+        renderDestinationSections(cleanCity, parsedCache.data);
+      }
+    }
+  } catch (_) {}
+
   const todayStr = getTodayFormatted();
   const prompt = `ابحث عن معلومات دقيقة ومحدثة لمدينة "${cleanCity}" بدءاً من تاريخ اليوم (${todayStr}) وأرجع JSON فقط بالشكل التالي:
 {
@@ -1713,10 +1647,10 @@ async function fetchDestinationIntelligence(city) {
     { "day": "اليوم / التاريخ", "temp": "درجة الحرارة مثل 18°C", "condition": "حالة الطقس بالعربية", "icon": "☀️ أو ⛅ أو 🌧️" }
   ],
   "attractions4": [
-    { "name": "اسم المنطقة السياحية الحقيقية في ${cleanCity}", "desc": "وصف مختصر مفيد بالعربية" }
+    { "name": "اسم المنطقة السياحية", "desc": "وصف مختصر مفيد بالعربية" }
   ],
   "halalRestaurants5": [
-    { "name": "اسم المطعم الحلال الحقيقي في ${cleanCity}", "rating": "التقييم مثل 4.7 ★", "cuisine": "نوع الأكل أو المنطقة" }
+    { "name": "اسم المطعم الحلال", "rating": "التقييم مثل 4.7 ★", "cuisine": "نوع الأكل أو المنطقة" }
   ],
   "power": {
     "voltage": "الجهد والتردد مثل 230V / 50Hz",
@@ -1728,33 +1662,22 @@ async function fetchDestinationIntelligence(city) {
 تأكد أن weather5Days تحتوي 5 أيام، و attractions4 تحتوي 4 مناطق، و halalRestaurants5 تحتوي 5 مطاعم.`;
 
   try {
-    // 1) المحاولة مع تفعيل البحث المباشر (google_search)
-    let parsed = null;
-    try {
-      const searchResult = await callGeminiApi({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }]
-      });
-      parsed = parseJsonLoose(extractGeminiText(searchResult));
-    } catch (_) {
-      parsed = null;
-    }
-
-    // 2) إذا لم يرجع JSON مع البحث، نطلب JSON مباشر من Gemini بدون البحث أو responseMimeType متعارض
-    if (!parsed) {
-      const directResult = await callGeminiApi({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
-      });
-      parsed = parseJsonLoose(extractGeminiText(directResult));
-    }
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    };
+    const result = await callGeminiApi(payload);
+    const rawText = extractGeminiText(result);
+    const parsed = parseJsonLoose(rawText);
 
     if (parsed) {
       renderDestinationSections(cleanCity, parsed);
-    } else {
-      renderFallbackDestinationSections(cleanCity);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: parsed }));
+      } catch (_) {}
     }
   } catch (_) {
     renderFallbackDestinationSections(cleanCity);
@@ -2099,49 +2022,233 @@ async function handleAiChatSubmit(event) {
 // =======================================================================
 // تهيئة التطبيق عند التحميل (الصفحة الرئيسية: دخول الزبون بـ PNR واسم العائلة)
 // =======================================================================
-function autoLoginFromUrlQuery() {
-  try {
-    const params = new URLSearchParams(window.location.search || "");
-    const qPnr = String(params.get("pnr") || params.get("PNR") || "").trim().toUpperCase();
-    const qLast = String(params.get("last") || params.get("lastName") || params.get("family") || "").trim();
-
-    if (!qPnr && !qLast) return false;
-
-    const pnrInput = document.getElementById("login-pnr");
-    const lastInput = document.getElementById("login-last-name");
-    if (pnrInput && qPnr) pnrInput.value = qPnr;
-    if (lastInput && qLast) lastInput.value = qLast;
-
-    if (qPnr && qLast) {
-      const found = bookings.find(
-        (b) =>
-          String(b.pnr || "").trim().toUpperCase() === qPnr &&
-          String(b.lastName || "").trim().toLowerCase() === qLast.toLowerCase()
-      );
-
-      if (found) {
-        openBookingInCustomerPortal(found.id);
-        try {
-          window.history.replaceState({}, document.title, window.location.pathname);
-        } catch (_) {}
-        return true;
-      }
-
-      const errBox = document.getElementById("login-error-msg");
-      if (errBox) {
-        errBox.textContent = "تمت تعبئة بيانات الدخول من الرابط، ولم يتم العثور على حجز مطابق حالياً.";
-        errBox.classList.remove("hidden");
-      }
-    }
-  } catch (_) {}
-  return false;
-}
-
 window.addEventListener("DOMContentLoaded", async () => {
   renderStationsEditor();
   await loadBookings();
   renderBookingsList();
   renderQuickDemoBookings();
   switchPortal("customer");
-  autoLoginFromUrlQuery();
 });
+
+
+// =======================================================================
+// نظام فاوشرات الحجز (طيران / فندق / توصيل) — تحميل PDF فقط للزبون
+// =======================================================================
+const NT_VOUCHER_STORAGE_KEY = "nadlantours_station_vouchers_v2";
+
+function ntReadVoucherMap() {
+  try {
+    return JSON.parse(localStorage.getItem(NT_VOUCHER_STORAGE_KEY) || "{}") || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function ntWriteVoucherMap(map) {
+  try {
+    localStorage.setItem(NT_VOUCHER_STORAGE_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+function ntNormalizeKey(val) {
+  return String(val || "").trim().toUpperCase();
+}
+
+function ntCollectCandidateKeys(booking) {
+  const keys = [];
+  if (booking) {
+    if (booking.pnr) keys.push("PNR:" + ntNormalizeKey(booking.pnr));
+    if (booking.id) keys.push("ID:" + ntNormalizeKey(booking.id));
+    if (booking.lastName) keys.push("LAST:" + ntNormalizeKey(booking.lastName));
+  }
+  const editId = ntNormalizeKey(document.getElementById("editing-booking-id")?.value);
+  const pnr = ntNormalizeKey(document.getElementById("booking-pnr")?.value);
+  const last = ntNormalizeKey(document.getElementById("customer-last-name")?.value);
+  if (pnr) keys.push("PNR:" + pnr);
+  if (editId) keys.push("ID:" + editId);
+  if (last) keys.push("LAST:" + last);
+  keys.push("CURRENT_DRAFT");
+  return [...new Set(keys)];
+}
+
+function ntFindVoucherRecord(booking, stationType, index) {
+  const map = ntReadVoucherMap();
+  const keys = ntCollectCandidateKeys(booking);
+  for (const k of keys) {
+    const bucket = map[k];
+    if (!bucket) continue;
+    if (bucket[stationType] && bucket[stationType].dataUrl) return bucket[stationType];
+    if (bucket["idx_" + index] && bucket["idx_" + index].dataUrl) return bucket["idx_" + index];
+  }
+  return null;
+}
+
+function ntIsPdfVoucher(rec) {
+  if (!rec) return false;
+  const mime = String(rec.mimeType || rec.type || "").toLowerCase();
+  const name = String(rec.name || "").toLowerCase();
+  return mime.includes("pdf") || name.endsWith(".pdf");
+}
+
+function ntFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("تعذر قراءة الملف"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function ntUploadStationVoucher(event, index, stationType) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+
+  try {
+    const dataUrl = await ntFileToDataUrl(file);
+    const record = {
+      name: file.name,
+      stationType,
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+      dataUrl
+    };
+
+    const map = ntReadVoucherMap();
+    const keys = ntCollectCandidateKeys(null);
+    for (const k of keys) {
+      if (!map[k]) map[k] = {};
+      map[k][stationType] = record;
+      map[k]["idx_" + index] = record;
+    }
+    ntWriteVoucherMap(map);
+
+    renderStationsEditor();
+    if (ntIsPdfVoucher(record)) {
+      showToast("تم رفع الفاوشر (PDF) — يمكن للزبون تحميله");
+    } else {
+      showToast("تم رفع صورة الفاوشر — الصور للعرض فقط ولا يُحمّل للزبون");
+    }
+  } catch (_) {
+    showToast("حدث خطأ أثناء رفع الفاوشر");
+  }
+  event.target.value = "";
+}
+
+function ntDeleteStationVoucher(index, stationType) {
+  const map = ntReadVoucherMap();
+  const keys = ntCollectCandidateKeys(null);
+  for (const k of keys) {
+    if (!map[k]) continue;
+    delete map[k][stationType];
+    delete map[k]["idx_" + index];
+  }
+  ntWriteVoucherMap(map);
+  renderStationsEditor();
+  showToast("تم حذف الفاوشر");
+}
+
+function ntDownloadVoucherPdf(stationType, index) {
+  const rec = ntFindVoucherRecord(activeCustomerBooking, stationType, index);
+  if (!rec || !rec.dataUrl) {
+    showToast("لا يوجد فاوشر مرفق لهذا القسم");
+    return;
+  }
+  if (!ntIsPdfVoucher(rec)) {
+    showToast("التحميل متاح لملفات PDF فقط، والصور للعرض فقط");
+    return;
+  }
+
+  const fileName = rec.name.toLowerCase().endsWith(".pdf") ? rec.name : `${rec.name}.pdf`;
+  const link = document.createElement("a");
+  link.href = rec.dataUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast(`جاري تحميل الفاوشر: ${fileName}`);
+}
+
+function ntAdminVoucherUi(idx, stationType) {
+  if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
+  const rec = ntFindVoucherRecord(null, stationType, idx);
+  const inputId = `nt-voucher-input-${idx}`;
+  const titleMap = {
+    flight: "فاوشر / تذكرة الطيران",
+    hotel: "فاوشر الفندق",
+    transfer: "فاوشر التوصيل"
+  };
+  const title = titleMap[stationType];
+
+  if (!rec || !rec.dataUrl) {
+    return `
+      <div class="mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
+        <span class="text-xs font-bold text-slate-600">📎 ${escapeHtml(title)}: <span class="text-slate-400">غير مرفق بعد (PDF أو صورة)</span></span>
+        <label for="${inputId}" class="px-3 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black cursor-pointer">
+          ⬆️ رفع ${escapeHtml(title)}
+        </label>
+        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntUploadStationVoucher(event, ${idx}, '${stationType}')" />
+      </div>
+    `;
+  }
+
+  const isPdf = ntIsPdfVoucher(rec);
+  const badge = isPdf
+    ? `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black">PDF — يُحمّل للزبون</span>`
+    : `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-black">صورة — عرض فقط (لا يُحمّل للزبون)</span>`;
+
+  return `
+    <div class="mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 rounded-xl">
+      <div class="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
+        <span>📎 ${escapeHtml(rec.name || title)}</span>
+        ${badge}
+      </div>
+      <div class="flex items-center gap-1.5">
+        <label for="${inputId}" class="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-black cursor-pointer">تغيير</label>
+        <button type="button" onclick="ntDeleteStationVoucher(${idx}, '${stationType}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black cursor-pointer">حذف</button>
+        <input id="${inputId}" type="file" accept="application/pdf,image/*" class="hidden" onchange="ntUploadStationVoucher(event, ${idx}, '${stationType}')" />
+      </div>
+    </div>
+  `;
+}
+
+function ntCustomerVoucherUi(idx, stationType, booking) {
+  if (!["flight", "hotel", "transfer"].includes(stationType)) return "";
+  const rec = ntFindVoucherRecord(booking, stationType, idx);
+  const labelMap = {
+    flight: "فاوشر الطيران",
+    hotel: "فاوشر الفندق",
+    transfer: "فاوشر التوصيل"
+  };
+  const label = labelMap[stationType];
+
+  if (!rec || !rec.dataUrl) {
+    return `
+      <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <span class="text-xs font-bold text-slate-400">📄 ${escapeHtml(label)}: لم يُرفع ملف بعد</span>
+        <span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-extrabold">🔒 غير متوفر</span>
+      </div>
+    `;
+  }
+
+  if (ntIsPdfVoucher(rec)) {
+    return `
+      <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <span class="text-xs font-extrabold text-brand-900">📄 ${escapeHtml(label)} (${escapeHtml(rec.name || "PDF")})</span>
+        <button
+          type="button"
+          onclick="ntDownloadVoucherPdf('${stationType}', ${idx})"
+          class="px-3.5 py-1.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black shadow-xs transition cursor-pointer"
+        >
+          ⬇️ تحميل الفاوشر (PDF)
+        </button>
+      </div>
+    `;
+  }
+
+  // إذا كان صورة: ممنوع التحميل للزبون نهائياً
+  return `
+    <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+      <span class="text-xs font-extrabold text-slate-700">🖼️ ${escapeHtml(label)} (صورة — للعرض فقط)</span>
+      <span class="px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 text-xs font-black">🚫 التحميل لملفات PDF فقط</span>
+    </div>
+  `;
+}
