@@ -1567,172 +1567,224 @@ function renderCustomerDashboard(booking) {
     return;
   }
 
-  stagesList.innerHTML = stations
-    .map((st, idx) => {
-      if (st.type === "flight") {
-        const checkinInfo = resolveAirlineCheckinInfo(st.flightNumber, st.notes);
-        const fromCode = st.fromAirport || "—";
-        const toCode = st.toAirport || "—";
-        const fromCity = mapAirportCodeToCity(fromCode);
-        const toCity = mapAirportCodeToCity(toCode);
+  // تجميع مقاطع الطيران المتصلة (كونيكشين) ضمن مجموعة واحدة بفاصل خفيف بينها
+  function isConnectionBetweenFlights(currSt, nextSt) {
+    if (!currSt || !nextSt || currSt.type !== "flight" || nextSt.type !== "flight") return false;
+    const n1 = String(currSt.notes || "").toLowerCase();
+    const n2 = String(nextSt.notes || "").toLowerCase();
+    if (n1.includes("كونيكشين") || n2.includes("كونيكشين")) return true;
+    const sameLegOutbound = n1.includes("ذهاب") && n2.includes("ذهاب");
+    const sameLegReturn = n1.includes("عودة") && n2.includes("عودة");
+    return sameLegOutbound || sameLegReturn;
+  }
 
-        return `
-          <div class="bg-white rounded-3xl border border-sky-200/90 p-5 space-y-4 shadow-2xs">
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-xl bg-sky-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
-              </div>
-              <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
-                <span class="inline-flex items-center gap-2">
-                  <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
-                  <svg viewBox="0 0 28 14" class="w-6 h-3.5 text-sky-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="25" y1="7" x2="3" y2="7" />
-                    <polyline points="8,2 3,7 8,12" />
-                  </svg>
-                  <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
-                </span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">رقم الطيران</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.flightNumber || "غير محدد")}</span>
-              </div>
-              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">رمز PNR الطيران</span>
-                <span class="text-xs sm:text-sm font-black text-brand-800">${escapeHtml(st.airlinePnr || booking.pnr || "—")}</span>
-              </div>
-              <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.departureText || "غير محدد")}</span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div class="bg-sky-50/70 border border-sky-100 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-sky-800">🧳 الحقائب المسموحة</span>
-                <span class="text-xs font-extrabold text-slate-900">${escapeHtml(st.baggage || "حسب تذكرة الطيران")}</span>
-              </div>
-              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-slate-500">📌 ملاحظات الرحلة</span>
-                <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "رحلة مؤكدة")}</span>
-              </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onclick="openPassengersModal()"
-                  class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
-                >
-                  👥 المسافرين
-                </button>
-                ${
-                  checkinInfo?.url
-                    ? `<a href="${escapeHtml(checkinInfo.url)}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold transition inline-flex items-center gap-1.5">✈️ شيك إن (${escapeHtml(checkinInfo.name)})</a>`
-                    : ""
-                }
-              </div>
-            </div>
-            ${ntCustomerVoucherUi(idx, "flight", booking)}
-          </div>
-          ${
-            (String(st.notes || "").toLowerCase().includes("كونيكشين") ||
-              (stations[idx + 1] && stations[idx + 1].type === "flight" &&
-                (String(st.notes || "").includes("ذهاب") === String(stations[idx + 1].notes || "").includes("ذهاب")) &&
-                (String(st.notes || "").includes("عودة") === String(stations[idx + 1].notes || "").includes("عودة"))))
-              ? `<div class="my-2 px-4 py-2 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-black flex items-center justify-center gap-2">
-                  <span>🔄</span>
-                  <span>كونيكشين (تبديل/متابعة طائرة) إلى المحطة التالية</span>
-                </div>`
-              : ""
-          }
-        `;
-      }
-
-      if (st.type === "hotel") {
-        const starsText = st.stars || "5 نجوم";
-        const starsCountMatch = starsText.match(/(\d)/);
-        const starsNum = starsCountMatch ? Math.min(5, Math.max(1, parseInt(starsCountMatch[1], 10))) : 5;
-        const starsVisual = "★".repeat(starsNum);
-
-        return `
-          <div class="bg-white rounded-3xl border border-indigo-200/90 p-5 space-y-4 shadow-2xs">
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-xl bg-indigo-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-indigo-900 bg-indigo-100 px-3 py-1 rounded-full">🏨 إقامة فندقية</span>
-              </div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black" title="${escapeHtml(starsText)}">${escapeHtml(starsText)} (${starsVisual})</span>
-                ${
-                  st.nights
-                    ? `<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-black">${escapeHtml(st.nights)}</span>`
-                    : ""
-                }
-              </div>
-            </div>
-
-            <div>
-              <span class="block text-[11px] font-bold text-slate-500 mb-0.5">اسم الفندق</span>
-              <h4 class="text-base font-black text-slate-900">${escapeHtml(st.name || "فندق")}</h4>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-indigo-800">📥 تاريخ الدخول (Check-in)</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkIn || "غير محدد")}</span>
-              </div>
-              <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
-                <span class="block text-[11px] font-bold text-indigo-800">📤 تاريخ الخروج (Check-out)</span>
-                <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkOut || "غير محدد")}</span>
-              </div>
-            </div>
-
-            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
-              <span class="block text-[11px] font-bold text-slate-500">📝 تفاصيل وملاحظات الإقامة</span>
-              <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "إقامة مؤكدة")}</span>
-            </div>
-            ${ntCustomerVoucherUi(idx, "hotel", booking)}
-          </div>
-        `;
-      }
-
-      if (st.type === "transfer") {
-        return `
-          <div class="bg-white rounded-3xl border border-amber-200/90 p-5 space-y-3 shadow-2xs">
-            <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center">${idx + 1}</span>
-                <span class="text-xs font-black text-amber-950 bg-amber-100 px-3 py-1 rounded-full">🚐 توصيل ومواصلات</span>
-              </div>
-              ${st.pickupTime ? `<span class="text-xs font-extrabold text-slate-700 bg-slate-100 px-3 py-1 rounded-full">${escapeHtml(st.pickupTime)}</span>` : ""}
-            </div>
-            <p class="text-sm font-black text-slate-900">${escapeHtml(st.fromLocation || "—")} <span class="text-amber-600 mx-1">➔</span> ${escapeHtml(st.toLocation || "—")}</p>
-            ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
-            ${ntCustomerVoucherUi(idx, "transfer", booking)}
-          </div>
-        `;
-      }
+  function renderSingleStationCard(st, idx) {
+    if (st.type === "flight") {
+      const checkinInfo = resolveAirlineCheckinInfo(st.flightNumber, st.notes);
+      const fromCode = st.fromAirport || "—";
+      const toCode = st.toAirport || "—";
+      const fromCity = mapAirportCodeToCity(fromCode);
+      const toCity = mapAirportCodeToCity(toCode);
 
       return `
-        <div class="bg-white rounded-3xl border border-emerald-200/90 p-5 space-y-3 shadow-2xs">
-          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+        <div class="bg-white rounded-2xl border border-sky-200/90 p-4 sm:p-5 space-y-3.5 shadow-2xs">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
             <div class="flex items-center gap-2">
-              <span class="w-7 h-7 rounded-xl bg-emerald-700 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
-              <span class="text-xs font-black text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full">🗺️ جولة سياحية</span>
+              <span class="w-7 h-7 rounded-xl bg-sky-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
+              <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
             </div>
-            ${st.dateText ? `<span class="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full">${escapeHtml(st.dateText)}</span>` : ""}
+            <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
+              <span class="inline-flex items-center gap-2">
+                <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
+                <svg viewBox="0 0 28 14" class="w-6 h-3.5 text-sky-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="25" y1="7" x2="3" y2="7" />
+                  <polyline points="8,2 3,7 8,12" />
+                </svg>
+                <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
+              </span>
+            </div>
           </div>
-          <p class="text-sm font-black text-slate-900">${escapeHtml(st.title || "جولة سياحية")}</p>
-          ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">رقم الطيران</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.flightNumber || "غير محدد")}</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">رمز PNR الطيران</span>
+              <span class="text-xs sm:text-sm font-black text-brand-800">${escapeHtml(st.airlinePnr || booking.pnr || "—")}</span>
+            </div>
+            <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.departureText || "غير محدد")}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div class="bg-sky-50/70 border border-sky-100 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-sky-800">🧳 الحقائب المسموحة</span>
+              <span class="text-xs font-extrabold text-slate-900">${escapeHtml(st.baggage || "حسب تذكرة الطيران")}</span>
+            </div>
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-slate-500">📌 ملاحظات الرحلة</span>
+              <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "رحلة مؤكدة")}</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onclick="openPassengersModal()"
+                class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
+              >
+                👥 المسافرين
+              </button>
+              ${
+                checkinInfo?.url
+                  ? `<a href="${escapeHtml(checkinInfo.url)}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold transition inline-flex items-center gap-1.5">✈️ شيك إن (${escapeHtml(checkinInfo.name)})</a>`
+                  : ""
+              }
+            </div>
+          </div>
+          ${ntCustomerVoucherUi(idx, "flight", booking)}
         </div>
       `;
-    })
-    .join("");
+    }
+
+    if (st.type === "hotel") {
+      const starsText = st.stars || "5 نجوم";
+      const starsCountMatch = starsText.match(/(\d)/);
+      const starsNum = starsCountMatch ? Math.min(5, Math.max(1, parseInt(starsCountMatch[1], 10))) : 5;
+      const starsVisual = "★".repeat(starsNum);
+
+      return `
+        <div class="bg-white rounded-3xl border border-indigo-200/90 p-5 space-y-4 shadow-2xs">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-xl bg-indigo-900 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
+              <span class="text-xs font-black text-indigo-900 bg-indigo-100 px-3 py-1 rounded-full">🏨 إقامة فندقية</span>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black" title="${escapeHtml(starsText)}">${escapeHtml(starsText)} (${starsVisual})</span>
+              ${
+                st.nights
+                  ? `<span class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-900 border border-indigo-200 text-xs font-black">${escapeHtml(st.nights)}</span>`
+                  : ""
+              }
+            </div>
+          </div>
+
+          <div>
+            <span class="block text-[11px] font-bold text-slate-500 mb-0.5">اسم الفندق</span>
+            <h4 class="text-base font-black text-slate-900">${escapeHtml(st.name || "فندق")}</h4>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-indigo-800">📥 تاريخ الدخول (Check-in)</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkIn || "غير محدد")}</span>
+            </div>
+            <div class="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-3">
+              <span class="block text-[11px] font-bold text-indigo-800">📤 تاريخ الخروج (Check-out)</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.checkOut || "غير محدد")}</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+            <span class="block text-[11px] font-bold text-slate-500">📝 تفاصيل وملاحظات الإقامة</span>
+            <span class="text-xs font-bold text-slate-800">${escapeHtml(st.notes || "إقامة مؤكدة")}</span>
+          </div>
+          ${ntCustomerVoucherUi(idx, "hotel", booking)}
+        </div>
+      `;
+    }
+
+    if (st.type === "transfer") {
+      return `
+        <div class="bg-white rounded-3xl border border-amber-200/90 p-5 space-y-3 shadow-2xs">
+          <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center">${idx + 1}</span>
+              <span class="text-xs font-black text-amber-950 bg-amber-100 px-3 py-1 rounded-full">🚐 توصيل ومواصلات</span>
+            </div>
+            ${st.pickupTime ? `<span class="text-xs font-extrabold text-slate-700 bg-slate-100 px-3 py-1 rounded-full">${escapeHtml(st.pickupTime)}</span>` : ""}
+          </div>
+          <p class="text-sm font-black text-slate-900">${escapeHtml(st.fromLocation || "—")} <span class="text-amber-600 mx-1">➔</span> ${escapeHtml(st.toLocation || "—")}</p>
+          ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+          ${ntCustomerVoucherUi(idx, "transfer", booking)}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="bg-white rounded-3xl border border-emerald-200/90 p-5 space-y-3 shadow-2xs">
+        <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-xl bg-emerald-700 text-white text-xs font-black flex items-center justify-center">${idx + 1}</span>
+            <span class="text-xs font-black text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full">🗺️ جولة سياحية</span>
+          </div>
+          ${st.dateText ? `<span class="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full">${escapeHtml(st.dateText)}</span>` : ""}
+        </div>
+        <p class="text-sm font-black text-slate-900">${escapeHtml(st.title || "جولة سياحية")}</p>
+        ${st.notes ? `<p class="text-xs text-slate-600 font-bold bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">${escapeHtml(st.notes)}</p>` : ""}
+      </div>
+    `;
+  }
+
+  const renderedBlocks = [];
+  let i = 0;
+  while (i < stations.length) {
+    const st = stations[i];
+    if (st.type === "flight") {
+      const group = [{ st, idx: i }];
+      while (i + 1 < stations.length && isConnectionBetweenFlights(stations[i], stations[i + 1])) {
+        i++;
+        group.push({ st: stations[i], idx: i });
+      }
+
+      if (group.length > 1) {
+        const firstNotes = String(group[0].st.notes || "");
+        const legTitle = firstNotes.includes("عودة")
+          ? `رحلة العودة (كونيكشين • ${group.length} طائرات)`
+          : `رحلة الذهاب (كونيكشين • ${group.length} طائرات)`;
+
+        const innerHtml = group
+          .map((item, gIdx) => {
+            const cardHtml = renderSingleStationCard(item.st, item.idx);
+            const hasDividerAfter = gIdx < group.length - 1;
+            const hubCode = item.st.toAirport || group[gIdx + 1]?.st?.fromAirport || "";
+            const dividerHtml = hasDividerAfter
+              ? `<div class="my-2.5 flex items-center gap-2 text-[11px] font-black text-sky-900">
+                  <div class="h-px flex-1 bg-sky-200"></div>
+                  <span class="px-3 py-1 rounded-full bg-white border border-sky-200 shadow-2xs">🔄 كونيكشين${hubCode ? ` عبر ${escapeHtml(hubCode)}` : ""}</span>
+                  <div class="h-px flex-1 bg-sky-200"></div>
+                </div>`
+              : "";
+            return cardHtml + dividerHtml;
+          })
+          .join("");
+
+        renderedBlocks.push(`
+          <div class="rounded-3xl bg-sky-50/50 border border-sky-200 p-3 sm:p-4 space-y-2 shadow-2xs">
+            <div class="flex items-center justify-between px-1 pb-1">
+              <span class="text-xs font-black text-sky-950">✈️ ${escapeHtml(legTitle)}</span>
+              <span class="text-[11px] font-extrabold text-sky-800 bg-sky-100 px-2.5 py-0.5 rounded-full">مقاطع متصلة</span>
+            </div>
+            ${innerHtml}
+          </div>
+        `);
+      } else {
+        renderedBlocks.push(renderSingleStationCard(st, i));
+      }
+      i++;
+    } else {
+      renderedBlocks.push(renderSingleStationCard(st, i));
+      i++;
+    }
+  }
+
+  stagesList.innerHTML = renderedBlocks.join("");
 }
 
 // =======================================================================
