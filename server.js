@@ -4,9 +4,11 @@ const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
 
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const pool = process.env.DATABASE_URL
@@ -105,32 +107,190 @@ app.delete("/api/bookings/:id", async (req, res) => {
   }
 });
 
+const geminiCache = new Map();
+const GEMINI_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ساعات
+
+function getCacheKeyForGemini(body) {
+  try {
+    const textPart = body?.contents?.[0]?.parts?.find((p) => typeof p?.text === "string")?.text || "";
+    const cityMatch = textPart.match(/لمدينة\s+"([^"]+)"/);
+    if (cityMatch && cityMatch[1]) {
+      return `dest_intel_${cityMatch[1].trim().toLowerCase()}`;
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildGroqMessagesFromGeminiBody(body) {
+  const messages = [];
+  const systemText = body?.systemInstruction?.parts
+    ?.map((p) => (typeof p?.text === "string" ? p.text : ""))
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  if (systemText) {
+    messages.push({ role: "system", content: systemText });
+  }
+
+  let hasPdf = false;
+  let hasImage = false;
+
+  const contents = Array.isArray(body?.contents) ? body.contents : [];
+  for (const turn of contents) {
+    const role = turn?.role === "model" ? "assistant" : "user";
+    const parts = Array.isArray(turn?.parts) ? turn.parts : [];
+    const contentParts = [];
+
+    for (const part of parts) {
+      if (typeof part?.text === "string" && part.text.trim()) {
+        contentParts.push({ type: "text", text: part.text });
+      } else if (part?.inlineData?.data && part?.inlineData?.mimeType) {
+        const mime = String(part.inlineData.mimeType).toLowerCase();
+        if (mime.includes("pdf")) {
+          hasPdf = true;
+        } else if (mime.startsWith("image/")) {
+          hasImage = true;
+          contentParts.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+            }
+          });
+        }
+      }
+    }
+
+    if (contentParts.length === 1 && contentParts[0].type === "text") {
+      messages.push({ role, content: contentParts[0].text });
+    } else if (contentParts.length > 0) {
+      messages.push({ role, content: contentParts });
+    }
+  }
+
+  const wantsJson = body?.generationConfig?.responseMimeType === "application/json";
+  return { messages, hasPdf, hasImage, wantsJson };
+}
+
+async function callGroqFallback(body, groqApiKey) {
+  const { messages, hasPdf, hasImage, wantsJson } = buildGroqMessagesFromGeminiBody(body);
+  if (hasPdf || !messages.length) {
+    return { ok: false, reason: hasPdf ? "PDF غير مدعوم مباشرة في Groq" : "محتوى فارغ" };
+  }
+
+  const modelToUse = hasImage ? GROQ_VISION_MODEL : GROQ_MODEL;
+  const payload = {
+    model: modelToUse,
+    messages,
+    temperature: 0.3
+  };
+  if (wantsJson && !hasImage) {
+    payload.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${groqApiKey}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, reason: data?.error?.message || `Groq HTTP ${response.status}` };
+  }
+
+  const text = data?.choices?.[0]?.message?.content || "";
+  if (!text) {
+    return { ok: false, reason: "رد فارغ من Groq" };
+  }
+
+  return {
+    ok: true,
+    provider: "groq",
+    geminiFormatted: {
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [{ text }]
+          }
+        }
+      ]
+    }
+  };
+}
+
 app.post("/api/gemini", async (req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY || "Gsk_jMoQGTMuotZyXmEb30y8WGdyb3FYcAGAoh400ZrAfYX8L8SZvxqL";
+
+  if (!geminiKey && !groqKey) {
     return res.status(503).json({
-      error: "المساعد الذكي غير مفعّل. أضف GEMINI_API_KEY في متغيرات Railway."
+      error: "المساعد الذكي غير مفعّل. أضف GEMINI_API_KEY أو GROQ_API_KEY في متغيرات Railway."
     });
   }
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
+  const cacheKey = getCacheKeyForGemini(req.body);
+  if (cacheKey) {
+    const cached = geminiCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < GEMINI_CACHE_TTL_MS) {
+      return res.json(cached.data);
+    }
+  }
+
+  let geminiErrorMsg = "تعذر الاتصال بخدمة Gemini.";
+  let shouldFallbackToGroq = !geminiKey;
+
+  if (geminiKey) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+    const bodyStr = JSON.stringify(req.body);
+
+    try {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body)
+        body: bodyStr
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        if (cacheKey && data) {
+          geminiCache.set(cacheKey, { ts: Date.now(), data });
+        }
+        return res.json(data);
       }
-    );
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data?.error?.message || "فشل الاتصال بخدمة Gemini." });
+
+      geminiErrorMsg = data?.error?.message || `Gemini HTTP ${response.status}`;
+      if (response.status === 429 || response.status >= 500 || response.status === 404) {
+        shouldFallbackToGroq = true;
+      } else {
+        return res.status(response.status).json({ error: geminiErrorMsg });
+      }
+    } catch (error) {
+      console.error("Gemini primary error, switching to Groq:", error.message);
+      shouldFallbackToGroq = true;
     }
-    return res.json(data);
-  } catch (error) {
-    console.error("Gemini proxy error:", error);
-    return res.status(502).json({ error: "تعذر الاتصال بخدمة Gemini حالياً." });
   }
+
+  if (shouldFallbackToGroq && groqKey) {
+    const groqResult = await callGroqFallback(req.body, groqKey);
+    if (groqResult.ok) {
+      if (cacheKey && groqResult.geminiFormatted) {
+        geminiCache.set(cacheKey, { ts: Date.now(), data: groqResult.geminiFormatted });
+      }
+      return res.json(groqResult.geminiFormatted);
+    }
+    return res.status(429).json({
+      error: `انتهت حصة Gemini (${geminiErrorMsg}) وتعذر التحويل إلى Groq (${groqResult.reason}).`
+    });
+  }
+
+  return res.status(429).json({ error: geminiErrorMsg });
 });
 
 app.get("*", (_req, res) => {
