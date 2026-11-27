@@ -279,9 +279,67 @@
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
     <!-- ==================== قسم الإدارة ==================== -->
     <section id="admin-section" class="hidden space-y-6">
+      <!-- شريط علوي داخل قسم الإدارة للتنقل بين إضافة الحجز ومكان إدارة الزبائن المخصص -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            id="admin-tab-customers-btn"
+            onclick="switchAdminSubView('customers')"
+            class="px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-brand-700 text-white shadow cursor-pointer flex items-center gap-1.5"
+          >
+            <span>👥 إدارة الزبائن</span>
+            <span id="admin-customers-pill-count" class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">0</span>
+          </button>
+          <button
+            type="button"
+            id="admin-tab-form-btn"
+            onclick="switchAdminSubView('form')"
+            class="px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer flex items-center gap-1.5"
+          >
+            <span>➕ إضافة / تعديل حجز</span>
+          </button>
+        </div>
+        <p id="admin-subview-hint" class="text-xs font-bold text-slate-500">مكان مخصص لإدارة جميع الزبائن وحجوزاتهم</p>
+      </div>
+
+      <!-- مكان مخصص بالكامل لإدارة الزبائن -->
+      <div id="admin-customers-workspace" class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h2 class="text-lg sm:text-xl font-black text-slate-900">👥 إدارة الزبائن</h2>
+            <p class="text-xs text-slate-500">محل مخصص لمتابعة الزبائن، تعديل حجوزاتهم، نسخ الرسالة، أو فتح رحلة الزبون مباشرة</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="bookings-count-badge" class="px-3 py-1 rounded-full bg-brand-100 text-brand-800 text-xs font-black">0 حجوزات</span>
+            <button
+              type="button"
+              onclick="switchAdminSubView('form')"
+              class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black transition cursor-pointer"
+            >
+              + حجز جديد
+            </button>
+          </div>
+        </div>
+
+        <div class="relative">
+          <input
+            type="text"
+            id="bookings-search-input"
+            oninput="renderBookingsList()"
+            placeholder="🔍 ابحث بالاسم، العائلة، PNR، أو الوجهة..."
+            class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-xs sm:text-sm font-bold"
+          />
+        </div>
+
+        <div id="bookings-list" class="grid grid-cols-1 md:grid-cols-2 gap-3.5 max-h-[780px] overflow-y-auto custom-scroll pr-1"></div>
+      </div>
+
+      <!-- مساحة إضافة / تعديل الحجز -->
+      <div id="admin-form-workspace" class="hidden">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <!-- نموذج إضافة / تعديل الحجز -->
-        <div class="lg:col-span-7 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+        <div class="lg:col-span-12 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
             <div>
               <h2 id="form-heading" class="text-lg font-black text-slate-900">إضافة حجز جديد</h2>
@@ -443,28 +501,8 @@
           </div>
         </div>
 
-        <!-- قائمة الزبائن المحفوظين -->
-        <div class="lg:col-span-5 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h2 class="text-lg font-black text-slate-900">قائمة الزبائن</h2>
-              <p class="text-xs text-slate-500">اختر أي حجز لتعديله أو فتحه في بوابة الزبون</p>
-            </div>
-            <span id="bookings-count-badge" class="px-3 py-1 rounded-full bg-brand-100 text-brand-800 text-xs font-black">0 حجوزات</span>
-          </div>
-
-          <div class="relative">
-            <input
-              type="text"
-              id="bookings-search-input"
-              oninput="renderBookingsList()"
-              placeholder="🔍 ابحث بالاسم، العائلة، PNR، أو الوجهة..."
-              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 outline-none text-xs sm:text-sm font-bold"
-            />
-          </div>
-
-          <div id="bookings-list" class="space-y-3 max-h-[780px] overflow-y-auto custom-scroll pr-1"></div>
         </div>
+      </div>
       </div>
     </section>
 
@@ -1050,6 +1088,74 @@
       let saved = "navy-white-gold";
       try { saved = localStorage.getItem(THEME_KEY) || "navy-white-gold"; } catch (_) {}
       window.applyTheme(saved, false);
+    })();
+  </script>
+
+
+  <script id="nadlan-admin-customers-hub">
+    (function () {
+      window.switchAdminSubView = function (view) {
+        const customersWs = document.getElementById("admin-customers-workspace");
+        const formWs = document.getElementById("admin-form-workspace");
+        const tabCustomers = document.getElementById("admin-tab-customers-btn");
+        const tabForm = document.getElementById("admin-tab-form-btn");
+        const hint = document.getElementById("admin-subview-hint");
+
+        const isCustomers = view !== "form";
+        if (customersWs) customersWs.classList.toggle("hidden", !isCustomers);
+        if (formWs) formWs.classList.toggle("hidden", isCustomers);
+
+        if (tabCustomers) {
+          tabCustomers.className = isCustomers
+            ? "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-brand-700 text-white shadow cursor-pointer flex items-center gap-1.5"
+            : "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer flex items-center gap-1.5";
+        }
+        if (tabForm) {
+          tabForm.className = !isCustomers
+            ? "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-brand-700 text-white shadow cursor-pointer flex items-center gap-1.5"
+            : "px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer flex items-center gap-1.5";
+        }
+        if (hint) {
+          hint.textContent = isCustomers
+            ? "مكان مخصص لإدارة جميع الزبائن وحجوزاتهم"
+            : "نموذج إضافة أو تعديل تفاصيل الحجز والمحطات";
+        }
+      };
+
+      function syncCustomersCountPill() {
+        const badge = document.getElementById("bookings-count-badge");
+        const pill = document.getElementById("admin-customers-pill-count");
+        if (badge && pill) {
+          const match = (badge.textContent || "").match(/\d+/);
+          pill.textContent = match ? match[0] : "0";
+        }
+      }
+
+      const observer = new MutationObserver(syncCustomersCountPill);
+      const badgeEl = document.getElementById("bookings-count-badge");
+      if (badgeEl) {
+        observer.observe(badgeEl, { childList: true, characterData: true, subtree: true });
+      }
+
+      const origStartEdit = window.startEditBooking;
+      if (typeof origStartEdit === "function") {
+        window.startEditBooking = function (...args) {
+          window.switchAdminSubView("form");
+          return origStartEdit.apply(this, args);
+        };
+      }
+
+      document.addEventListener("click", function (e) {
+        const btn = e.target.closest("button, a");
+        if (!btn) return;
+        const txt = (btn.textContent || "").trim();
+        if (txt.includes("تعديل") && btn.closest("#bookings-list")) {
+          window.switchAdminSubView("form");
+        }
+      });
+
+      window.switchAdminSubView("customers");
+      syncCustomersCountPill();
     })();
   </script>
 
