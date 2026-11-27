@@ -852,6 +852,73 @@ async function processExtractedFile(file, targetType) {
   }
 }
 
+
+let pendingPasteTargetType = null;
+
+function triggerPasteExtract(targetType = null) {
+  if (targetType) {
+    extractTargetType = targetType;
+    pendingPasteTargetType = targetType;
+  } else {
+    pendingPasteTargetType = null;
+  }
+  showToast(
+    targetType
+      ? "الآن اضغط Ctrl+V (أو Cmd+V) للصق صورة الاستخراج"
+      : "يمكنك لصق صورة التذكرة أو الحجز مباشرة باستخدام Ctrl+V أو Cmd+V"
+  );
+}
+
+function getPastedImageFile(clipboardData) {
+  const items = clipboardData?.items;
+  if (!items) return null;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind === "file" && item.type && item.type.startsWith("image/")) {
+      const blob = item.getAsFile();
+      if (!blob) continue;
+      const ext = (item.type.split("/")[1] || "png").replace("+xml", "").split(";")[0];
+      return new File([blob], `pasted-booking-${Date.now()}.${ext}`, {
+        type: item.type
+      });
+    }
+  }
+  return null;
+}
+
+document.addEventListener("paste", async (event) => {
+  const adminSec = document.getElementById("admin-section");
+  const isAdminVisible = adminSec && !adminSec.classList.contains("hidden");
+  if (!isAdminVisible) return;
+
+  const activeEl = document.activeElement;
+  const isTextInput =
+    activeEl &&
+    (activeEl.tagName === "INPUT" ||
+      activeEl.tagName === "TEXTAREA" ||
+      activeEl.isContentEditable);
+
+  // السماح باللصق النصي الطبيعي داخل حقول النص، إلا إذا كان المستخدم ينتظر لصق صورة
+  const pastedFile = getPastedImageFile(event.clipboardData);
+  if (!pastedFile) return;
+  if (isTextInput && !pendingPasteTargetType) return;
+
+  event.preventDefault();
+
+  if (pendingPasteTargetType) {
+    extractTargetType = pendingPasteTargetType;
+    pendingPasteTargetType = null;
+  }
+
+  await handleExtractFileSelected({
+    target: {
+      files: [pastedFile],
+      value: ""
+    }
+  });
+});
+
 async function handleExtractFileSelected(event) {
   const file = event.target?.files?.[0];
   if (!file) return;
