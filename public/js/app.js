@@ -231,6 +231,20 @@ async function loadBookings() {
   try {
     let result = await apiRequest("/api/bookings");
     bookings = Array.isArray(result.bookings) ? result.bookings : [];
+    try {
+      const vMap = ntReadVoucherMap();
+      for (const b of bookings) {
+        if (b && b.vouchers && typeof b.vouchers === "object") {
+          for (const key of ["PNR:" + ntNorm(b.pnr), "ID:" + ntNorm(b.id), "LAST:" + ntNorm(b.lastName)]) {
+            if (!vMap[key]) vMap[key] = {};
+            for (const [vk, vv] of Object.entries(b.vouchers)) {
+              if (vv && vv.dataUrl) vMap[key][vk] = vv;
+            }
+          }
+        }
+      }
+      ntWriteVoucherMap(vMap);
+    } catch (_) {}
 
     const legacyRaw = localStorage.getItem(STORAGE_KEY);
     if (bookings.length === 0 && legacyRaw) {
@@ -938,6 +952,22 @@ async function saveBooking() {
         }
       }
       ntWriteVoucherMap(vMap);
+    } catch (_) {}
+
+    try {
+      const vMap = ntReadVoucherMap();
+      const collected = {};
+      for (const sk of ["CURRENT_DRAFT", "__LATEST_BY_TYPE__", "PNR:" + ntNorm(bookingObj.pnr), "ID:" + ntNorm(bookingObj.id), "LAST:" + ntNorm(bookingObj.lastName)]) {
+        const bkt = vMap[sk];
+        if (bkt && typeof bkt === "object") {
+          for (const [k, v] of Object.entries(bkt)) {
+            if (v && v.dataUrl) collected[k] = v;
+          }
+        }
+      }
+      if (Object.keys(collected).length > 0) {
+        bookingObj.vouchers = collected;
+      }
     } catch (_) {}
 
     await apiRequest("/api/bookings", {
@@ -2074,6 +2104,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 
 
+
+
 // =======================================================================
 // نظام فاوشرات الحجز (طيران / فندق / توصيل) — تحميل PDF فقط للزبون
 // =======================================================================
@@ -2112,7 +2144,6 @@ function ntGetActiveAdminKeys() {
   if (last) keys.push("LAST:" + last);
   if (first && last) keys.push("FULL:" + first + "_" + last);
 
-  // إذا تم توليد PNR تلقائي أو كان هناك حجز مطابق في القائمة
   const matched = bookings.find(
     (b) =>
       (editId && ntNorm(b.id) === editId) ||
@@ -2143,6 +2174,16 @@ function ntGetCustomerKeys(booking) {
 }
 
 function ntFindVoucherRecord(booking, stationType, index) {
+  // أولاً من كائن الحجز نفسه (إن تم إرجاعه من السيرفر)
+  if (booking && booking.vouchers && typeof booking.vouchers === "object") {
+    if (booking.vouchers["idx_" + index] && booking.vouchers["idx_" + index].dataUrl) {
+      return booking.vouchers["idx_" + index];
+    }
+    if (booking.vouchers[stationType] && booking.vouchers[stationType].dataUrl) {
+      return booking.vouchers[stationType];
+    }
+  }
+
   const map = ntReadVoucherMap();
   const keys = booking ? ntGetCustomerKeys(booking) : ntGetActiveAdminKeys();
 
@@ -2153,7 +2194,6 @@ function ntFindVoucherRecord(booking, stationType, index) {
     if (bucket[stationType] && bucket[stationType].dataUrl) return bucket[stationType];
   }
 
-  // احتياطي: إذا كان هناك فاوشر محفوظ تحت نوع المحطة في أي bucket مؤخر
   const latestByType = map["__LATEST_BY_TYPE__"];
   if (latestByType && latestByType[stationType] && latestByType[stationType].dataUrl) {
     return latestByType[stationType];
