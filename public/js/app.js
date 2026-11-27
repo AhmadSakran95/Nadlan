@@ -899,6 +899,27 @@ async function saveBooking() {
   };
 
   try {
+    try {
+      const vMap = ntReadVoucherMap();
+      const targetKeys = [
+        "PNR:" + ntNorm(bookingObj.pnr),
+        "ID:" + ntNorm(bookingObj.id),
+        "LAST:" + ntNorm(bookingObj.lastName)
+      ];
+      const sourceBuckets = [vMap["CURRENT_DRAFT"], ...(vMap["__LATEST_BY_TYPE__"] ? [vMap["__LATEST_BY_TYPE__"]] : [])].filter(Boolean);
+      for (const tk of targetKeys) {
+        if (!vMap[tk]) vMap[tk] = {};
+        for (const sb of sourceBuckets) {
+          for (const [k, v] of Object.entries(sb)) {
+            if (v && v.dataUrl && !vMap[tk][k]) {
+              vMap[tk][k] = v;
+            }
+          }
+        }
+      }
+      ntWriteVoucherMap(vMap);
+    } catch (_) {}
+
     await apiRequest("/api/bookings", {
       method: "POST",
       body: JSON.stringify(bookingObj)
@@ -2031,14 +2052,19 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 
+
+
 // =======================================================================
 // نظام فاوشرات الحجز (طيران / فندق / توصيل) — تحميل PDF فقط للزبون
 // =======================================================================
-const NT_VOUCHER_STORAGE_KEY = "nadlantours_station_vouchers_v2";
+const NT_VOUCHER_STORAGE_KEY = "nadlantours_station_vouchers_v3";
 
 function ntReadVoucherMap() {
   try {
-    return JSON.parse(localStorage.getItem(NT_VOUCHER_STORAGE_KEY) || "{}") || {};
+    const raw = localStorage.getItem(NT_VOUCHER_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) || {};
+    const oldRaw = localStorage.getItem("nadlantours_station_vouchers_v2");
+    return oldRaw ? (JSON.parse(oldRaw) || {}) : {};
   } catch (_) {
     return {};
   }
@@ -2050,36 +2076,69 @@ function ntWriteVoucherMap(map) {
   } catch (_) {}
 }
 
-function ntNormalizeKey(val) {
+function ntNorm(val) {
   return String(val || "").trim().toUpperCase();
 }
 
-function ntCollectCandidateKeys(booking) {
+function ntGetActiveAdminKeys() {
   const keys = [];
-  if (booking) {
-    if (booking.pnr) keys.push("PNR:" + ntNormalizeKey(booking.pnr));
-    if (booking.id) keys.push("ID:" + ntNormalizeKey(booking.id));
-    if (booking.lastName) keys.push("LAST:" + ntNormalizeKey(booking.lastName));
-  }
-  const editId = ntNormalizeKey(document.getElementById("editing-booking-id")?.value);
-  const pnr = ntNormalizeKey(document.getElementById("booking-pnr")?.value);
-  const last = ntNormalizeKey(document.getElementById("customer-last-name")?.value);
+  const editId = ntNorm(document.getElementById("editing-booking-id")?.value);
+  const pnr = ntNorm(document.getElementById("booking-pnr")?.value);
+  const last = ntNorm(document.getElementById("customer-last-name")?.value);
+  const first = ntNorm(document.getElementById("customer-first-name")?.value);
+
   if (pnr) keys.push("PNR:" + pnr);
   if (editId) keys.push("ID:" + editId);
   if (last) keys.push("LAST:" + last);
+  if (first && last) keys.push("FULL:" + first + "_" + last);
+
+  // إذا تم توليد PNR تلقائي أو كان هناك حجز مطابق في القائمة
+  const matched = bookings.find(
+    (b) =>
+      (editId && ntNorm(b.id) === editId) ||
+      (pnr && ntNorm(b.pnr) === pnr)
+  );
+  if (matched) {
+    if (matched.id) keys.push("ID:" + ntNorm(matched.id));
+    if (matched.pnr) keys.push("PNR:" + ntNorm(matched.pnr));
+    if (matched.lastName) keys.push("LAST:" + ntNorm(matched.lastName));
+  }
+
+  keys.push("CURRENT_DRAFT");
+  return [...new Set(keys)];
+}
+
+function ntGetCustomerKeys(booking) {
+  const keys = [];
+  if (booking) {
+    if (booking.pnr) keys.push("PNR:" + ntNorm(booking.pnr));
+    if (booking.id) keys.push("ID:" + ntNorm(booking.id));
+    if (booking.lastName) keys.push("LAST:" + ntNorm(booking.lastName));
+    if (booking.firstName && booking.lastName) {
+      keys.push("FULL:" + ntNorm(booking.firstName) + "_" + ntNorm(booking.lastName));
+    }
+  }
   keys.push("CURRENT_DRAFT");
   return [...new Set(keys)];
 }
 
 function ntFindVoucherRecord(booking, stationType, index) {
   const map = ntReadVoucherMap();
-  const keys = ntCollectCandidateKeys(booking);
+  const keys = booking ? ntGetCustomerKeys(booking) : ntGetActiveAdminKeys();
+
   for (const k of keys) {
     const bucket = map[k];
     if (!bucket) continue;
-    if (bucket[stationType] && bucket[stationType].dataUrl) return bucket[stationType];
     if (bucket["idx_" + index] && bucket["idx_" + index].dataUrl) return bucket["idx_" + index];
+    if (bucket[stationType] && bucket[stationType].dataUrl) return bucket[stationType];
   }
+
+  // احتياطي: إذا كان هناك فاوشر محفوظ تحت نوع المحطة في أي bucket مؤخر
+  const latestByType = map["__LATEST_BY_TYPE__"];
+  if (latestByType && latestByType[stationType] && latestByType[stationType].dataUrl) {
+    return latestByType[stationType];
+  }
+
   return null;
 }
 
@@ -2113,17 +2172,21 @@ async function ntUploadStationVoucher(event, index, stationType) {
     };
 
     const map = ntReadVoucherMap();
-    const keys = ntCollectCandidateKeys(null);
+    const keys = ntGetActiveAdminKeys();
     for (const k of keys) {
       if (!map[k]) map[k] = {};
       map[k][stationType] = record;
       map[k]["idx_" + index] = record;
     }
-    ntWriteVoucherMap(map);
 
+    if (!map["__LATEST_BY_TYPE__"]) map["__LATEST_BY_TYPE__"] = {};
+    map["__LATEST_BY_TYPE__"][stationType] = record;
+
+    ntWriteVoucherMap(map);
     renderStationsEditor();
+
     if (ntIsPdfVoucher(record)) {
-      showToast("تم رفع الفاوشر (PDF) — يمكن للزبون تحميله");
+      showToast("تم رفع الفاوشر (PDF) — جاهز لتحميله في بوابة الزبون");
     } else {
       showToast("تم رفع صورة الفاوشر — الصور للعرض فقط ولا يُحمّل للزبون");
     }
@@ -2135,11 +2198,14 @@ async function ntUploadStationVoucher(event, index, stationType) {
 
 function ntDeleteStationVoucher(index, stationType) {
   const map = ntReadVoucherMap();
-  const keys = ntCollectCandidateKeys(null);
+  const keys = ntGetActiveAdminKeys();
   for (const k of keys) {
     if (!map[k]) continue;
     delete map[k][stationType];
     delete map[k]["idx_" + index];
+  }
+  if (map["__LATEST_BY_TYPE__"]) {
+    delete map["__LATEST_BY_TYPE__"][stationType];
   }
   ntWriteVoucherMap(map);
   renderStationsEditor();
@@ -2244,7 +2310,6 @@ function ntCustomerVoucherUi(idx, stationType, booking) {
     `;
   }
 
-  // إذا كان صورة: ممنوع التحميل للزبون نهائياً
   return `
     <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
       <span class="text-xs font-extrabold text-slate-700">🖼️ ${escapeHtml(label)} (صورة — للعرض فقط)</span>
