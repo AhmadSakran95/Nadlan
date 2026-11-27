@@ -1547,16 +1547,23 @@ function renderCheckinAlertBanner(booking) {
     const dayWord = daysLeft === 1 ? "يوم" : daysLeft <= 10 ? "أيام" : "يوماً";
 
     banner.classList.remove("hidden");
-    banner.className = "bg-gradient-to-l from-brand-800 via-brand-700 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md border border-brand-600 flex flex-wrap items-center justify-between gap-4";
-    if (badgeEl) badgeEl.textContent = "⏳ العد التنازلي للرحلة";
-    if (titleEl) titleEl.textContent = `متبقي على رحلتك ${daysLeft} ${dayWord}!`;
+    banner.className = "bg-gradient-to-l from-slate-950 via-brand-900 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-lg border border-amber-400/40 flex flex-wrap items-center justify-between gap-4";
+    if (badgeEl) {
+      badgeEl.className = "px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black";
+      badgeEl.textContent = "⏳ العد التنازلي للرحلة";
+    }
+    if (titleEl) {
+      titleEl.className = "text-base sm:text-lg font-black text-white";
+      titleEl.textContent = `متبقي على رحلتك ${daysLeft} ${dayWord}!`;
+    }
     if (descEl) {
+      descEl.className = "text-xs sm:text-sm text-slate-100 font-bold mt-1";
       descEl.textContent = `باقي على موعد إقلاع رحلتك ${daysLeft} ${dayWord} (${codes.outboundStop?.departureText ? formatArabicDepartureDisplay(codes.outboundStop.departureText) : "الموعد المحدد"}) — سيُفتح الشيك إن قبل الرحلة بـ 24 ساعة أو أقل.`;
     }
     if (codesEl) {
       codesEl.innerHTML = `
-        <span class="px-3 py-1 rounded-xl bg-amber-400 text-slate-950 font-black">⏳ باقي ${daysLeft} ${dayWord}</span>
-        <span class="px-3 py-1 rounded-xl bg-white/15 text-amber-300 border border-white/20">الوجهة: ${escapeHtml(booking.destination)}</span>
+        <span class="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-black shadow-2xs">⏳ باقي ${daysLeft} ${dayWord}</span>
+        <span class="px-3 py-1.5 rounded-xl bg-amber-300/20 text-amber-200 border border-amber-300/50 text-xs font-black">الوجهة: ${escapeHtml(booking.destination)}</span>
       `;
     }
     if (copyCheckinBtn) copyCheckinBtn.classList.add("hidden");
