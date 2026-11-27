@@ -232,9 +232,10 @@ async function callGroqFallback(body, groqApiKey) {
 }
 
 app.post("/api/gemini", async (req, res) => {
+  
   const geminiKey = process.env.GEMINI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY || "Gsk_jMoQGTMuotZyXmEb30y8WGdyb3FYcAGAoh400ZrAfYX8L8SZvxqL";
-
+console.log("HIT /api/gemini - geminiKey exists:", Boolean(geminiKey), "groqKey exists:", Boolean(groqKey));
   if (!geminiKey && !groqKey) {
     return res.status(503).json({
       error: "المساعد الذكي غير مفعّل. أضف GEMINI_API_KEY أو GROQ_API_KEY في متغيرات Railway."
