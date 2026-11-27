@@ -42,6 +42,85 @@ async function ensureDatabase() {
   await databaseReady;
 }
 
+const weatherCache = new Map();
+const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // ساعتان
+
+function mapWeatherCodeToArabic(code) {
+  if (code === 0) return "صافٍ";
+  if ([1, 2].includes(code)) return "غائم جزئياً";
+  if (code === 3) return "غائم";
+  if ([45, 48].includes(code)) return "ضباب";
+  if ([51, 53, 55, 61, 63, 80, 81].includes(code)) return "زخات خفيفة إلى متوسطة";
+  if ([65, 82].includes(code)) return "أمطار غزيرة";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "ثلوج";
+  if ([95, 96, 99].includes(code)) return "عواصف رعدية";
+  return "متقلب";
+}
+
+app.get("/api/weather", async (req, res) => {
+  try {
+    const city = String(req.query.city || "").trim();
+    if (!city) {
+      return res.status(400).json({ error: "يرجى تحديد اسم المدينة (city)." });
+    }
+
+    const cacheKey = city.toLowerCase();
+    const cached = weatherCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < WEATHER_CACHE_TTL_MS) {
+      return res.json({ ok: true, cached: true, ...cached.data });
+    }
+
+    // 1) تحويل اسم المدينة إلى إحداثيات (خط عرض وطول)
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ar&format=json`;
+    const geoRes = await fetch(geoUrl);
+    const geoData = await geoRes.json().catch(() => ({}));
+    const place = geoData?.results?.[0];
+
+    if (!place) {
+      return res.status(404).json({ error: `لم يتم العثور على مدينة باسم "${city}".` });
+    }
+
+    // 2) جلب توقعات الطقس لـ 5 أيام
+    const forecastUrl =
+      `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${place.latitude}` +
+      `&longitude=${place.longitude}` +
+      `&daily=weathercode,temperature_2m_max,temperature_2m_min` +
+      `&timezone=auto&forecast_days=5`;
+
+    const forecastRes = await fetch(forecastUrl);
+    const forecastData = await forecastRes.json().catch(() => ({}));
+    const daily = forecastData?.daily;
+
+    if (!daily || !Array.isArray(daily.time)) {
+      return res.status(502).json({ error: "تعذر جلب توقعات الطقس من المزود." });
+    }
+
+    const days = daily.time.map((date, idx) => {
+      const code = daily.weathercode?.[idx];
+      return {
+        date,
+        maxTemp: Math.round(daily.temperature_2m_max?.[idx]),
+        minTemp: Math.round(daily.temperature_2m_min?.[idx]),
+        condition: mapWeatherCodeToArabic(code),
+        code
+      };
+    });
+
+    const payload = {
+      city: place.name,
+      country: place.country || "",
+      days
+    };
+
+    weatherCache.set(cacheKey, { ts: Date.now(), data: payload });
+    return res.json({ ok: true, cached: false, ...payload });
+  } catch (error) {
+    console.error("Weather API error:", error);
+    return res.status(500).json({ error: "حدث خطأ أثناء جلب بيانات الطقس." });
+  }
+});
+
 app.get("/api/health", async (_req, res) => {
   try {
     await ensureDatabase();
