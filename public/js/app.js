@@ -1296,7 +1296,7 @@ function openBookingInCustomerPortal(bookingId) {
 // =======================================================================
 // فحص تلقائي لمواعيد وحالة الرحلات عبر التاريخ ورقم الطائرة عند فتح الصفحة
 // =======================================================================
-const FLIGHT_SYNC_CACHE_PREFIX = "ndl_flight_sync_v1_";
+const FLIGHT_SYNC_CACHE_PREFIX = "ndl_flight_sync_v2_";
 let ntFlightSyncRunning = false;
 
 function ntNormalizeFlightDateKey(departureText) {
@@ -1317,6 +1317,35 @@ function ntNormalizeFlightDateKey(departureText) {
   return raw;
 }
 
+function ntSetFlightSyncStatusBadge(text, tone = "info") {
+  const stagesCountEl = document.getElementById("customer-stages-count");
+  if (!stagesCountEl) return;
+
+  let badge = document.getElementById("nt-flight-sync-status-pill");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.id = "nt-flight-sync-status-pill";
+    badge.className = "mr-2 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold inline-flex items-center gap-1";
+    stagesCountEl.parentNode.insertBefore(badge, stagesCountEl.nextSibling);
+  }
+
+  if (!text) {
+    badge.textContent = "";
+    badge.classList.add("hidden");
+    return;
+  }
+
+  badge.classList.remove("hidden");
+  if (tone === "loading") {
+    badge.className = "mr-2 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-sky-100 text-sky-900 border border-sky-200 inline-flex items-center gap-1";
+  } else if (tone === "updated") {
+    badge.className = "mr-2 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 inline-flex items-center gap-1";
+  } else {
+    badge.className = "mr-2 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 inline-flex items-center gap-1";
+  }
+  badge.textContent = text;
+}
+
 function ntBuildFlightLiveAlertBanner(changes) {
   const banner = document.getElementById("checkin-alert-banner");
   if (!banner || !changes.length) return;
@@ -1331,8 +1360,8 @@ function ntBuildFlightLiveAlertBanner(changes) {
   const itemsHtml = changes
     .map(
       (c) => `
-      <li class="flex flex-wrap items-center justify-between gap-2 bg-white/85 border border-rose-200 rounded-2xl px-3.5 py-2 text-xs font-extrabold text-slate-900">
-        <span>✈️ <strong>${escapeHtml(c.flightNumber)}</strong> (${escapeHtml(c.route)}):</span>
+      <li class="flex flex-wrap items-center justify-between gap-2 bg-white/90 border border-rose-200 rounded-2xl px-3.5 py-2 text-xs font-extrabold text-slate-900">
+        <span>✈️ <strong>${escapeHtml(c.flightNumber)}</strong> (${escapeHtml(c.route)})${c.status ? ` — <span class="text-sky-800">${escapeHtml(c.status)}</span>` : ""}:</span>
         <span>
           السابق: <s class="text-rose-700" dir="ltr">${escapeHtml(c.oldFormatted)}</s>
           <span class="mx-1.5 text-emerald-700 font-black">➔</span>
@@ -1357,6 +1386,32 @@ function ntBuildFlightLiveAlertBanner(changes) {
   `;
 }
 
+function ntExtractDepartureFromAnyShape(parsed, fallbackDateKey) {
+  if (!parsed || typeof parsed !== "object") return "";
+  const candidates = [
+    parsed.scheduledDepartureLocal,
+    parsed.scheduled_departure_local,
+    parsed.departureLocal,
+    parsed.scheduledDeparture,
+    parsed.scheduled_departure,
+    parsed.departureTime,
+    parsed.departure_time,
+    parsed.departure,
+    parsed.time
+  ];
+  for (const val of candidates) {
+    if (typeof val === "string" && val.trim()) {
+      const cleaned = val.trim();
+      // إذا أعاد وقتاً فقط مثل 14:30 ندمجه مع التاريخ لتكوين تاريخ ووقت كامل
+      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(cleaned) && fallbackDateKey) {
+        return `${fallbackDateKey} ${cleaned}`;
+      }
+      return cleaned;
+    }
+  }
+  return "";
+}
+
 async function ntQuerySingleFlightSchedule(st) {
   const flightNo = String(st.flightNumber || "").trim().toUpperCase();
   const dateKey = ntNormalizeFlightDateKey(st.departureText);
@@ -1369,41 +1424,50 @@ async function ntQuerySingleFlightSchedule(st) {
     const cachedRaw = sessionStorage.getItem(cacheKey);
     if (cachedRaw) {
       const cached = JSON.parse(cachedRaw);
-      if (cached && cached.ts && Date.now() - cached.ts < 15 * 60 * 1000) {
+      if (cached && cached.ts && Date.now() - cached.ts < 5 * 60 * 1000) {
         return cached.data;
       }
     }
   } catch (_) {}
 
-  const prompt = `ابحث بدقة عن جدول رحلة الطيران رقم "${flightNo}" بتاريخ "${dateKey}"${fromCode ? ` من مطار ${fromCode}` : ""}${toCode ? ` إلى مطار ${toCode}` : ""}.
-أرجع JSON فقط بدون أي نص إضافي بالشكل التالي:
+  const prompt = `ابحث في الإنترنت عن جدول رحلة الطيران رقم "${flightNo}" بتاريخ "${dateKey}"${fromCode ? ` من ${fromCode}` : ""}${toCode ? ` إلى ${toCode}` : ""}.
+أعد النتيجة بصيغة JSON فقط بدون أي شرح إضافي:
 {
   "found": true,
   "flightNumber": "${flightNo}",
-  "scheduledDepartureLocal": "التاريخ والوقت المحلي المجدول للإقلاع مثل 2026-12-15 23:50 أو 2026-12-15T23:50:00",
-  "status": "حالة الرحلة مثل Scheduled أو On Time أو Delayed أو Cancelled أو Departed",
-  "notes": "ملاحظة مختصرة عن الموعد أو البوابة إن وجدت"
+  "scheduledDepartureLocal": "${dateKey} HH:MM",
+  "status": "On Time أو Delayed أو Scheduled أو Cancelled",
+  "notes": "ملاحظة مختصرة"
 }
-إذا لم تجد موعداً مؤكداً للرحلة في هذا التاريخ، اجعل "found": false و "scheduledDepartureLocal": "".`;
+إذا لم تجد موعداً مؤكداً للرحلة في هذا التاريخ اجعل "found": false.`;
 
   const result = await callGeminiApi({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    tools: [{ google_search: {} }],
-    generationConfig: {
-      responseMimeType: "application/json"
-    }
+    tools: [{ google_search: {} }]
   });
 
-  const parsed = parseJsonLoose(extractGeminiText(result));
-  if (!parsed || !parsed.found || !parsed.scheduledDepartureLocal) {
+  const rawText = extractGeminiText(result);
+  console.log("[Nadlan Flight Sync] Raw response for", flightNo, dateKey, "->", rawText);
+
+  const parsed = parseJsonLoose(rawText);
+  const depVal = ntExtractDepartureFromAnyShape(parsed, dateKey);
+
+  if (!parsed || parsed.found === false || !depVal) {
     return null;
   }
 
+  const normalizedData = {
+    found: true,
+    flightNumber: parsed.flightNumber || flightNo,
+    scheduledDepartureLocal: depVal,
+    status: parsed.status || parsed.flight_status || ""
+  };
+
   try {
-    sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: parsed }));
+    sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: normalizedData }));
   } catch (_) {}
 
-  return parsed;
+  return normalizedData;
 }
 
 async function checkAndSyncLiveFlightsForBooking(booking) {
@@ -1415,6 +1479,8 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
   if (!flightEntries.length) return;
 
   ntFlightSyncRunning = true;
+  ntSetFlightSyncStatusBadge("🔄 جاري فحص جدول الطيران...", "loading");
+
   const oldAlert = document.getElementById("nt-live-flight-schedule-alert");
   if (oldAlert) oldAlert.remove();
 
@@ -1435,11 +1501,19 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
       const newFormatted = formatArabicDepartureDisplay(newRaw);
       const newTs = parseDepartureDateToTimestamp(newRaw);
 
-      // مقارنة الموعد الفعلي (بتفارق يتجاوز دقيقة واحدة لتجنب الفروقات الشكلية)
       const timeChanged =
         oldTs !== null && newTs !== null
           ? Math.abs(newTs - oldTs) > 60 * 1000
           : newFormatted !== oldFormatted && !newFormatted.includes("غير محدد");
+
+      console.log("[Nadlan Flight Sync] Compare:", {
+        flight: st.flightNumber,
+        oldRaw,
+        newRaw,
+        oldFormatted,
+        newFormatted,
+        timeChanged
+      });
 
       if (timeChanged) {
         st.departureText = newRaw;
@@ -1447,6 +1521,7 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
         changes.push({
           flightNumber: st.flightNumber,
           route: `${st.fromAirport || "—"} ➔ ${st.toAirport || "—"}`,
+          status: liveInfo.status || "",
           oldFormatted,
           newFormatted
         });
@@ -1454,7 +1529,6 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
     }
 
     if (anyStationUpdated && changes.length > 0) {
-      // حفظ الموعد المحدث في قاعدة البيانات مباشرة حتى يبقى متزامناً
       try {
         await apiRequest("/api/bookings", {
           method: "POST",
@@ -1470,17 +1544,20 @@ async function checkAndSyncLiveFlightsForBooking(booking) {
 
       if (activeCustomerBooking && activeCustomerBooking.id === booking.id) {
         renderCustomerDashboard(booking);
+        ntSetFlightSyncStatusBadge("✓ تم تحديث موعد الرحلة", "updated");
         ntBuildFlightLiveAlertBanner(changes);
         showToast("تم تحديث موعد الطيران تلقائياً حسب جدول الرحلة");
       }
+    } else {
+      ntSetFlightSyncStatusBadge("✓ جدول الرحلة محدّث", "info");
     }
   } catch (err) {
-    console.warn("Live flight schedule check skipped:", err);
+    console.warn("Live flight schedule check error:", err);
+    ntSetFlightSyncStatusBadge("", "info");
   } finally {
     ntFlightSyncRunning = false;
   }
 }
-
 
 function logoutCustomerPortal() {
   activeCustomerBooking = null;
