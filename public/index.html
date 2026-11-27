@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>NadlanTours AI — نظام إدارة الحجوزات ومساعد السفر الذكي</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -139,6 +139,17 @@
       color: #f8fafc !important;
       border-color: #334155 !important;
     }
+  
+    @media (max-width: 640px) {
+      input, textarea, select {
+        font-size: 16px !important;
+      }
+      #ai-chat-drawer {
+        height: 68dvh !important;
+        max-height: 68dvh !important;
+      }
+    }
+
   </style>
 
 </head>
@@ -543,7 +554,7 @@
           <!-- رسالة منبثقة جانبية للسؤال عن الحاجة للمساعدة -->
           <div id="ai-side-prompt-msg" class="hidden bg-white text-slate-900 border-2 border-amber-400 rounded-2xl rounded-br-sm p-3.5 shadow-2xl max-w-[270px] space-y-2 transition">
             <div class="flex items-start justify-between gap-2">
-              <span class="text-xs font-black text-brand-900">💬 هل تحتاج مساعدة في رحلتك؟</span>
+              <span class="text-xs font-black text-brand-900">👋 عندك سؤال؟</span>
               <button
                 type="button"
                 onclick="hideAiPromptBubble(event)"
@@ -554,7 +565,7 @@
               </button>
             </div>
             <p class="text-[11px] font-bold text-slate-600 leading-relaxed">
-              أنا هنا لأخبرك بموعد الرحلة، الشيك إن، الحقائب، أو الفندق.
+              محتاج مساعدة؟ اسألني عن رحلتك أو الشيك إن ✨
             </p>
             <button
               type="button"
@@ -644,15 +655,17 @@
             </form>
           </div>
 
-          <!-- زر الرسالة العائم على الجنب -->
+          <!-- زر الرسالة العائم الصغير على الجنب -->
           <button
             type="button"
             id="ai-floating-fab"
             onclick="toggleFloatingChat()"
-            class="group flex items-center gap-2.5 px-4 py-3 rounded-full bg-gradient-to-r from-[#071324] via-brand-800 to-brand-700 hover:from-brand-900 hover:to-brand-600 text-white shadow-2xl border-2 border-amber-400/80 transition transform hover:scale-105 cursor-pointer"
+            aria-label="فتح الرسائل"
+            class="group w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 via-amber-300 to-orange-400 hover:from-amber-300 hover:to-amber-500 text-slate-950 shadow-2xl border-2 border-white/90 flex items-center justify-center transition transform hover:scale-105 cursor-pointer"
           >
-            <span class="text-xl leading-none">💬</span>
-            <span class="text-xs sm:text-sm font-black text-amber-300">مساعد ندلان</span>
+            <svg viewBox="0 0 24 24" class="w-6 h-6" fill="currentColor" aria-hidden="true">
+              <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8A2.5 2.5 0 0 1 17.5 16H9.41l-3.7 3.7A1 1 0 0 1 4 19V5.5Z"/>
+            </svg>
           </button>
         </div>
 
@@ -936,8 +949,12 @@
           drawer.classList.add("flex");
         }
         setTimeout(() => {
-          document.getElementById("ai-chat-input")?.focus();
-        }, 80);
+          const inp = document.getElementById("ai-chat-input");
+          if (inp) {
+            inp.focus();
+            inp.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+        }, 120);
       };
 
       window.closeFloatingChat = function () {
