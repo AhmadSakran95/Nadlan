@@ -1351,6 +1351,82 @@ function getCheckinFlightCodes(booking) {
   };
 }
 
+function formatArabicDepartureDisplay(rawVal) {
+  if (!rawVal) return "غير محدد";
+  const str = String(rawVal).trim();
+  const monthsMap = {
+    jan: 1, january: 1,
+    feb: 2, february: 2,
+    mar: 3, march: 3,
+    apr: 4, april: 4,
+    may: 5,
+    jun: 6, june: 6,
+    jul: 7, july: 7,
+    aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12
+  };
+
+  let day = null, month = null, year = null;
+  let hour = null, minute = null;
+
+  // استخراج الوقت (24 ساعة أو 12 ساعة AM/PM)
+  const time12Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm|ص|م|صباحا|صباحاً|مساء|مساءً)\b/i);
+  const time24Match = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/);
+
+  if (time12Match) {
+    let h = parseInt(time12Match[1], 10);
+    minute = parseInt(time12Match[2], 10);
+    const mer = time12Match[3].toLowerCase();
+    if ((mer === "pm" || mer === "م" || mer === "مساء" || mer === "مساءً") && h < 12) h += 12;
+    if ((mer === "am" || mer === "ص" || mer === "صباحا" || mer === "صباحاً") && h === 12) h = 0;
+    hour = h;
+  } else if (time24Match) {
+    hour = parseInt(time24Match[1], 10);
+    minute = parseInt(time24Match[2], 10);
+  }
+
+  // استخراج التاريخ (YYYY-MM-DD أو DD-MM-YYYY أو DD/MM/YYYY أو DD Mon YYYY)
+  const ymdMatch = str.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+  const dmyMatch = str.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  const textMonthMatch = str.match(/\b(\d{1,2})\s+([A-Za-z]+)(?:[,\s]+(\d{4}))?\b/);
+
+  if (ymdMatch) {
+    year = parseInt(ymdMatch[1], 10);
+    month = parseInt(ymdMatch[2], 10);
+    day = parseInt(ymdMatch[3], 10);
+  } else if (dmyMatch) {
+    day = parseInt(dmyMatch[1], 10);
+    month = parseInt(dmyMatch[2], 10);
+    year = parseInt(dmyMatch[3], 10);
+  } else if (textMonthMatch) {
+    day = parseInt(textMonthMatch[1], 10);
+    month = monthsMap[textMonthMatch[2].toLowerCase()] || null;
+    year = textMonthMatch[3] ? parseInt(textMonthMatch[3], 10) : new Date().getFullYear();
+  }
+
+  if (!day || !month || !year) {
+    return str;
+  }
+
+  const dd = String(day).padStart(2, "0");
+  const mm = String(month).padStart(2, "0");
+  const datePart = `${dd}-${mm}-${year}`;
+
+  if (hour === null || minute === null || Number.isNaN(hour) || Number.isNaN(minute)) {
+    return datePart;
+  }
+
+  const period = hour >= 12 ? "مساءً" : "صباحاً";
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  const hh = String(displayHour).padStart(2, "0");
+  const minStr = String(minute).padStart(2, "0");
+
+  return `${datePart} | ${hh}:${minStr} ${period}`;
+}
+
 function parseDepartureDateToTimestamp(departureText) {
   if (!departureText) return null;
   const raw = String(departureText).trim();
@@ -1476,7 +1552,7 @@ function renderCheckinAlertBanner(booking) {
     if (badgeEl) badgeEl.textContent = "⏳ العد التنازلي للرحلة";
     if (titleEl) titleEl.textContent = `متبقي على رحلتك ${daysLeft} ${dayWord}!`;
     if (descEl) {
-      descEl.textContent = `باقي على موعد إقلاع رحلتك ${daysLeft} ${dayWord} (${codes.outboundStop?.departureText || "الموعد المحدد"}) — سيُفتح الشيك إن قبل الرحلة بـ 24 ساعة أو أقل.`;
+      descEl.textContent = `باقي على موعد إقلاع رحلتك ${daysLeft} ${dayWord} (${codes.outboundStop?.departureText ? formatArabicDepartureDisplay(codes.outboundStop.departureText) : "الموعد المحدد"}) — سيُفتح الشيك إن قبل الرحلة بـ 24 ساعة أو أقل.`;
     }
     if (codesEl) {
       codesEl.innerHTML = `
@@ -1631,7 +1707,7 @@ function renderCustomerDashboard(booking) {
             </div>
             <div class="col-span-2 sm:col-span-1 bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
               <span class="block text-[11px] font-bold text-slate-500">موعد الإقلاع</span>
-              <span class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(st.departureText || "غير محدد")}</span>
+              <span class="text-xs sm:text-sm font-black text-slate-900" dir="ltr">${escapeHtml(formatArabicDepartureDisplay(st.departureText))}</span>
             </div>
           </div>
 
