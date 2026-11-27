@@ -1482,9 +1482,12 @@ function renderCustomerDashboard(booking) {
                 <span class="text-xs font-black text-sky-900 bg-sky-100 px-3 py-1 rounded-full">✈️ رحلة طيران</span>
               </div>
               <div class="flex items-center gap-2 text-sm font-black text-slate-900 bg-slate-50 px-3.5 py-1 rounded-2xl border border-slate-200">
-                <span class="inline-flex items-center gap-1.5">
+                <span class="inline-flex items-center gap-2">
                   <span>${escapeHtml(fromCode)}${fromCity ? ` (${escapeHtml(fromCity)})` : ""}</span>
-                  <span class="text-sky-600">←</span>
+                  <svg viewBox="0 0 28 14" class="w-6 h-3.5 text-sky-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="25" y1="7" x2="3" y2="7" />
+                    <polyline points="8,2 3,7 8,12" />
+                  </svg>
                   <span>${escapeHtml(toCode)}${toCity ? ` (${escapeHtml(toCity)})` : ""}</span>
                 </span>
               </div>
