@@ -2259,19 +2259,47 @@ async function fetchWeatherFromApi(city) {
 const CURRENCY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const currencyRateCache = new Map();
 let activeCurrencyRate = null;
+let lastKnownDestinationCity = "";
+let activeDirectFromCode = "USD";
+let activeDirectToCode = "ILS";
+let activeDirectRate = null;
+
+const CURRENCY_CATALOG = [
+  { code: "THB", labelAr: "بات تايلندي", symbol: "฿", usdPerUnit: 0.0285 },
+  { code: "ILS", labelAr: "شيكل جديد", symbol: "₪", usdPerUnit: 1 / 3.72 },
+  { code: "USD", labelAr: "دولار أمريكي", symbol: "$", usdPerUnit: 1 },
+  { code: "EUR", labelAr: "يورو", symbol: "€", usdPerUnit: 1.09 },
+  { code: "GBP", labelAr: "جنيه إسترليني", symbol: "£", usdPerUnit: 1.27 },
+  { code: "AED", labelAr: "درهم إماراتي", symbol: "د.إ", usdPerUnit: 1 / 3.6725 },
+  { code: "SAR", labelAr: "ريال سعودي", symbol: "ر.س", usdPerUnit: 1 / 3.75 },
+  { code: "TRY", labelAr: "ليرة تركية", symbol: "₺", usdPerUnit: 1 / 34.5 },
+  { code: "GEL", labelAr: "لاري جورجي", symbol: "₾", usdPerUnit: 1 / 2.75 },
+  { code: "RUB", labelAr: "روبل روسي", symbol: "₽", usdPerUnit: 1 / 98.0 },
+  { code: "CHF", labelAr: "فرنك سويسري", symbol: "CHF", usdPerUnit: 1.14 },
+  { code: "JOD", labelAr: "دينار أردني", symbol: "د.أ", usdPerUnit: 1.41 },
+  { code: "EGP", labelAr: "جنيه مصري", symbol: "ج.م", usdPerUnit: 1 / 49.5 }
+];
 
 const DESTINATION_CURRENCY_MAP = [
+  { match: ["تايلاند", "بانكوك", "بوكيت", "شيانغ ماي", "باتايا", "كرابي", "thailand", "bangkok", "phuket", "chiang mai", "pattaya", "krabi"], code: "THB" },
   { match: ["موسكو", "روسيا", "moscow", "russia", "سان بطرسبرغ", "petersburg"], code: "RUB" },
   { match: ["باتومي", "تبليسي", "جورجيا", "batumi", "tbilisi", "georgia"], code: "GEL" },
   { match: ["إسطنبول", "اسطنبول", "أنطاليا", "طرابزون", "تركيا", "istanbul", "antalya", "trabzon", "turkey"], code: "TRY" },
   { match: ["لندن", "بريطانيا", "المملكة المتحدة", "london", "uk", "united kingdom"], code: "GBP" },
   { match: ["دبي", "أبوظبي", "الشارقة", "الإمارات", "dubai", "abu dhabi", "sharjah", "uae"], code: "AED" },
   { match: ["الرياض", "جدة", "السعودية", "riyadh", "jeddah", "saudi"], code: "SAR" },
+  { match: ["عمّان", "عمان", "الأردن", "amman", "jordan"], code: "JOD" },
+  { match: ["القاهرة", "شرم الشيخ", "مصر", "cairo", "sharm", "egypt"], code: "EGP" },
   { match: ["نيويورك", "لوس أنجلوس", "أمريكا", "الولايات المتحدة", "new york", "los angeles", "usa"], code: "USD" },
   { match: ["زيورخ", "سويسرا", "zurich", "switzerland"], code: "CHF" },
   { match: ["تل أبيب", "إسرائيل", "tel aviv"], code: "ILS" },
   { match: ["باريس", "روما", "ميلانو", "برشلونة", "مدريد", "فيينا", "براغ", "بودابست", "أثينا", "أمستردام", "فرانكفورت", "لارنكا", "رودس", "paris", "rome", "milan", "barcelona", "madrid", "vienna", "prague", "budapest", "athens", "amsterdam", "frankfurt", "larnaca", "rhodes", "greece", "germany", "france", "italy", "spain"], code: "EUR" }
 ];
+
+function getCurrencyMeta(code) {
+  const clean = String(code || "USD").toUpperCase();
+  return CURRENCY_CATALOG.find((c) => c.code === clean) || { code: clean, labelAr: clean, symbol: clean, usdPerUnit: 1 };
+}
 
 function detectDestinationCurrencyCode(cityOrDest) {
   const text = String(cityOrDest || "").trim().toLowerCase();
@@ -2282,6 +2310,27 @@ function detectDestinationCurrencyCode(cityOrDest) {
     }
   }
   return "EUR";
+}
+
+function ensureCurrencySelectHasAllCurrencies() {
+  const selects = [
+    document.getElementById("currency-from-select"),
+    document.getElementById("currency-to-select"),
+    document.getElementById("nt-direct-from-select"),
+    document.getElementById("nt-direct-to-select")
+  ];
+  for (const sel of selects) {
+    if (!sel) continue;
+    const existing = new Set(Array.from(sel.options).map((o) => o.value));
+    for (const item of CURRENCY_CATALOG) {
+      if (!existing.has(item.code)) {
+        const opt = document.createElement("option");
+        opt.value = item.code;
+        opt.textContent = `${item.labelAr} (${item.code})`;
+        sel.appendChild(opt);
+      }
+    }
+  }
 }
 
 function convertDestinationCurrency() {
@@ -2314,7 +2363,7 @@ function convertDestinationCurrency() {
   resultEl.textContent = `${converted.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${toCode}`;
 }
 
-// أسعار مرجعية احتياطية مقابل USD لضمان عدم تعليق المحول أبداً
+// أسعار مرجعية احتياطية مقابل USD لضمان توفر البات التايلندي (THB) وباقي العملات دائماً
 const FALLBACK_RATES_PER_USD = {
   USD: 1,
   EUR: 0.92,
@@ -2325,7 +2374,10 @@ const FALLBACK_RATES_PER_USD = {
   TRY: 34.5,
   GEL: 2.75,
   RUB: 98.0,
-  CHF: 0.88
+  CHF: 0.88,
+  THB: 35.1,
+  JOD: 0.709,
+  EGP: 49.5
 };
 
 function computeFallbackRate(fromCode, toCode) {
@@ -2350,7 +2402,45 @@ async function fetchJsonWithTimeout(url, timeoutMs = 4500) {
   }
 }
 
+async function resolvePairRate(fromCode, toCode) {
+  if (fromCode === toCode) {
+    return { rate: 1, date: "نفس العملة" };
+  }
+  const cacheKey = `${fromCode}_${toCode}`;
+  const cached = currencyRateCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CURRENCY_CACHE_TTL_MS) {
+    return { rate: cached.rate, date: cached.date || "محدّث (كاش)" };
+  }
+
+  try {
+    const srvData = await fetchJsonWithTimeout(`/api/rates?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
+    if (typeof srvData?.rates?.[toCode] === "number" && srvData.rates[toCode] > 0) {
+      const rate = srvData.rates[toCode];
+      const date = srvData.cached ? "محدّث (كاش)" : "محدّث الآن";
+      currencyRateCache.set(cacheKey, { rate, date, ts: Date.now() });
+      return { rate, date };
+    }
+  } catch (_) {}
+
+  try {
+    const altData = await fetchJsonWithTimeout(`https://open.er-api.com/v6/latest/${encodeURIComponent(fromCode)}`);
+    if (typeof altData?.rates?.[toCode] === "number" && altData.rates[toCode] > 0) {
+      const rate = altData.rates[toCode];
+      const date = altData.time_last_update_utc ? altData.time_last_update_utc.slice(0, 16) : "محدّث";
+      currencyRateCache.set(cacheKey, { rate, date, ts: Date.now() });
+      return { rate, date };
+    }
+  } catch (_) {}
+
+  const fb = computeFallbackRate(fromCode, toCode);
+  if (fb) {
+    return { rate: fb, date: "سعر مرجعي تقديري" };
+  }
+  return null;
+}
+
 async function fetchAndConvertCurrency(overrideToCode = null) {
+  ensureCurrencySelectHasAllCurrencies();
   const fromEl = document.getElementById("currency-from-select");
   const toEl = document.getElementById("currency-to-select");
   const badgeEl = document.getElementById("currency-rate-badge");
@@ -2372,17 +2462,6 @@ async function fetchAndConvertCurrency(overrideToCode = null) {
     return;
   }
 
-  const cacheKey = `${fromCode}_${toCode}`;
-  const cached = currencyRateCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CURRENCY_CACHE_TTL_MS) {
-    activeCurrencyRate = cached.rate;
-    if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${activeCurrencyRate.toFixed(4)} ${toCode}`;
-    if (metaEl) metaEl.textContent = `تاريخ السعر: ${cached.date || "محدّث"}`;
-    convertDestinationCurrency();
-    return;
-  }
-
-  // عرض سعر تقديري فوري حتى لا يعلق على "جاري التحديث..."
   const quickFallback = computeFallbackRate(fromCode, toCode);
   if (quickFallback && !activeCurrencyRate) {
     activeCurrencyRate = quickFallback;
@@ -2390,53 +2469,19 @@ async function fetchAndConvertCurrency(overrideToCode = null) {
   }
   if (badgeEl) badgeEl.textContent = "جاري التحديث...";
 
-  try {
-    let rate = null;
-    let rateDate = "";
-
-    // 1) جلب السعر مباشرة من السيرفر الداخلي (/api/rates) لتجنب أي قيود CORS أو 404
-    try {
-      const srvData = await fetchJsonWithTimeout(`/api/rates?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
-      if (typeof srvData?.rates?.[toCode] === "number" && srvData.rates[toCode] > 0) {
-        rate = srvData.rates[toCode];
-        rateDate = srvData.cached ? "محدّث (كاش)" : "محدّث الآن";
-      }
-    } catch (_) {}
-
-    // 2) مصدر بديل مباشر (open.er-api) في حال لم يرد السيرفر الداخلي
-    if (!rate) {
-      const altData = await fetchJsonWithTimeout(`https://open.er-api.com/v6/latest/${encodeURIComponent(fromCode)}`);
-      if (typeof altData?.rates?.[toCode] === "number" && altData.rates[toCode] > 0) {
-        rate = altData.rates[toCode];
-        rateDate = altData.time_last_update_utc ? altData.time_last_update_utc.slice(0, 16) : "محدّث";
-      }
-    }
-
-    if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) {
-      activeCurrencyRate = rate;
-      currencyRateCache.set(cacheKey, { rate, date: rateDate, ts: Date.now() });
-      if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
-      if (metaEl) metaEl.textContent = `تاريخ السعر: ${rateDate || "محدّث"}`;
-      convertDestinationCurrency();
-      return;
-    }
-
-    if (quickFallback) {
-      activeCurrencyRate = quickFallback;
-      if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${quickFallback.toFixed(4)} ${toCode}`;
-      if (metaEl) metaEl.textContent = "سعر مرجعي تقديري";
-      convertDestinationCurrency();
-      return;
-    }
-
-    throw new Error("No rate available");
-  } catch (err) {
-    console.warn("Currency API fallback:", err);
-    activeCurrencyRate = null;
-    if (badgeEl) badgeEl.textContent = "تعذر جلب السعر حالياً";
-    if (metaEl) metaEl.textContent = "حاول مجدداً بعد قليل";
+  const resolved = await resolvePairRate(fromCode, toCode);
+  if (resolved && typeof resolved.rate === "number" && resolved.rate > 0) {
+    activeCurrencyRate = resolved.rate;
+    if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${resolved.rate.toFixed(4)} ${toCode}`;
+    if (metaEl) metaEl.textContent = `تاريخ السعر: ${resolved.date}`;
     convertDestinationCurrency();
+    return;
   }
+
+  activeCurrencyRate = null;
+  if (badgeEl) badgeEl.textContent = "تعذر جلب السعر حالياً";
+  if (metaEl) metaEl.textContent = "حاول مجدداً بعد قليل";
+  convertDestinationCurrency();
 }
 
 function swapCurrencyDirection() {
@@ -2448,6 +2493,247 @@ function swapCurrencyDirection() {
   toEl.value = tmp;
   fetchAndConvertCurrency();
 }
+
+// =======================================================================
+// محول ثنائي فوري (اكتب في الخانة الأولى أو الثانية فيتحول تلقائياً)
+// + تقدير تقريبي لمصروف الطعام والتاكسي حسب عدد الأشخاص في الحجز
+// =======================================================================
+async function ntSyncDirectRate(fromCode, toCode) {
+  activeDirectFromCode = fromCode;
+  activeDirectToCode = toCode;
+  if (fromCode === toCode) {
+    activeDirectRate = 1;
+    return 1;
+  }
+  const fb = computeFallbackRate(fromCode, toCode);
+  if (fb) activeDirectRate = fb;
+  const resolved = await resolvePairRate(fromCode, toCode);
+  if (resolved && resolved.rate > 0) {
+    activeDirectRate = resolved.rate;
+  }
+  return activeDirectRate;
+}
+
+async function ntOnDirectFromChange() {
+  const fromEl = document.getElementById("nt-direct-from-select");
+  const toEl = document.getElementById("nt-direct-to-select");
+  const leftInput = document.getElementById("nt-direct-from-amount");
+  if (!fromEl || !toEl || !leftInput) return;
+  await ntSyncDirectRate(fromEl.value, toEl.value);
+  ntConvertFromLeft(leftInput.value);
+}
+
+async function ntOnDirectToChange() {
+  const fromEl = document.getElementById("nt-direct-from-select");
+  const toEl = document.getElementById("nt-direct-to-select");
+  const rightInput = document.getElementById("nt-direct-to-amount");
+  if (!fromEl || !toEl || !rightInput) return;
+  await ntSyncDirectRate(fromEl.value, toEl.value);
+  ntConvertFromRight(rightInput.value);
+}
+
+function ntConvertFromLeft(rawVal) {
+  const fromEl = document.getElementById("nt-direct-from-select");
+  const toEl = document.getElementById("nt-direct-to-select");
+  const rightInput = document.getElementById("nt-direct-to-amount");
+  const infoEl = document.getElementById("nt-direct-rate-info");
+  if (!fromEl || !toEl || !rightInput) return;
+
+  const fromCode = fromEl.value || "USD";
+  const toCode = toEl.value || "ILS";
+  const rate = (fromCode === toCode)
+    ? 1
+    : (activeDirectFromCode === fromCode && activeDirectToCode === toCode && activeDirectRate)
+      ? activeDirectRate
+      : (computeFallbackRate(fromCode, toCode) || 1);
+
+  const num = parseFloat(rawVal);
+  if (Number.isNaN(num)) {
+    rightInput.value = "";
+  } else {
+    const out = num * rate;
+    rightInput.value = (Math.round(out * 100) / 100).toFixed(2);
+  }
+  if (infoEl) {
+    infoEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
+  }
+}
+
+function ntConvertFromRight(rawVal) {
+  const fromEl = document.getElementById("nt-direct-from-select");
+  const toEl = document.getElementById("nt-direct-to-select");
+  const leftInput = document.getElementById("nt-direct-from-amount");
+  const infoEl = document.getElementById("nt-direct-rate-info");
+  if (!fromEl || !toEl || !leftInput) return;
+
+  const fromCode = fromEl.value || "USD";
+  const toCode = toEl.value || "ILS";
+  const rate = (fromCode === toCode)
+    ? 1
+    : (activeDirectFromCode === fromCode && activeDirectToCode === toCode && activeDirectRate)
+      ? activeDirectRate
+      : (computeFallbackRate(fromCode, toCode) || 1);
+
+  const num = parseFloat(rawVal);
+  if (Number.isNaN(num)) {
+    leftInput.value = "";
+  } else {
+    const out = rate > 0 ? num / rate : 0;
+    leftInput.value = (Math.round(out * 100) / 100).toFixed(2);
+  }
+  if (infoEl) {
+    infoEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
+  }
+}
+
+function ntGetDestinationDailyUsdPerPerson(destCity) {
+  const text = String(destCity || "").toLowerCase();
+  if (/تايلاند|بانكوك|بوكيت|شيانغ|باتايا|thailand|bangkok|phuket|chiang|pattaya/.test(text)) {
+    return { foodPerPerson: 24, taxiPerPerson: 11, label: "تايلاند" };
+  }
+  if (/جورجيا|باتومي|تبليسي|georgia|batumi|tbilisi/.test(text)) {
+    return { foodPerPerson: 25, taxiPerPerson: 10, label: "جورجيا" };
+  }
+  if (/تركيا|إسطنبول|اسطنبول|أنطاليا|طرابزون|turkey|istanbul|antalya|trabzon/.test(text)) {
+    return { foodPerPerson: 28, taxiPerPerson: 12, label: "تركيا" };
+  }
+  if (/دبي|أبوظبي|الشارقة|الإمارات|dubai|abu dhabi|uae/.test(text)) {
+    return { foodPerPerson: 48, taxiPerPerson: 22, label: "الإمارات" };
+  }
+  if (/لندن|باريس|روما|ميلانو|برشلونة|مدريد|فيينا|براغ|بودابست|أثينا|أمستردام|زيورخ|london|paris|rome|milan|barcelona|madrid|vienna|prague|budapest|athens|amsterdam|zurich/.test(text)) {
+    return { foodPerPerson: 55, taxiPerPerson: 24, label: city || "الوجهة" };
+  }
+  return { foodPerPerson: 35, taxiPerPerson: 15, label: city || "الوجهة" };
+}
+
+function ntEnsureExpenseEstimatorCard(destCity, booking) {
+  const currencySection =
+    document.getElementById("currency-converter-card") ||
+    document.getElementById("currency-amount-input")?.closest("section, div.rounded-3xl, div.bg-white") ||
+    document.getElementById("weather-5days-grid")?.parentElement?.parentElement;
+
+  const paxCount = Math.max(1, (booking?.passengers && booking.passengers.length) || 1);
+  const destCode = detectDestinationCurrencyCode(destCity);
+  const destMeta = getCurrencyMeta(destCode);
+  const perDay = ntGetDestinationDailyUsdPerPerson(destCity);
+
+  // حساب إجمالي يومي تقريبي للشخص ولجميع الأشخاص في الحجز (بدون تسوق: طعام + تاكسي فقط)
+  const personDailyUsd = perDay.foodPerPerson + perDay.taxiPerPerson;
+  const groupDailyUsd = personDailyUsd * paxCount;
+  const groupFoodDailyUsd = perDay.foodPerPerson * paxCount;
+  const groupTaxiDailyUsd = perDay.taxiPerPerson * paxCount;
+
+  const destRate = computeFallbackRate("USD", destCode) || 1;
+  const ilsRate = computeFallbackRate("USD", "ILS") || 3.72;
+
+  const groupDailyLocal = Math.round(groupDailyUsd * destRate);
+  const groupDailyIls = Math.round(groupDailyUsd * ilsRate);
+
+  let host = document.getElementById("nt-quick-tools-container");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "nt-quick-tools-container";
+    host.className = "mt-5 space-y-4";
+    if (currencySection && currencySection.parentElement) {
+      currencySection.insertAdjacentElement("afterend", host);
+    } else {
+      const dash = document.getElementById("customer-dashboard");
+      if (dash) dash.appendChild(host);
+    }
+  }
+
+  host.innerHTML = `
+    <div class="rounded-3xl bg-white border border-slate-200 p-4 sm:p-5 shadow-2xs space-y-3.5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h4 class="text-sm sm:text-base font-black text-slate-900">⚡ تحويل سريع متبادل بين عملتين</h4>
+          <p class="text-[11px] font-bold text-slate-500">اكتب المبلغ في أي خانة وسيظهر التحويل تلقائياً في الخانة الأخرى (يشمل البات التايلندي THB والشيكل والعملات الرئيسية)</p>
+        </div>
+        <span id="nt-direct-rate-info" class="px-3 py-1 rounded-full bg-brand-50 text-brand-900 border border-brand-200 text-xs font-black" dir="ltr">1 USD ≈ ${ilsRate.toFixed(4)} ILS</span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-2">
+          <select id="nt-direct-from-select" onchange="ntOnDirectFromChange()" class="bg-transparent text-xs sm:text-sm font-black text-slate-900 focus:outline-none cursor-pointer">
+            ${CURRENCY_CATALOG.map((c) => `<option value="${c.code}" ${c.code === "USD" ? "selected" : ""}>${c.labelAr} (${c.code})</option>`).join("")}
+          </select>
+          <span class="h-6 w-px bg-slate-300"></span>
+          <input
+            id="nt-direct-from-amount"
+            type="number"
+            step="any"
+            value="100"
+            oninput="ntConvertFromLeft(this.value)"
+            class="w-28 sm:w-32 text-left bg-transparent text-sm sm:text-base font-black text-slate-950 focus:outline-none"
+            dir="ltr"
+          />
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-2">
+          <select id="nt-direct-to-select" onchange="ntOnDirectToChange()" class="bg-transparent text-xs sm:text-sm font-black text-slate-900 focus:outline-none cursor-pointer">
+            ${CURRENCY_CATALOG.map((c) => `<option value="${c.code}" ${c.code === "ILS" ? "selected" : ""}>${c.labelAr} (${c.code})</option>`).join("")}
+          </select>
+          <span class="h-6 w-px bg-slate-300"></span>
+          <input
+            id="nt-direct-to-amount"
+            type="number"
+            step="any"
+            oninput="ntConvertFromRight(this.value)"
+            class="w-28 sm:w-32 text-left bg-transparent text-sm sm:text-base font-black text-brand-900 focus:outline-none"
+            dir="ltr"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-3xl bg-gradient-to-br from-slate-900 via-brand-950 to-slate-900 text-white p-4 sm:p-5 shadow-sm border border-amber-400/30 space-y-3.5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span class="inline-block px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black mb-1">💡 تقدير تقريبي للمصروف اليومي</span>
+          <h4 class="text-sm sm:text-base font-black text-white">مصروف الطعام والتاكسي لـ (${paxCount} ${paxCount === 1 ? "شخص" : paxCount === 2 ? "شخصين" : "أشخاص"}) في ${escapeHtml(destCity || "الوجهة")}</h4>
+        </div>
+        <span class="px-3 py-1 rounded-xl bg-white/10 text-amber-200 text-xs font-black">بدون تسوق</span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div class="rounded-2xl bg-white/10 border border-white/15 p-3">
+          <span class="block text-[11px] text-slate-200 font-bold">المتوسط اليومي لـ ${paxCount} ${paxCount === 1 ? "شخص" : "أشخاص"} (بالدولار)</span>
+          <span class="text-base sm:text-lg font-black text-amber-300" dir="ltr">~$${groupDailyUsd} / يوم</span>
+          <span class="block text-[11px] text-slate-300 mt-0.5">حوالي $${personDailyUsd} للشخص الواحد يومياً</span>
+        </div>
+
+        <div class="rounded-2xl bg-white/10 border border-white/15 p-3">
+          <span class="block text-[11px] text-slate-200 font-bold">بعملة الوجهة (${escapeHtml(destMeta.labelAr)} ${destCode})</span>
+          <span class="text-base sm:text-lg font-black text-emerald-300" dir="ltr">~${groupDailyLocal.toLocaleString("en-US")} ${destCode} / يوم</span>
+          <span class="block text-[11px] text-slate-300 mt-0.5">طعام: ~$${groupFoodDailyUsd} • تاكسي: ~$${groupTaxiDailyUsd}</span>
+        </div>
+
+        <div class="rounded-2xl bg-white/10 border border-white/15 p-3">
+          <span class="block text-[11px] text-slate-200 font-bold">المقابل التقريبي بالشيكل (ILS)</span>
+          <span class="text-base sm:text-lg font-black text-sky-300" dir="ltr">~${groupDailyIls.toLocaleString("en-US")} ₪ / يوم</span>
+          <span class="block text-[11px] text-slate-300 mt-0.5">يتغير حسب مستوى المطاعم والتنقل</span>
+        </div>
+      </div>
+
+      <p class="text-[11px] sm:text-xs text-amber-100/95 bg-amber-400/10 border border-amber-300/25 rounded-2xl px-3.5 py-2.5 leading-relaxed">
+        ⚠️ <strong>تنويه للزبون:</strong> هذا الحساب <strong>تقريبي واسترشادي فقط</strong> لوجبات الطعام اليومية والتنقل بالتاكسي لعدد (${paxCount}) مسافرين في الحجز ولا يشمل التسوق أو الجولات أو الفنادق، وقد يختلف المصروف الفعلي حسب اختيار المطاعم والمسافات.
+      </p>
+    </div>
+  `;
+
+  ensureCurrencySelectHasAllCurrencies();
+  ntSyncDirectRate("USD", "ILS").then(() => {
+    const leftVal = document.getElementById("nt-direct-from-amount")?.value || "100";
+    ntConvertFromLeft(leftVal);
+  });
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  setTimeout(() => {
+    ensureCurrencySelectHasAllCurrencies();
+    ntEnsureExpenseEstimatorCard(lastKnownDestinationCity || "تايلاند", activeCustomerBooking);
+  }, 150);
+});
 
 async function fetchDestinationIntelligence(city) {
   const cleanCity = String(city || "").trim();
@@ -2548,6 +2834,9 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
   }
 
   // ضبط عملة الوجهة تلقائياً وجلب سعر الصرف مجاناً عبر Frankfurter
+  lastKnownDestinationCity = cleanCity;
+  ensureCurrencySelectHasAllCurrencies();
+  ntEnsureExpenseEstimatorCard(cleanCity, activeCustomerBooking);
   const suggestedCurrency = detectDestinationCurrencyCode(cleanCity);
   fetchAndConvertCurrency(suggestedCurrency);
 
