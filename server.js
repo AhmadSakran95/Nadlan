@@ -272,8 +272,7 @@ function buildGroqMessagesFromGeminiBody(body) {
   const systemText = body?.systemInstruction?.parts
     ?.map((p) => (typeof p?.text === "string" ? p.text : ""))
     .filter(Boolean)
-    .join("
-")
+    .join("\\n")
     .trim();
 
   if (systemText) {
