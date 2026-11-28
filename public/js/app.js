@@ -2390,39 +2390,20 @@ async function fetchAndConvertCurrency(overrideToCode = null) {
   }
   if (badgeEl) badgeEl.textContent = "جاري التحديث...";
 
-  const ecbSupported = new Set(["AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "SEK", "SGD", "THB", "TRY", "USD", "ZAR"]);
-  const endpoints = ["https://api.frankfurter.app", "https://api.frankfurter.dev"];
-
   try {
     let rate = null;
     let rateDate = "";
 
-    for (const baseUrl of endpoints) {
-      try {
-        if (ecbSupported.has(fromCode) && ecbSupported.has(toCode)) {
-          const data = await fetchJsonWithTimeout(`${baseUrl}/latest?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
-          if (typeof data?.rates?.[toCode] === "number") {
-            rate = data.rates[toCode];
-            rateDate = data.date || "";
-            break;
-          }
-        } else {
-          // جلب الأسعار مقابل EUR أو USD (حيث ILS مدعومة في ECB كعملة هدف)
-          const targets = Array.from(new Set(["USD", fromCode, toCode].filter((c) => ecbSupported.has(c) && c !== "EUR")));
-          const data = await fetchJsonWithTimeout(`${baseUrl}/latest?from=EUR&to=${encodeURIComponent(targets.join(","))}`);
-          const rates = data?.rates || {};
-          const fromInEur = fromCode === "EUR" ? 1 : rates[fromCode];
-          const toInEur = toCode === "EUR" ? 1 : rates[toCode];
-          if (typeof fromInEur === "number" && typeof toInEur === "number" && fromInEur > 0) {
-            rate = toInEur / fromInEur;
-            rateDate = data.date || "";
-            break;
-          }
-        }
-      } catch (_) {}
-    }
+    // 1) جلب السعر مباشرة من السيرفر الداخلي (/api/rates) لتجنب أي قيود CORS أو 404
+    try {
+      const srvData = await fetchJsonWithTimeout(`/api/rates?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
+      if (typeof srvData?.rates?.[toCode] === "number" && srvData.rates[toCode] > 0) {
+        rate = srvData.rates[toCode];
+        rateDate = srvData.cached ? "محدّث (كاش)" : "محدّث الآن";
+      }
+    } catch (_) {}
 
-    // مصدر مجاني بديل (open.er-api) إذا لم يستجب Frankfurter
+    // 2) مصدر بديل مباشر (open.er-api) في حال لم يرد السيرفر الداخلي
     if (!rate) {
       const altData = await fetchJsonWithTimeout(`https://open.er-api.com/v6/latest/${encodeURIComponent(fromCode)}`);
       if (typeof altData?.rates?.[toCode] === "number" && altData.rates[toCode] > 0) {
