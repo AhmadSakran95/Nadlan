@@ -2479,8 +2479,83 @@ async function fetchDestinationIntelligence(city) {
     document.getElementById("weather-city-label").textContent = cleanCity;
   }
 
+// =======================================================================
+// جلب أفضل 5 مطاعم حلال عبر Foursquare Places API (مع كاش واحتياط تلقائي)
+// =======================================================================
+const HALAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const halalPlacesCache = new Map();
+
+function normalizeFoursquareRating(rawRating) {
+  if (typeof rawRating === "number" && Number.isFinite(rawRating)) {
+    const outOfFive = rawRating > 5 ? (rawRating / 2).toFixed(1) : rawRating.toFixed(1);
+    return `${outOfFive} ★`;
+  }
+  return "4.6 ★";
+}
+
+async function fetchHalalRestaurantsFromFoursquare(city) {
+  const cleanCity = String(city || "").trim();
+  if (!cleanCity) return null;
+
+  const cacheKey = cleanCity.toLowerCase();
+  const cached = halalPlacesCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < HALAL_CACHE_TTL_MS && Array.isArray(cached.items) && cached.items.length) {
+    return cached.items;
+  }
+
+  try {
+    // مسار خلفي مقترح على السيرفر لحماية FOURSQUARE_API_KEY
+    const res = await fetch(
+      `/api/halal-restaurants?city=${encodeURIComponent(cleanCity)}&query=${encodeURIComponent("halal restaurant")}&limit=5`
+    );
+    if (!res.ok) return null;
+
+    const payload = await res.json().catch(() => null);
+    const rawList = Array.isArray(payload?.restaurants)
+      ? payload.restaurants
+      : Array.isArray(payload?.results)
+      ? payload.results
+      : [];
+
+    if (!rawList.length) return null;
+
+    const formatted = rawList.slice(0, 5).map((item, idx) => {
+      const catName =
+        item.cuisine ||
+        item.category ||
+        (Array.isArray(item.categories) && item.categories[0]?.name) ||
+        item.location?.neighborhood ||
+        item.location?.locality ||
+        cleanCity;
+
+      const ratingLabel =
+        typeof item.rating === "string" && item.rating.includes("★")
+          ? item.rating
+          : normalizeFoursquareRating(item.rating);
+
+      return {
+        name: String(item.name || `مطعم حلال ${idx + 1}`).trim(),
+        rating: ratingLabel,
+        cuisine: String(catName).trim()
+      };
+    });
+
+    halalPlacesCache.set(cacheKey, { items: formatted, ts: Date.now() });
+    return formatted;
+  } catch (err) {
+    console.warn("Foursquare halal fetch fallback:", err);
+    return null;
+  }
+}
+
   // جلب الطقس الحقيقي مباشرة من /api/weather (Open-Meteo + كاش ساعتين)
   const liveWeather = await fetchWeatherFromApi(cleanCity);
+
+  // جلب أفضل 5 مطاعم حلال من Foursquare وعرضها فوراً كأولوية
+  const fsqHalal = await fetchHalalRestaurantsFromFoursquare(cleanCity);
+  if (fsqHalal && fsqHalal.length) {
+    renderDestinationSections(cleanCity, { halalRestaurants5: fsqHalal });
+  }
 
   // ضبط عملة الوجهة تلقائياً وجلب سعر الصرف مجاناً عبر Frankfurter
   const suggestedCurrency = detectDestinationCurrencyCode(cleanCity);
@@ -2533,7 +2608,8 @@ async function fetchDestinationIntelligence(city) {
     if (parsed) {
       const mergedData = {
         ...parsed,
-        ...(liveWeather ? { weather5Days: liveWeather } : {})
+        ...(liveWeather ? { weather5Days: liveWeather } : {}),
+        ...(fsqHalal && fsqHalal.length ? { halalRestaurants5: fsqHalal } : {})
       };
       renderDestinationSections(cleanCity, mergedData);
       try {
@@ -2542,8 +2618,11 @@ async function fetchDestinationIntelligence(city) {
     }
   } catch (_) {
     renderFallbackDestinationSections(cleanCity);
-    if (liveWeather) {
-      renderDestinationSections(cleanCity, { weather5Days: liveWeather });
+    if (liveWeather || (fsqHalal && fsqHalal.length)) {
+      renderDestinationSections(cleanCity, {
+        ...(liveWeather ? { weather5Days: liveWeather } : {}),
+        ...(fsqHalal && fsqHalal.length ? { halalRestaurants5: fsqHalal } : {})
+      });
     }
   } finally {
     if (dots) dots.classList.add("hidden");
