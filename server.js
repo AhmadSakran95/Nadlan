@@ -121,6 +121,71 @@ app.get("/api/weather", async (req, res) => {
   }
 });
 
+const halalCache = new Map();
+const HALAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ساعات
+
+app.get("/api/halal-restaurants", async (req, res) => {
+  try {
+    const city = String(req.query.city || "").trim();
+    const query = String(req.query.query || "halal restaurant").trim() || "halal restaurant";
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 5);
+
+    if (!city) {
+      return res.status(400).json({ error: "يرجى تحديد اسم المدينة (city)." });
+    }
+
+    const fsqKey = process.env.FOURSQUARE_API_KEY;
+    if (!fsqKey) {
+      return res.status(503).json({ error: "FOURSQUARE_API_KEY غير مضبوط." });
+    }
+
+    const cacheKey = `${city.toLowerCase()}__${query.toLowerCase()}__${limit}`;
+    const cached = halalCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < HALAL_CACHE_TTL_MS) {
+      return res.json({ ok: true, cached: true, restaurants: cached.restaurants });
+    }
+
+    const url = new URL("https://api.foursquare.com/v3/places/search");
+    url.searchParams.set("query", query);
+    url.searchParams.set("near", city);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("fields", "name,rating,categories,location");
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: fsqKey,
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Foursquare HTTP ${response.status}` });
+    }
+
+    const data = await response.json().catch(() => ({}));
+    const restaurants = (Array.isArray(data?.results) ? data.results : [])
+      .slice(0, limit)
+      .map((place, idx) => ({
+        name: String(place?.name || `مطعم حلال ${idx + 1}`).trim(),
+        rating:
+          typeof place?.rating === "number"
+            ? `${(place.rating > 5 ? place.rating / 2 : place.rating).toFixed(1)} ★`
+            : "4.6 ★",
+        cuisine:
+          place?.categories?.[0]?.name ||
+          place?.location?.neighborhood ||
+          place?.location?.locality ||
+          city
+      }));
+
+    halalCache.set(cacheKey, { ts: Date.now(), restaurants });
+    return res.json({ ok: true, cached: false, restaurants });
+  } catch (error) {
+    console.error("Foursquare halal route error:", error);
+    return res.status(500).json({ error: "حدث خطأ أثناء جلب المطاعم من Foursquare." });
+  }
+});
+
 app.get("/api/health", async (_req, res) => {
   try {
     await ensureDatabase();
@@ -207,7 +272,8 @@ function buildGroqMessagesFromGeminiBody(body) {
   const systemText = body?.systemInstruction?.parts
     ?.map((p) => (typeof p?.text === "string" ? p.text : ""))
     .filter(Boolean)
-    .join("\n")
+    .join("
+")
     .trim();
 
   if (systemText) {
@@ -311,10 +377,9 @@ async function callGroqFallback(body, groqApiKey) {
 }
 
 app.post("/api/gemini", async (req, res) => {
-  
   const geminiKey = process.env.GEMINI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY || "Gsk_jMoQGTMuotZyXmEb30y8WGdyb3FYcAGAoh400ZrAfYX8L8SZvxqL";
-console.log("HIT /api/gemini - geminiKey exists:", Boolean(geminiKey), "groqKey exists:", Boolean(groqKey));
+  const groqKey = process.env.GROQ_API_KEY;
+  console.log("HIT /api/gemini - geminiKey exists:", Boolean(geminiKey), "groqKey exists:", Boolean(groqKey));
   if (!geminiKey && !groqKey) {
     return res.status(503).json({
       error: "المساعد الذكي غير مفعّل. أضف GEMINI_API_KEY أو GROQ_API_KEY في متغيرات Railway."
@@ -368,7 +433,7 @@ console.log("HIT /api/gemini - geminiKey exists:", Boolean(geminiKey), "groqKey 
     }
   }
 
-if (shouldFallbackToGroq && groqKey) {
+  if (shouldFallbackToGroq && groqKey) {
     console.log("Fallback to Groq triggered | geminiError:", geminiErrorMsg);
     const groqResult = await callGroqFallback(req.body, groqKey);
     if (groqResult.ok) {
