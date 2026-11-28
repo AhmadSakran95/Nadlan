@@ -4,7 +4,9 @@ const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+const GEMINI_MODEL = (process.env.GEMINI_MODEL || "gemini-3.5-flash-lite")
+  .replace(/^models\//, "")
+  .trim();
 const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
 
@@ -145,15 +147,20 @@ app.get("/api/halal-restaurants", async (req, res) => {
       return res.json({ ok: true, cached: true, restaurants: cached.restaurants });
     }
 
-    const url = new URL("https://api.foursquare.com/v3/places/search");
+    const url = new URL("https://places-api.foursquare.com/places/search");
     url.searchParams.set("query", query);
     url.searchParams.set("near", city);
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("fields", "name,rating,categories,location");
 
+    const authHeader = /^Bearer\s+/i.test(fsqKey.trim())
+      ? fsqKey.trim()
+      : `Bearer ${fsqKey.trim()}`;
+
     const response = await fetch(url.toString(), {
       headers: {
-        Authorization: fsqKey,
+        Authorization: authHeader,
+        "X-Places-Api-Version": "2025-06-17",
         Accept: "application/json"
       }
     });
@@ -272,7 +279,7 @@ function buildGroqMessagesFromGeminiBody(body) {
   const systemText = body?.systemInstruction?.parts
     ?.map((p) => (typeof p?.text === "string" ? p.text : ""))
     .filter(Boolean)
-    .join("\\n")
+    .join("\n")
     .trim();
 
   if (systemText) {
