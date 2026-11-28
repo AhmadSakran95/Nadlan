@@ -2514,10 +2514,19 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
           ? item.rating
           : normalizeFoursquareRating(item.rating);
 
+      const cleanName = String(item.name || `مطعم حلال ${idx + 1}`).trim();
+      const addressText = String(item.address || item.location?.formatted_address || catName || cleanCity).trim();
+      const fallbackMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${cleanName} ${addressText} ${cleanCity}`)}`;
+      const mapUrl = typeof item.mapUrl === "string" && item.mapUrl.startsWith("http")
+        ? item.mapUrl
+        : fallbackMapUrl;
+
       return {
-        name: String(item.name || `مطعم حلال ${idx + 1}`).trim(),
+        name: cleanName,
         rating: ratingLabel,
-        cuisine: String(catName).trim()
+        cuisine: String(catName).trim(),
+        address: addressText,
+        mapUrl
       };
     });
 
@@ -2760,18 +2769,37 @@ function renderDestinationSections(city, data) {
   if (halalGrid && restaurants.length) {
     halalGrid.innerHTML = restaurants
       .map(
-        (r, idx) => `
-        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <span class="w-7 h-7 rounded-xl bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0">${idx + 1}</span>
+        (r, idx) => {
+          const safeName = escapeHtml(r.name || "");
+          const safeCuisine = escapeHtml(r.cuisine || "");
+          const safeAddress = escapeHtml(r.address || "");
+          const mapHref = r.mapUrl && /^https?:\/\//i.test(r.mapUrl)
+            ? r.mapUrl
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${r.name || ""} ${r.address || r.cuisine || city}`)}`;
+          return `
+        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <span class="w-7 h-7 rounded-xl bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
             <div>
-              <h4 class="text-sm font-black text-slate-900">${escapeHtml(r.name || "")}</h4>
-              <p class="text-xs text-slate-500 font-bold">${escapeHtml(r.cuisine || "")}</p>
+              <h4 class="text-sm font-black text-slate-900">${safeName}</h4>
+              <p class="text-xs text-slate-500 font-bold">${safeCuisine}</p>
+              ${safeAddress ? `<p class="text-[11px] text-slate-600 font-semibold mt-0.5">📍 ${safeAddress}</p>` : ""}
             </div>
           </div>
-          <span class="px-2.5 py-1 rounded-xl bg-amber-100 text-amber-900 text-xs font-black shrink-0">${escapeHtml(r.rating || "★")}</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="px-2.5 py-1 rounded-xl bg-amber-100 text-amber-900 text-xs font-black">${escapeHtml(r.rating || "★")}</span>
+            <a
+              href="${escapeHtml(mapHref)}"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="px-3 py-1 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-black transition inline-flex items-center gap-1"
+            >
+              🗺️ الموقع
+            </a>
+          </div>
         </div>
-      `
+      `;
+        }
       )
       .join("");
   }
