@@ -2314,6 +2314,42 @@ function convertDestinationCurrency() {
   resultEl.textContent = `${converted.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${toCode}`;
 }
 
+// أسعار مرجعية احتياطية مقابل USD لضمان عدم تعليق المحول أبداً
+const FALLBACK_RATES_PER_USD = {
+  USD: 1,
+  EUR: 0.92,
+  GBP: 0.79,
+  ILS: 3.72,
+  AED: 3.6725,
+  SAR: 3.75,
+  TRY: 34.5,
+  GEL: 2.75,
+  RUB: 98.0,
+  CHF: 0.88
+};
+
+function computeFallbackRate(fromCode, toCode) {
+  const f = FALLBACK_RATES_PER_USD[fromCode];
+  const t = FALLBACK_RATES_PER_USD[toCode];
+  if (typeof f === "number" && typeof t === "number" && f > 0) {
+    return t / f;
+  }
+  return null;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data) throw new Error(`HTTP ${res.status}`);
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchAndConvertCurrency(overrideToCode = null) {
   const fromEl = document.getElementById("currency-from-select");
   const toEl = document.getElementById("currency-to-select");
@@ -2346,47 +2382,73 @@ async function fetchAndConvertCurrency(overrideToCode = null) {
     return;
   }
 
-  if (badgeEl) badgeEl.textContent = "جاري جلب السعر...";
+  // عرض سعر تقديري فوري حتى لا يعلق على "جاري التحديث..."
+  const quickFallback = computeFallbackRate(fromCode, toCode);
+  if (quickFallback && !activeCurrencyRate) {
+    activeCurrencyRate = quickFallback;
+    convertDestinationCurrency();
+  }
+  if (badgeEl) badgeEl.textContent = "جاري التحديث...";
+
+  const ecbSupported = new Set(["AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "SEK", "SGD", "THB", "TRY", "USD", "ZAR"]);
+  const endpoints = ["https://api.frankfurter.app", "https://api.frankfurter.dev"];
 
   try {
-    // Frankfurter لا يدعم ILS مباشرة كعملة أساسية، فنحوّل عبر USD كوسيط مجاني عند الحاجة
-    const frankfurterSupported = new Set(["AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "SEK", "SGD", "THB", "TRY", "USD", "ZAR"]);
-    const baseCode = frankfurterSupported.has(fromCode) ? fromCode : "USD";
-    const targetCodes = frankfurterSupported.has(toCode) ? [toCode] : ["USD"];
-    if (baseCode !== "USD" && !targetCodes.includes("USD")) {
-      targetCodes.push("USD");
-    }
-
-    const url = `https://api.frankfurter.app/latest?from=${encodeURIComponent(baseCode)}&to=${encodeURIComponent(targetCodes.join(","))}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (!res.ok || !data?.rates) {
-      throw new Error("Currency fetch failed");
-    }
-
     let rate = null;
-    if (fromCode === baseCode && typeof data.rates[toCode] === "number") {
-      rate = data.rates[toCode];
-    } else if (baseCode === "USD" && typeof data.rates[toCode] === "number") {
-      rate = data.rates[toCode];
-    } else if (typeof data.rates["USD"] === "number" && data.rates["USD"] > 0) {
-      // جلب سعر الهدف مقابل USD لإتمام التحويل
-      const usdRes = await fetch(`https://api.frankfurter.app/latest?from=USD&to=${encodeURIComponent(toCode)}`);
-      const usdData = await usdRes.json();
-      if (usdRes.ok && typeof usdData?.rates?.[toCode] === "number") {
-        rate = (1 / data.rates["USD"]) * usdData.rates[toCode];
+    let rateDate = "";
+
+    for (const baseUrl of endpoints) {
+      try {
+        if (ecbSupported.has(fromCode) && ecbSupported.has(toCode)) {
+          const data = await fetchJsonWithTimeout(`${baseUrl}/latest?from=${encodeURIComponent(fromCode)}&to=${encodeURIComponent(toCode)}`);
+          if (typeof data?.rates?.[toCode] === "number") {
+            rate = data.rates[toCode];
+            rateDate = data.date || "";
+            break;
+          }
+        } else {
+          // جلب الأسعار مقابل EUR أو USD (حيث ILS مدعومة في ECB كعملة هدف)
+          const targets = Array.from(new Set(["USD", fromCode, toCode].filter((c) => ecbSupported.has(c) && c !== "EUR")));
+          const data = await fetchJsonWithTimeout(`${baseUrl}/latest?from=EUR&to=${encodeURIComponent(targets.join(","))}`);
+          const rates = data?.rates || {};
+          const fromInEur = fromCode === "EUR" ? 1 : rates[fromCode];
+          const toInEur = toCode === "EUR" ? 1 : rates[toCode];
+          if (typeof fromInEur === "number" && typeof toInEur === "number" && fromInEur > 0) {
+            rate = toInEur / fromInEur;
+            rateDate = data.date || "";
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // مصدر مجاني بديل (open.er-api) إذا لم يستجب Frankfurter
+    if (!rate) {
+      const altData = await fetchJsonWithTimeout(`https://open.er-api.com/v6/latest/${encodeURIComponent(fromCode)}`);
+      if (typeof altData?.rates?.[toCode] === "number" && altData.rates[toCode] > 0) {
+        rate = altData.rates[toCode];
+        rateDate = altData.time_last_update_utc ? altData.time_last_update_utc.slice(0, 16) : "محدّث";
       }
     }
 
-    if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
-      throw new Error("Invalid currency rate");
+    if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) {
+      activeCurrencyRate = rate;
+      currencyRateCache.set(cacheKey, { rate, date: rateDate, ts: Date.now() });
+      if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
+      if (metaEl) metaEl.textContent = `تاريخ السعر: ${rateDate || "محدّث"}`;
+      convertDestinationCurrency();
+      return;
     }
 
-    activeCurrencyRate = rate;
-    currencyRateCache.set(cacheKey, { rate, date: data.date || "", ts: Date.now() });
-    if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
-    if (metaEl) metaEl.textContent = `تاريخ السعر: ${data.date || "محدّث"}`;
-    convertDestinationCurrency();
+    if (quickFallback) {
+      activeCurrencyRate = quickFallback;
+      if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${quickFallback.toFixed(4)} ${toCode}`;
+      if (metaEl) metaEl.textContent = "سعر مرجعي تقديري";
+      convertDestinationCurrency();
+      return;
+    }
+
+    throw new Error("No rate available");
   } catch (err) {
     console.warn("Currency API fallback:", err);
     activeCurrencyRate = null;
