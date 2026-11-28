@@ -74,6 +74,9 @@ let activeCustomerBooking = null;
 let extractTargetType = "flight";
 let aiChatHistory = [];
 let adminUnlocked = false;
+let ntActiveCustomerTab = "trip";
+const ATTRACTIONS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const attractionsCache = new Map();
 
 // =======================================================================
 // أدوات مساعدة عامة
@@ -329,6 +332,7 @@ function switchPortal(portal) {
       renderCustomerDashboard(activeCustomerBooking);
     }
   }
+  ntSwitchCustomerTab(ntActiveCustomerTab);
 }
 
 // =======================================================================
@@ -715,7 +719,6 @@ async function processExtractedFile(file, targetType) {
   if (!file) return;
   extractTargetType = targetType || extractTargetType || "flight";
 
-  // حفظ ملف/صورة الاستخراج كفاوشر في الذاكرة ليُرسل مع الحجز إلى قاعدة البيانات
   try {
     const voucherDataUrl = await ntFileToDataUrl(file);
     const vRecord = {
@@ -852,7 +855,6 @@ async function processExtractedFile(file, targetType) {
   }
 }
 
-
 let pendingPasteTargetType = null;
 
 function triggerPasteExtract(targetType = null) {
@@ -886,38 +888,6 @@ function getPastedImageFile(clipboardData) {
   }
   return null;
 }
-
-document.addEventListener("paste", async (event) => {
-  const adminSec = document.getElementById("admin-section");
-  const isAdminVisible = adminSec && !adminSec.classList.contains("hidden");
-  if (!isAdminVisible) return;
-
-  const activeEl = document.activeElement;
-  const isTextInput =
-    activeEl &&
-    (activeEl.tagName === "INPUT" ||
-      activeEl.tagName === "TEXTAREA" ||
-      activeEl.isContentEditable);
-
-  // السماح باللصق النصي الطبيعي داخل حقول النص، إلا إذا كان المستخدم ينتظر لصق صورة
-  const pastedFile = getPastedImageFile(event.clipboardData);
-  if (!pastedFile) return;
-  if (isTextInput && !pendingPasteTargetType) return;
-
-  event.preventDefault();
-
-  if (pendingPasteTargetType) {
-    extractTargetType = pendingPasteTargetType;
-    pendingPasteTargetType = null;
-  }
-
-  await handleExtractFileSelected({
-    target: {
-      files: [pastedFile],
-      value: ""
-    }
-  });
-});
 
 async function handleExtractFileSelected(event) {
   const file = event.target?.files?.[0];
@@ -959,11 +929,16 @@ document.addEventListener("paste", async (event) => {
   const pasteModal = document.getElementById("paste-extract-modal");
   const isPasteModalOpen = pasteModal && !pasteModal.classList.contains("hidden");
 
-  if (!isPasteModalOpen && isTypingInTextInput && !pasteExtractTargetType) {
+  if (!isPasteModalOpen && isTypingInTextInput && !pasteExtractTargetType && !pendingPasteTargetType) {
     return;
   }
 
   event.preventDefault();
+
+  if (pendingPasteTargetType) {
+    extractTargetType = pendingPasteTargetType;
+    pendingPasteTargetType = null;
+  }
 
   if (isPasteModalOpen) {
     pasteModalSelectedFile = pastedImage;
@@ -1512,6 +1487,7 @@ function openBookingInCustomerPortal(bookingId) {
   renderCustomerDashboard(found);
   renderCustomerNotesCard(found);
   initAiChatForBooking(found);
+  ntSwitchCustomerTab("trip");
   fetchDestinationIntelligence(found.destination);
 }
 
@@ -1521,6 +1497,7 @@ function logoutCustomerPortal() {
   document.getElementById("customer-login-card").classList.remove("hidden");
   document.getElementById("login-pnr").value = "";
   document.getElementById("login-last-name").value = "";
+  ntSwitchCustomerTab("trip");
 }
 
 function resolveAirlineCheckinInfo(flightNumber, notesOrCarrier) {
@@ -1579,21 +1556,21 @@ function parseFlexibleDateTime(rawVal) {
   const str = String(rawVal).trim();
   if (!str) return null;
 
-const monthsMap = {
-  jan: 1, january: 1, جانفي: 1, يناير: 1,
-  feb: 2, february: 2, فيفري: 2, فبراير: 2,
-  mar: 3, march: 3, مارس: 3, آذار: 3,
-  apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
-  may: 5, ماي: 5, مايو: 5, أيار: 5,
-  jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
-  jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
-  aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
-  sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
-  oct: 10, october: 10, أكتوبر: 10, "تشرين الأول": 10,
-  nov: 11, november: 11, نوفمبر: 11, "تشرين الثاني": 11,
-  dec: 12, december: 12, ديسمبر: 12, "كانون الأول": 12
-};
-  
+  const monthsMap = {
+    jan: 1, january: 1, جانفي: 1, يناير: 1,
+    feb: 2, february: 2, فيفري: 2, فبراير: 2,
+    mar: 3, march: 3, مارس: 3, آذار: 3,
+    apr: 4, april: 4, أفريل: 4, أبريل: 4, نيسان: 4,
+    may: 5, ماي: 5, مايو: 5, أيار: 5,
+    jun: 6, june: 6, جوان: 6, يونيو: 6, حزيران: 6,
+    jul: 7, july: 7, جويلية: 7, يوليو: 7, تموز: 7,
+    aug: 8, august: 8, أوت: 8, أغسطس: 8, آب: 8,
+    sep: 9, sept: 9, september: 9, سبتمبر: 9, أيلول: 9,
+    oct: 10, october: 10, أكتوبر: 10, "تشرين الأول": 10,
+    nov: 11, november: 11, نوفمبر: 11, "تشرين الثاني": 11,
+    dec: 12, december: 12, ديسمبر: 12, "كانون الأول": 12
+  };
+
   let year = null;
   let month = null;
   let day = null;
@@ -1875,19 +1852,6 @@ function renderCustomerDashboard(booking) {
   renderCheckinAlertBanner(booking);
   renderCustomerNotesCard(booking);
 
-  const notesCard = document.getElementById("customer-notes-card");
-  const notesTextEl = document.getElementById("customer-notes-text");
-  if (notesCard && notesTextEl) {
-    const cleanNotes = String(booking.notes || "").trim();
-    if (cleanNotes) {
-      notesTextEl.textContent = cleanNotes;
-      notesCard.classList.remove("hidden");
-    } else {
-      notesTextEl.textContent = "";
-      notesCard.classList.add("hidden");
-    }
-  }
-
   const stagesList = document.getElementById("customer-stages-list");
   const countEl = document.getElementById("customer-stages-count");
   const stations = booking.stations || [];
@@ -2148,9 +2112,6 @@ function renderCustomerDashboard(booking) {
   stagesList.innerHTML = renderedBlocks.join("");
 }
 
-// =======================================================================
-// نافذة المسافرين (Popup)
-// =======================================================================
 function openPassengersModal() {
   const modal = document.getElementById("passengers-modal");
   const listEl = document.getElementById("passengers-modal-list");
@@ -2184,7 +2145,7 @@ function closePassengersModal() {
 }
 
 // =======================================================================
-// جلب الطقس من /api/weather + معلومات الوجهة بالذكاء الاصطناعي
+// جلب الطقس من /api/weather + معلومات الوجهة + 5 مناطق سياحية (Foursquare + Gemini)
 // =======================================================================
 function getWeatherIconFromCode(code) {
   const c = Number(code);
@@ -2254,30 +2215,28 @@ async function fetchWeatherFromApi(city) {
 }
 
 // =======================================================================
-// محول العملات المجاني (Frankfurter API + كاش في الذاكرة)
+// محول العملات التلقائي للوجهة مقابل الشيكل (ILS) + تحويل متبادل فوري
 // =======================================================================
 const CURRENCY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const currencyRateCache = new Map();
-let activeCurrencyRate = null;
 let lastKnownDestinationCity = "";
-let activeDirectFromCode = "USD";
-let activeDirectToCode = "ILS";
-let activeDirectRate = null;
+let activeAutoDestCode = "THB";
+let activeAutoDestToIlsRate = null;
 
 const CURRENCY_CATALOG = [
-  { code: "THB", labelAr: "بات تايلندي", symbol: "฿", usdPerUnit: 0.0285 },
-  { code: "ILS", labelAr: "شيكل جديد", symbol: "₪", usdPerUnit: 1 / 3.72 },
-  { code: "USD", labelAr: "دولار أمريكي", symbol: "$", usdPerUnit: 1 },
-  { code: "EUR", labelAr: "يورو", symbol: "€", usdPerUnit: 1.09 },
-  { code: "GBP", labelAr: "جنيه إسترليني", symbol: "£", usdPerUnit: 1.27 },
-  { code: "AED", labelAr: "درهم إماراتي", symbol: "د.إ", usdPerUnit: 1 / 3.6725 },
-  { code: "SAR", labelAr: "ريال سعودي", symbol: "ر.س", usdPerUnit: 1 / 3.75 },
-  { code: "TRY", labelAr: "ليرة تركية", symbol: "₺", usdPerUnit: 1 / 34.5 },
-  { code: "GEL", labelAr: "لاري جورجي", symbol: "₾", usdPerUnit: 1 / 2.75 },
-  { code: "RUB", labelAr: "روبل روسي", symbol: "₽", usdPerUnit: 1 / 98.0 },
-  { code: "CHF", labelAr: "فرنك سويسري", symbol: "CHF", usdPerUnit: 1.14 },
-  { code: "JOD", labelAr: "دينار أردني", symbol: "د.أ", usdPerUnit: 1.41 },
-  { code: "EGP", labelAr: "جنيه مصري", symbol: "ج.م", usdPerUnit: 1 / 49.5 }
+  { code: "THB", labelAr: "بات تايلندي", symbol: "฿" },
+  { code: "ILS", labelAr: "شيكل جديد", symbol: "₪" },
+  { code: "USD", labelAr: "دولار أمريكي", symbol: "$" },
+  { code: "EUR", labelAr: "يورو", symbol: "€" },
+  { code: "GBP", labelAr: "جنيه إسترليني", symbol: "£" },
+  { code: "AED", labelAr: "درهم إماراتي", symbol: "د.إ" },
+  { code: "SAR", labelAr: "ريال سعودي", symbol: "ر.س" },
+  { code: "TRY", labelAr: "ليرة تركية", symbol: "₺" },
+  { code: "GEL", labelAr: "لاري جورجي", symbol: "₾" },
+  { code: "RUB", labelAr: "روبل روسي", symbol: "₽" },
+  { code: "CHF", labelAr: "فرنك سويسري", symbol: "CHF" },
+  { code: "JOD", labelAr: "دينار أردني", symbol: "د.أ" },
+  { code: "EGP", labelAr: "جنيه مصري", symbol: "ج.م" }
 ];
 
 const DESTINATION_CURRENCY_MAP = [
@@ -2296,74 +2255,6 @@ const DESTINATION_CURRENCY_MAP = [
   { match: ["باريس", "روما", "ميلانو", "برشلونة", "مدريد", "فيينا", "براغ", "بودابست", "أثينا", "أمستردام", "فرانكفورت", "لارنكا", "رودس", "paris", "rome", "milan", "barcelona", "madrid", "vienna", "prague", "budapest", "athens", "amsterdam", "frankfurt", "larnaca", "rhodes", "greece", "germany", "france", "italy", "spain"], code: "EUR" }
 ];
 
-function getCurrencyMeta(code) {
-  const clean = String(code || "USD").toUpperCase();
-  return CURRENCY_CATALOG.find((c) => c.code === clean) || { code: clean, labelAr: clean, symbol: clean, usdPerUnit: 1 };
-}
-
-function detectDestinationCurrencyCode(cityOrDest) {
-  const text = String(cityOrDest || "").trim().toLowerCase();
-  if (!text) return "EUR";
-  for (const entry of DESTINATION_CURRENCY_MAP) {
-    if (entry.match.some((k) => text.includes(k))) {
-      return entry.code;
-    }
-  }
-  return "EUR";
-}
-
-function ensureCurrencySelectHasAllCurrencies() {
-  const selects = [
-    document.getElementById("currency-from-select"),
-    document.getElementById("currency-to-select"),
-    document.getElementById("nt-direct-from-select"),
-    document.getElementById("nt-direct-to-select")
-  ];
-  for (const sel of selects) {
-    if (!sel) continue;
-    const existing = new Set(Array.from(sel.options).map((o) => o.value));
-    for (const item of CURRENCY_CATALOG) {
-      if (!existing.has(item.code)) {
-        const opt = document.createElement("option");
-        opt.value = item.code;
-        opt.textContent = `${item.labelAr} (${item.code})`;
-        sel.appendChild(opt);
-      }
-    }
-  }
-}
-
-function convertDestinationCurrency() {
-  const amountEl = document.getElementById("currency-amount-input");
-  const fromEl = document.getElementById("currency-from-select");
-  const toEl = document.getElementById("currency-to-select");
-  const resultEl = document.getElementById("currency-result-text");
-  if (!amountEl || !fromEl || !toEl || !resultEl) return;
-
-  const amount = parseFloat(amountEl.value);
-  const fromCode = fromEl.value || "ILS";
-  const toCode = toEl.value || "EUR";
-
-  if (Number.isNaN(amount) || amount < 0) {
-    resultEl.textContent = `0.00 ${toCode}`;
-    return;
-  }
-
-  if (fromCode === toCode) {
-    resultEl.textContent = `${amount.toFixed(2)} ${toCode}`;
-    return;
-  }
-
-  if (typeof activeCurrencyRate !== "number" || activeCurrencyRate <= 0) {
-    resultEl.textContent = `— ${toCode}`;
-    return;
-  }
-
-  const converted = amount * activeCurrencyRate;
-  resultEl.textContent = `${converted.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${toCode}`;
-}
-
-// أسعار مرجعية احتياطية مقابل USD لضمان توفر البات التايلندي (THB) وباقي العملات دائماً
 const FALLBACK_RATES_PER_USD = {
   USD: 1,
   EUR: 0.92,
@@ -2379,6 +2270,22 @@ const FALLBACK_RATES_PER_USD = {
   JOD: 0.709,
   EGP: 49.5
 };
+
+function getCurrencyMeta(code) {
+  const clean = String(code || "USD").toUpperCase();
+  return CURRENCY_CATALOG.find((c) => c.code === clean) || { code: clean, labelAr: clean, symbol: clean };
+}
+
+function detectDestinationCurrencyCode(cityOrDest) {
+  const text = String(cityOrDest || "").trim().toLowerCase();
+  if (!text) return "THB";
+  for (const entry of DESTINATION_CURRENCY_MAP) {
+    if (entry.match.some((k) => text.includes(k))) {
+      return entry.code;
+    }
+  }
+  return "USD";
+}
 
 function computeFallbackRate(fromCode, toCode) {
   const f = FALLBACK_RATES_PER_USD[fromCode];
@@ -2439,150 +2346,84 @@ async function resolvePairRate(fromCode, toCode) {
   return null;
 }
 
-async function fetchAndConvertCurrency(overrideToCode = null) {
-  ensureCurrencySelectHasAllCurrencies();
-  const fromEl = document.getElementById("currency-from-select");
-  const toEl = document.getElementById("currency-to-select");
-  const badgeEl = document.getElementById("currency-rate-badge");
-  const metaEl = document.getElementById("currency-meta-text");
-  if (!fromEl || !toEl) return;
+function ntConvertDestToIls(rawVal) {
+  const ilsInput = document.getElementById("nt-auto-ils-amount");
+  const infoEl = document.getElementById("nt-auto-rate-badge");
+  if (!ilsInput) return;
 
-  if (overrideToCode && Array.from(toEl.options).some((o) => o.value === overrideToCode)) {
-    toEl.value = overrideToCode;
-  }
-
-  const fromCode = fromEl.value || "ILS";
-  const toCode = toEl.value || "EUR";
-
-  if (fromCode === toCode) {
-    activeCurrencyRate = 1;
-    if (badgeEl) badgeEl.textContent = `1 ${fromCode} = 1.0000 ${toCode}`;
-    if (metaEl) metaEl.textContent = "نفس العملة المختارة";
-    convertDestinationCurrency();
-    return;
-  }
-
-  const quickFallback = computeFallbackRate(fromCode, toCode);
-  if (quickFallback && !activeCurrencyRate) {
-    activeCurrencyRate = quickFallback;
-    convertDestinationCurrency();
-  }
-  if (badgeEl) badgeEl.textContent = "جاري التحديث...";
-
-  const resolved = await resolvePairRate(fromCode, toCode);
-  if (resolved && typeof resolved.rate === "number" && resolved.rate > 0) {
-    activeCurrencyRate = resolved.rate;
-    if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${resolved.rate.toFixed(4)} ${toCode}`;
-    if (metaEl) metaEl.textContent = `تاريخ السعر: ${resolved.date}`;
-    convertDestinationCurrency();
-    return;
-  }
-
-  activeCurrencyRate = null;
-  if (badgeEl) badgeEl.textContent = "تعذر جلب السعر حالياً";
-  if (metaEl) metaEl.textContent = "حاول مجدداً بعد قليل";
-  convertDestinationCurrency();
-}
-
-function swapCurrencyDirection() {
-  const fromEl = document.getElementById("currency-from-select");
-  const toEl = document.getElementById("currency-to-select");
-  if (!fromEl || !toEl) return;
-  const tmp = fromEl.value;
-  fromEl.value = toEl.value;
-  toEl.value = tmp;
-  fetchAndConvertCurrency();
-}
-
-// =======================================================================
-// محول ثنائي فوري (اكتب في الخانة الأولى أو الثانية فيتحول تلقائياً)
-// + تقدير تقريبي لمصروف الطعام والتاكسي حسب عدد الأشخاص في الحجز
-// =======================================================================
-async function ntSyncDirectRate(fromCode, toCode) {
-  activeDirectFromCode = fromCode;
-  activeDirectToCode = toCode;
-  if (fromCode === toCode) {
-    activeDirectRate = 1;
-    return 1;
-  }
-  const fb = computeFallbackRate(fromCode, toCode);
-  if (fb) activeDirectRate = fb;
-  const resolved = await resolvePairRate(fromCode, toCode);
-  if (resolved && resolved.rate > 0) {
-    activeDirectRate = resolved.rate;
-  }
-  return activeDirectRate;
-}
-
-async function ntOnDirectFromChange() {
-  const fromEl = document.getElementById("nt-direct-from-select");
-  const toEl = document.getElementById("nt-direct-to-select");
-  const leftInput = document.getElementById("nt-direct-from-amount");
-  if (!fromEl || !toEl || !leftInput) return;
-  await ntSyncDirectRate(fromEl.value, toEl.value);
-  ntConvertFromLeft(leftInput.value);
-}
-
-async function ntOnDirectToChange() {
-  const fromEl = document.getElementById("nt-direct-from-select");
-  const toEl = document.getElementById("nt-direct-to-select");
-  const rightInput = document.getElementById("nt-direct-to-amount");
-  if (!fromEl || !toEl || !rightInput) return;
-  await ntSyncDirectRate(fromEl.value, toEl.value);
-  ntConvertFromRight(rightInput.value);
-}
-
-function ntConvertFromLeft(rawVal) {
-  const fromEl = document.getElementById("nt-direct-from-select");
-  const toEl = document.getElementById("nt-direct-to-select");
-  const rightInput = document.getElementById("nt-direct-to-amount");
-  const infoEl = document.getElementById("nt-direct-rate-info");
-  if (!fromEl || !toEl || !rightInput) return;
-
-  const fromCode = fromEl.value || "USD";
-  const toCode = toEl.value || "ILS";
-  const rate = (fromCode === toCode)
+  const destCode = activeAutoDestCode || "THB";
+  const rate = (destCode === "ILS")
     ? 1
-    : (activeDirectFromCode === fromCode && activeDirectToCode === toCode && activeDirectRate)
-      ? activeDirectRate
-      : (computeFallbackRate(fromCode, toCode) || 1);
+    : (activeAutoDestToIlsRate && activeAutoDestToIlsRate > 0
+        ? activeAutoDestToIlsRate
+        : (computeFallbackRate(destCode, "ILS") || 1));
 
   const num = parseFloat(rawVal);
   if (Number.isNaN(num)) {
-    rightInput.value = "";
+    ilsInput.value = "";
   } else {
     const out = num * rate;
-    rightInput.value = (Math.round(out * 100) / 100).toFixed(2);
+    ilsInput.value = (Math.round(out * 100) / 100).toFixed(2);
   }
   if (infoEl) {
-    infoEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
+    infoEl.textContent = `1 ${destCode} ≈ ${rate.toFixed(4)} ILS`;
   }
 }
 
-function ntConvertFromRight(rawVal) {
-  const fromEl = document.getElementById("nt-direct-from-select");
-  const toEl = document.getElementById("nt-direct-to-select");
-  const leftInput = document.getElementById("nt-direct-from-amount");
-  const infoEl = document.getElementById("nt-direct-rate-info");
-  if (!fromEl || !toEl || !leftInput) return;
+function ntConvertIlsToDest(rawVal) {
+  const destInput = document.getElementById("nt-auto-dest-amount");
+  const infoEl = document.getElementById("nt-auto-rate-badge");
+  if (!destInput) return;
 
-  const fromCode = fromEl.value || "USD";
-  const toCode = toEl.value || "ILS";
-  const rate = (fromCode === toCode)
+  const destCode = activeAutoDestCode || "THB";
+  const rate = (destCode === "ILS")
     ? 1
-    : (activeDirectFromCode === fromCode && activeDirectToCode === toCode && activeDirectRate)
-      ? activeDirectRate
-      : (computeFallbackRate(fromCode, toCode) || 1);
+    : (activeAutoDestToIlsRate && activeAutoDestToIlsRate > 0
+        ? activeAutoDestToIlsRate
+        : (computeFallbackRate(destCode, "ILS") || 1));
 
   const num = parseFloat(rawVal);
   if (Number.isNaN(num)) {
-    leftInput.value = "";
+    destInput.value = "";
   } else {
     const out = rate > 0 ? num / rate : 0;
-    leftInput.value = (Math.round(out * 100) / 100).toFixed(2);
+    destInput.value = (Math.round(out * 100) / 100).toFixed(2);
   }
   if (infoEl) {
-    infoEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
+    infoEl.textContent = `1 ${destCode} ≈ ${rate.toFixed(4)} ILS`;
+  }
+}
+
+async function ntRefreshAutoDestRate(destCity) {
+  const code = detectDestinationCurrencyCode(destCity);
+  activeAutoDestCode = code;
+  const fallback = computeFallbackRate(code, "ILS") || 1;
+  activeAutoDestToIlsRate = fallback;
+
+  const badgeEl = document.getElementById("nt-auto-rate-badge");
+  const labelEl = document.getElementById("nt-auto-dest-label");
+  if (labelEl) {
+    const meta = getCurrencyMeta(code);
+    labelEl.textContent = `${meta.labelAr} (${code})`;
+  }
+  if (badgeEl) {
+    badgeEl.textContent = `1 ${code} ≈ ${fallback.toFixed(4)} ILS`;
+  }
+
+  const destInput = document.getElementById("nt-auto-dest-amount");
+  if (destInput && destInput.value !== "") {
+    ntConvertDestToIls(destInput.value);
+  }
+
+  const resolved = await resolvePairRate(code, "ILS");
+  if (resolved && resolved.rate > 0) {
+    activeAutoDestToIlsRate = resolved.rate;
+    if (badgeEl) {
+      badgeEl.textContent = `1 ${code} ≈ ${resolved.rate.toFixed(4)} ILS`;
+    }
+    if (destInput && destInput.value !== "") {
+      ntConvertDestToIls(destInput.value);
+    }
   }
 }
 
@@ -2601,23 +2442,19 @@ function ntGetDestinationDailyUsdPerPerson(destCity) {
     return { foodPerPerson: 48, taxiPerPerson: 22, label: "الإمارات" };
   }
   if (/لندن|باريس|روما|ميلانو|برشلونة|مدريد|فيينا|براغ|بودابست|أثينا|أمستردام|زيورخ|london|paris|rome|milan|barcelona|madrid|vienna|prague|budapest|athens|amsterdam|zurich/.test(text)) {
-    return { foodPerPerson: 55, taxiPerPerson: 24, label: city || "الوجهة" };
+    return { foodPerPerson: 55, taxiPerPerson: 24, label: destCity || "الوجهة" };
   }
-  return { foodPerPerson: 35, taxiPerPerson: 15, label: city || "الوجهة" };
+  return { foodPerPerson: 35, taxiPerPerson: 15, label: destCity || "الوجهة" };
 }
 
 function ntEnsureExpenseEstimatorCard(destCity, booking) {
-  const currencySection =
-    document.getElementById("currency-converter-card") ||
-    document.getElementById("currency-amount-input")?.closest("section, div.rounded-3xl, div.bg-white") ||
-    document.getElementById("weather-5days-grid")?.parentElement?.parentElement;
+  const anchor = document.getElementById("weather-5days-grid")?.parentElement?.parentElement;
 
   const paxCount = Math.max(1, (booking?.passengers && booking.passengers.length) || 1);
   const destCode = detectDestinationCurrencyCode(destCity);
   const destMeta = getCurrencyMeta(destCode);
   const perDay = ntGetDestinationDailyUsdPerPerson(destCity);
 
-  // حساب إجمالي يومي تقريبي للشخص ولجميع الأشخاص في الحجز (بدون تسوق: طعام + تاكسي فقط)
   const personDailyUsd = perDay.foodPerPerson + perDay.taxiPerPerson;
   const groupDailyUsd = personDailyUsd * paxCount;
   const groupFoodDailyUsd = perDay.foodPerPerson * paxCount;
@@ -2634,51 +2471,49 @@ function ntEnsureExpenseEstimatorCard(destCity, booking) {
     host = document.createElement("div");
     host.id = "nt-quick-tools-container";
     host.className = "mt-5 space-y-4";
-    if (currencySection && currencySection.parentElement) {
-      currencySection.insertAdjacentElement("afterend", host);
+    if (anchor && anchor.parentElement) {
+      anchor.insertAdjacentElement("afterend", host);
     } else {
       const dash = document.getElementById("customer-dashboard");
       if (dash) dash.appendChild(host);
     }
   }
 
+  const initialDestSample = destCode === "THB" ? 1000 : 100;
+
   host.innerHTML = `
     <div class="rounded-3xl bg-white border border-slate-200 p-4 sm:p-5 shadow-2xs space-y-3.5">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h4 class="text-sm sm:text-base font-black text-slate-900">⚡ تحويل سريع متبادل بين عملتين</h4>
-          <p class="text-[11px] font-bold text-slate-500">اكتب المبلغ في أي خانة وسيظهر التحويل تلقائياً في الخانة الأخرى (يشمل البات التايلندي THB والشيكل والعملات الرئيسية)</p>
+          <h4 class="text-sm sm:text-base font-black text-slate-900">🔄 محول عملة الوجهة التلقائي ↔ الشيكل (ILS)</h4>
+          <p class="text-[11px] font-bold text-slate-500">يختار عملة الوجهة تلقائياً (${escapeHtml(destMeta.labelAr)} ${destCode}) — اكتب في أي خانة ليتم التحويل للشيكل أو العكس فوراً</p>
         </div>
-        <span id="nt-direct-rate-info" class="px-3 py-1 rounded-full bg-brand-50 text-brand-900 border border-brand-200 text-xs font-black" dir="ltr">1 USD ≈ ${ilsRate.toFixed(4)} ILS</span>
+        <span id="nt-auto-rate-badge" class="px-3 py-1 rounded-full bg-brand-50 text-brand-900 border border-brand-200 text-xs font-black" dir="ltr">1 ${destCode} ≈ ${(computeFallbackRate(destCode, "ILS") || 1).toFixed(4)} ILS</span>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-2">
-          <select id="nt-direct-from-select" onchange="ntOnDirectFromChange()" class="bg-transparent text-xs sm:text-sm font-black text-slate-900 focus:outline-none cursor-pointer">
-            ${CURRENCY_CATALOG.map((c) => `<option value="${c.code}" ${c.code === "USD" ? "selected" : ""}>${c.labelAr} (${c.code})</option>`).join("")}
-          </select>
+          <span id="nt-auto-dest-label" class="text-xs sm:text-sm font-black text-slate-900">${escapeHtml(destMeta.labelAr)} (${destCode})</span>
           <span class="h-6 w-px bg-slate-300"></span>
           <input
-            id="nt-direct-from-amount"
+            id="nt-auto-dest-amount"
             type="number"
             step="any"
-            value="100"
-            oninput="ntConvertFromLeft(this.value)"
+            value="${initialDestSample}"
+            oninput="ntConvertDestToIls(this.value)"
             class="w-28 sm:w-32 text-left bg-transparent text-sm sm:text-base font-black text-slate-950 focus:outline-none"
             dir="ltr"
           />
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-2">
-          <select id="nt-direct-to-select" onchange="ntOnDirectToChange()" class="bg-transparent text-xs sm:text-sm font-black text-slate-900 focus:outline-none cursor-pointer">
-            ${CURRENCY_CATALOG.map((c) => `<option value="${c.code}" ${c.code === "ILS" ? "selected" : ""}>${c.labelAr} (${c.code})</option>`).join("")}
-          </select>
+          <span class="text-xs sm:text-sm font-black text-slate-900">شيكل جديد (ILS)</span>
           <span class="h-6 w-px bg-slate-300"></span>
           <input
-            id="nt-direct-to-amount"
+            id="nt-auto-ils-amount"
             type="number"
             step="any"
-            oninput="ntConvertFromRight(this.value)"
+            oninput="ntConvertIlsToDest(this.value)"
             class="w-28 sm:w-32 text-left bg-transparent text-sm sm:text-base font-black text-brand-900 focus:outline-none"
             dir="ltr"
           />
@@ -2721,33 +2556,12 @@ function ntEnsureExpenseEstimatorCard(destCity, booking) {
     </div>
   `;
 
-  ensureCurrencySelectHasAllCurrencies();
-  ntSyncDirectRate("USD", "ILS").then(() => {
-    const leftVal = document.getElementById("nt-direct-from-amount")?.value || "100";
-    ntConvertFromLeft(leftVal);
-  });
+  ntRefreshAutoDestRate(destCity || "تايلاند");
+  ntSwitchCustomerTab(ntActiveCustomerTab);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  setTimeout(() => {
-    ensureCurrencySelectHasAllCurrencies();
-    ntEnsureExpenseEstimatorCard(lastKnownDestinationCity || "تايلاند", activeCustomerBooking);
-  }, 150);
-});
-
-async function fetchDestinationIntelligence(city) {
-  const cleanCity = String(city || "").trim();
-  if (!cleanCity) return;
-
-  const dots = document.getElementById("dest-loading-dots");
-  if (dots) dots.classList.remove("hidden");
-
-  if (document.getElementById("weather-city-label")) {
-    document.getElementById("weather-city-label").textContent = cleanCity;
-  }
-
 // =======================================================================
-// جلب أفضل 5 مطاعم حلال عبر Foursquare Places API (مع كاش واحتياط تلقائي)
+// جلب أفضل 5 مطاعم حلال + 5 مناطق سياحية عبر Foursquare مع بديل Gemini
 // =======================================================================
 const HALAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const halalPlacesCache = new Map();
@@ -2771,7 +2585,6 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
   }
 
   try {
-    // مسار خلفي مقترح على السيرفر لحماية FOURSQUARE_API_KEY
     const res = await fetch(
       `/api/halal-restaurants?city=${encodeURIComponent(cleanCity)}&query=${encodeURIComponent("halal restaurant")}&limit=5`
     );
@@ -2824,21 +2637,109 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
   }
 }
 
-  // جلب الطقس الحقيقي مباشرة من /api/weather (Open-Meteo + كاش ساعتين)
+async function fetchFiveAttractionsWithFoursquareFallback(city) {
+  const cleanCity = String(city || "").trim();
+  if (!cleanCity) return null;
+
+  const cacheKey = cleanCity.toLowerCase();
+  const cached = attractionsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < ATTRACTIONS_CACHE_TTL_MS && Array.isArray(cached.items) && cached.items.length === 5) {
+    return cached.items;
+  }
+
+  try {
+    const res = await fetch(
+      `/api/halal-restaurants?city=${encodeURIComponent(cleanCity)}&query=${encodeURIComponent("tourist attraction")}&limit=5`
+    );
+    if (res.ok) {
+      const payload = await res.json().catch(() => null);
+      const rawList = Array.isArray(payload?.restaurants)
+        ? payload.restaurants
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : Array.isArray(payload?.attractions)
+        ? payload.attractions
+        : [];
+
+      if (rawList.length >= 3) {
+        const items = rawList.slice(0, 5).map((item, idx) => {
+          const name = String(item.name || `منطقة سياحية ${idx + 1}`).trim();
+          const area = item.cuisine || item.category || item.address || item.location?.formatted_address || cleanCity;
+          return {
+            name,
+            desc: `وجهة بارزة في ${cleanCity} (${String(area).trim()}) مناسبة للزيارة والتنزه.`
+          };
+        });
+        while (items.length < 5) {
+          items.push({
+            name: `معلم سياحي مميز في ${cleanCity} #${items.length + 1}`,
+            desc: `منطقة مقترحة لاستكشاف معالم ${cleanCity}.`
+          });
+        }
+        attractionsCache.set(cacheKey, { items, ts: Date.now() });
+        return items;
+      }
+    }
+  } catch (err) {
+    console.warn("Foursquare attractions fallback to Gemini:", err);
+  }
+
+  try {
+    const prompt = `اذكر بالضبط 5 مناطق سياحية بارزة في مدينة "${cleanCity}" وأرجع JSON فقط بالشكل التالي:
+{
+  "attractions5": [
+    { "name": "اسم المنطقة السياحية", "desc": "وصف مختصر مفيد بالعربية" }
+  ]
+}`;
+    const result = await callGeminiApi({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    });
+    const parsed = parseJsonLoose(extractGeminiText(result));
+    const list = Array.isArray(parsed?.attractions5)
+      ? parsed.attractions5
+      : Array.isArray(parsed?.attractions4)
+      ? parsed.attractions4
+      : [];
+    if (list.length) {
+      const items = list.slice(0, 5).map((a, idx) => ({
+        name: String(a.name || `منطقة ${idx + 1}`).trim(),
+        desc: String(a.desc || `معلم سياحي في ${cleanCity}`).trim()
+      }));
+      attractionsCache.set(cacheKey, { items, ts: Date.now() });
+      return items;
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+async function fetchDestinationIntelligence(city) {
+  const cleanCity = String(city || "").trim();
+  if (!cleanCity) return;
+
+  const dots = document.getElementById("dest-loading-dots");
+  if (dots) dots.classList.remove("hidden");
+
+  if (document.getElementById("weather-city-label")) {
+    document.getElementById("weather-city-label").textContent = cleanCity;
+  }
+
   const liveWeather = await fetchWeatherFromApi(cleanCity);
 
-  // جلب أفضل 5 مطاعم حلال من Foursquare وعرضها فوراً كأولوية
   const fsqHalal = await fetchHalalRestaurantsFromFoursquare(cleanCity);
   if (fsqHalal && fsqHalal.length) {
     renderDestinationSections(cleanCity, { halalRestaurants5: fsqHalal });
   }
 
-  // ضبط عملة الوجهة تلقائياً وجلب سعر الصرف مجاناً عبر Frankfurter
+  const fsqPlaces = await fetchFiveAttractionsWithFoursquareFallback(cleanCity);
+  if (fsqPlaces && fsqPlaces.length) {
+    renderDestinationSections(cleanCity, { attractions5: fsqPlaces.slice(0, 5) });
+  }
+
   lastKnownDestinationCity = cleanCity;
-  ensureCurrencySelectHasAllCurrencies();
   ntEnsureExpenseEstimatorCard(cleanCity, activeCustomerBooking);
-  const suggestedCurrency = detectDestinationCurrencyCode(cleanCity);
-  fetchAndConvertCurrency(suggestedCurrency);
+  ntRefreshAutoDestRate(cleanCity);
 
   const cacheKey = DEST_CACHE_PREFIX + cleanCity.toLowerCase();
   try {
@@ -2857,7 +2758,7 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
   const todayStr = getTodayFormatted();
   const prompt = `ابحث عن معلومات دقيقة ومحدثة لمدينة "${cleanCity}" بدءاً من تاريخ اليوم (${todayStr}) وأرجع JSON فقط بالشكل التالي:
 {
-  "attractions4": [
+  "attractions5": [
     { "name": "اسم المنطقة السياحية", "desc": "وصف مختصر مفيد بالعربية" }
   ],
   "halalRestaurants5": [
@@ -2870,7 +2771,7 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
     "notes": "ملاحظة مختصرة عن الفيش والفيوز في ${cleanCity}"
   }
 }
-تأكد أن attractions4 تحتوي 4 مناطق، و halalRestaurants5 تحتوي 5 مطاعم.`;
+تأكد أن attractions5 تحتوي 5 مناطق، و halalRestaurants5 تحتوي 5 مطاعم.`;
 
   try {
     const payload = {
@@ -2888,7 +2789,8 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
       const mergedData = {
         ...parsed,
         ...(liveWeather ? { weather5Days: liveWeather } : {}),
-        ...(fsqHalal && fsqHalal.length ? { halalRestaurants5: fsqHalal } : {})
+        ...(fsqHalal && fsqHalal.length ? { halalRestaurants5: fsqHalal } : {}),
+        ...(fsqPlaces && fsqPlaces.length ? { attractions5: fsqPlaces.slice(0, 5) } : {})
       };
       renderDestinationSections(cleanCity, mergedData);
       try {
@@ -2897,10 +2799,11 @@ async function fetchHalalRestaurantsFromFoursquare(city) {
     }
   } catch (_) {
     renderFallbackDestinationSections(cleanCity);
-    if (liveWeather || (fsqHalal && fsqHalal.length)) {
+    if (liveWeather || (fsqHalal && fsqHalal.length) || (fsqPlaces && fsqPlaces.length)) {
       renderDestinationSections(cleanCity, {
         ...(liveWeather ? { weather5Days: liveWeather } : {}),
-        ...(fsqHalal && fsqHalal.length ? { halalRestaurants5: fsqHalal } : {})
+        ...(fsqHalal && fsqHalal.length ? { halalRestaurants5: fsqHalal } : {}),
+        ...(fsqPlaces && fsqPlaces.length ? { attractions5: fsqPlaces.slice(0, 5) } : {})
       });
     }
   } finally {
@@ -2917,11 +2820,12 @@ function renderFallbackDestinationSections(city) {
       { day: "اليوم 4", temp: "19°C", condition: "صافٍ", icon: "☀️" },
       { day: "اليوم 5", temp: "18°C", condition: "معتدل", icon: "⛅" }
     ],
-    attractions4: [
+    attractions5: [
       { name: `كورنيش وواجهة ${city} البحرية`, desc: "ممشى رائع للتنزه والاستمتاع بالإطلالات." },
       { name: `البلدة القديمة والأسواق في ${city}`, desc: "تجربة ثقافية وتسوق محلي مميز." },
       { name: `المرتفعات والإطلالات البانورامية`, desc: "أفضل نقطة لمشاهدة المدينة من الأعلى." },
-      { name: `الحدائق والمتنزهات العامة`, desc: "مكان مثالي للعائلات والاسترخاء." }
+      { name: `الحدائق والمتنزهات العامة`, desc: "مكان مثالي للعائلات والاسترخاء." },
+      { name: `المركز الثقافي والمتاحف في ${city}`, desc: "وجهة مميزة للتعرف على تاريخ وثقافة المدينة." }
     ],
     halalRestaurants5: [
       { name: "مطعم الياسمين الحلال", rating: "4.8 ★", cuisine: "مأكولات شرق أوسطية ومشاوي" },
@@ -3036,7 +2940,12 @@ function renderDestinationSections(city, data) {
   }
 
   const attrGrid = document.getElementById("attractions-4-grid");
-  const attrs = Array.isArray(data.attractions4) ? data.attractions4.slice(0, 4) : [];
+  const rawAttrs = Array.isArray(data.attractions5)
+    ? data.attractions5
+    : Array.isArray(data.attractions4)
+    ? data.attractions4
+    : [];
+  const attrs = rawAttrs.slice(0, 5);
   if (attrGrid && attrs.length) {
     attrGrid.innerHTML = attrs
       .map(
@@ -3115,6 +3024,146 @@ function renderDestinationSections(city, data) {
         ${getPlugSvgIllustration(power.category)}
       </div>
     `;
+  }
+
+  ntSwitchCustomerTab(ntActiveCustomerTab);
+}
+
+// =======================================================================
+// واجهة الزبون المبوّبة (شريط سفلي مثل واتساب + شات دائري بين الطقس والمناطق)
+// =======================================================================
+function ntGetCustomerSectionsMap() {
+  const stagesEl = document.getElementById("customer-stages-list")?.closest("section, div.rounded-3xl, div.bg-white") || document.getElementById("customer-stages-list");
+  const notesCard = document.getElementById("customer-notes-card");
+  const checkinBanner = document.getElementById("checkin-alert-banner");
+  const weatherEl = document.getElementById("weather-5days-grid")?.closest("section, div.rounded-3xl, div.bg-white") || document.getElementById("weather-5days-grid");
+  const attractionsEl = document.getElementById("attractions-4-grid")?.closest("section, div.rounded-3xl, div.bg-white") || document.getElementById("attractions-4-grid");
+  const halalEl = document.getElementById("halal-5-grid")?.closest("section, div.rounded-3xl, div.bg-white") || document.getElementById("halal-5-grid");
+  const powerEl = document.getElementById("power-info-card")?.closest("section, div.rounded-3xl, div.bg-white") || document.getElementById("power-info-card");
+  const currencyHost = document.getElementById("nt-quick-tools-container");
+  const chatBox = document.getElementById("ai-chat-messages")?.closest("section, div.rounded-3xl, div.bg-white") || document.getElementById("ai-chat-messages");
+
+  return {
+    trip: [checkinBanner, notesCard, stagesEl].filter(Boolean),
+    weather: [weatherEl].filter(Boolean),
+    places: [attractionsEl, halalEl, powerEl].filter(Boolean),
+    currency: [currencyHost].filter(Boolean),
+    chatBox
+  };
+}
+
+function ntEnsureFloatingChatCircle(weatherAnchorEl) {
+  let circleWrap = document.getElementById("nt-floating-chat-circle-wrap");
+  if (!circleWrap) {
+    circleWrap = document.createElement("div");
+    circleWrap.id = "nt-floating-chat-circle-wrap";
+    circleWrap.className = "my-4 flex items-center justify-center";
+    circleWrap.innerHTML = `
+      <button
+        type="button"
+        onclick="ntToggleChatDrawer()"
+        aria-label="مساعد ندلان تورز الذكي"
+        class="group relative w-16 h-16 rounded-full bg-gradient-to-br from-slate-900 via-brand-900 to-slate-950 text-white border-2 border-amber-400 shadow-xl hover:scale-105 active:scale-95 transition flex flex-col items-center justify-center cursor-pointer"
+      >
+        <span class="text-xl leading-none">💬</span>
+        <span class="text-[10px] font-black text-amber-300 mt-0.5">شات</span>
+        <span class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white"></span>
+      </button>
+    `;
+  }
+
+  if (weatherAnchorEl && weatherAnchorEl.parentElement) {
+    weatherAnchorEl.insertAdjacentElement("afterend", circleWrap);
+  }
+  return circleWrap;
+}
+
+function ntToggleChatDrawer() {
+  const { chatBox } = ntGetCustomerSectionsMap();
+  if (!chatBox) return;
+  const isHidden = chatBox.classList.contains("hidden");
+  if (isHidden) {
+    chatBox.classList.remove("hidden");
+    chatBox.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else {
+    chatBox.classList.add("hidden");
+  }
+}
+
+function ntEnsureBottomNavBar() {
+  let nav = document.getElementById("nt-whatsapp-bottom-nav");
+  const dash = document.getElementById("customer-dashboard");
+  if (!dash) return null;
+
+  if (!nav) {
+    nav = document.createElement("nav");
+    nav.id = "nt-whatsapp-bottom-nav";
+    nav.className = "fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur border-t border-amber-400/35 shadow-2xl pb-[env(safe-area-inset-bottom)]";
+    nav.innerHTML = `
+      <div class="max-w-3xl mx-auto grid grid-cols-4 gap-1 px-2 py-2">
+        <button data-nt-tab="trip" type="button" onclick="ntSwitchCustomerTab('trip')" class="nt-nav-btn flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-xs font-black transition cursor-pointer">
+          <span class="text-base leading-none mb-1">✈️</span>
+          <span>الرحلة</span>
+        </button>
+        <button data-nt-tab="weather" type="button" onclick="ntSwitchCustomerTab('weather')" class="nt-nav-btn flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-xs font-black transition cursor-pointer">
+          <span class="text-base leading-none mb-1">🌤️</span>
+          <span>الطقس</span>
+        </button>
+        <button data-nt-tab="places" type="button" onclick="ntSwitchCustomerTab('places')" class="nt-nav-btn flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-xs font-black transition cursor-pointer">
+          <span class="text-base leading-none mb-1">📍</span>
+          <span>المناطق</span>
+        </button>
+        <button data-nt-tab="currency" type="button" onclick="ntSwitchCustomerTab('currency')" class="nt-nav-btn flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-xs font-black transition cursor-pointer">
+          <span class="text-base leading-none mb-1">💱</span>
+          <span>العملات</span>
+        </button>
+      </div>
+    `;
+    document.body.appendChild(nav);
+  }
+  return nav;
+}
+
+function ntSwitchCustomerTab(tabName) {
+  ntActiveCustomerTab = tabName || "trip";
+  const dash = document.getElementById("customer-dashboard");
+  const isDashVisible = dash && !dash.classList.contains("hidden");
+  const nav = ntEnsureBottomNavBar();
+
+  if (nav) {
+    nav.classList.toggle("hidden", !isDashVisible);
+    nav.querySelectorAll("[data-nt-tab]").forEach((btn) => {
+      const active = btn.getAttribute("data-nt-tab") === ntActiveCustomerTab;
+      btn.className = active
+        ? "nt-nav-btn flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-xs font-black bg-amber-400 text-slate-950 shadow transition cursor-pointer"
+        : "nt-nav-btn flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-xs font-black text-slate-200 hover:bg-white/10 transition cursor-pointer";
+    });
+  }
+
+  if (!isDashVisible) return;
+
+  if (dash) {
+    dash.classList.add("pb-24");
+  }
+
+  const map = ntGetCustomerSectionsMap();
+  const allManaged = [...map.trip, ...map.weather, ...map.places, ...map.currency];
+  allManaged.forEach((el) => {
+    if (el) el.classList.add("hidden");
+  });
+
+  const activeEls = map[ntActiveCustomerTab] || map.trip;
+  activeEls.forEach((el) => {
+    if (el) el.classList.remove("hidden");
+  });
+
+  const circleWrap = ntEnsureFloatingChatCircle(map.weather[0] || null);
+  if (circleWrap) {
+    circleWrap.classList.toggle("hidden", ntActiveCustomerTab !== "weather");
+  }
+
+  if (map.chatBox && ntActiveCustomerTab !== "weather") {
+    map.chatBox.classList.add("hidden");
   }
 }
 
@@ -3261,7 +3310,7 @@ async function handleAiChatSubmit(event) {
 }
 
 // =======================================================================
-// تهيئة التطبيق عند التحميل (الصفحة الرئيسية: دخول الزبون بـ PNR واسم العائلة)
+// تهيئة التطبيق عند التحميل
 // =======================================================================
 window.addEventListener("DOMContentLoaded", async () => {
   renderStationsEditor();
@@ -3269,10 +3318,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   renderBookingsList();
   renderQuickDemoBookings();
   switchPortal("customer");
+  ntSwitchCustomerTab("trip");
 });
 
 // =======================================================================
-// نظام فاوشرات الحجز (طيران / فندق / توصيل) — عبر قاعدة البيانات فقط (بدون localStorage)
+// نظام فاوشرات الحجز (طيران / فندق / توصيل) — عبر قاعدة البيانات فقط
 // =======================================================================
 let ntSessionVouchers = {};
 
