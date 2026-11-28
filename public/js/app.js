@@ -2253,6 +2253,159 @@ async function fetchWeatherFromApi(city) {
   }
 }
 
+// =======================================================================
+// محول العملات المجاني (Frankfurter API + كاش في الذاكرة)
+// =======================================================================
+const CURRENCY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const currencyRateCache = new Map();
+let activeCurrencyRate = null;
+
+const DESTINATION_CURRENCY_MAP = [
+  { match: ["موسكو", "روسيا", "moscow", "russia", "سان بطرسبرغ", "petersburg"], code: "RUB" },
+  { match: ["باتومي", "تبليسي", "جورجيا", "batumi", "tbilisi", "georgia"], code: "GEL" },
+  { match: ["إسطنبول", "اسطنبول", "أنطاليا", "طرابزون", "تركيا", "istanbul", "antalya", "trabzon", "turkey"], code: "TRY" },
+  { match: ["لندن", "بريطانيا", "المملكة المتحدة", "london", "uk", "united kingdom"], code: "GBP" },
+  { match: ["دبي", "أبوظبي", "الشارقة", "الإمارات", "dubai", "abu dhabi", "sharjah", "uae"], code: "AED" },
+  { match: ["الرياض", "جدة", "السعودية", "riyadh", "jeddah", "saudi"], code: "SAR" },
+  { match: ["نيويورك", "لوس أنجلوس", "أمريكا", "الولايات المتحدة", "new york", "los angeles", "usa"], code: "USD" },
+  { match: ["زيورخ", "سويسرا", "zurich", "switzerland"], code: "CHF" },
+  { match: ["تل أبيب", "إسرائيل", "tel aviv"], code: "ILS" },
+  { match: ["باريس", "روما", "ميلانو", "برشلونة", "مدريد", "فيينا", "براغ", "بودابست", "أثينا", "أمستردام", "فرانكفورت", "لارنكا", "رودس", "paris", "rome", "milan", "barcelona", "madrid", "vienna", "prague", "budapest", "athens", "amsterdam", "frankfurt", "larnaca", "rhodes", "greece", "germany", "france", "italy", "spain"], code: "EUR" }
+];
+
+function detectDestinationCurrencyCode(cityOrDest) {
+  const text = String(cityOrDest || "").trim().toLowerCase();
+  if (!text) return "EUR";
+  for (const entry of DESTINATION_CURRENCY_MAP) {
+    if (entry.match.some((k) => text.includes(k))) {
+      return entry.code;
+    }
+  }
+  return "EUR";
+}
+
+function convertDestinationCurrency() {
+  const amountEl = document.getElementById("currency-amount-input");
+  const fromEl = document.getElementById("currency-from-select");
+  const toEl = document.getElementById("currency-to-select");
+  const resultEl = document.getElementById("currency-result-text");
+  if (!amountEl || !fromEl || !toEl || !resultEl) return;
+
+  const amount = parseFloat(amountEl.value);
+  const fromCode = fromEl.value || "ILS";
+  const toCode = toEl.value || "EUR";
+
+  if (Number.isNaN(amount) || amount < 0) {
+    resultEl.textContent = `0.00 ${toCode}`;
+    return;
+  }
+
+  if (fromCode === toCode) {
+    resultEl.textContent = `${amount.toFixed(2)} ${toCode}`;
+    return;
+  }
+
+  if (typeof activeCurrencyRate !== "number" || activeCurrencyRate <= 0) {
+    resultEl.textContent = `— ${toCode}`;
+    return;
+  }
+
+  const converted = amount * activeCurrencyRate;
+  resultEl.textContent = `${converted.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${toCode}`;
+}
+
+async function fetchAndConvertCurrency(overrideToCode = null) {
+  const fromEl = document.getElementById("currency-from-select");
+  const toEl = document.getElementById("currency-to-select");
+  const badgeEl = document.getElementById("currency-rate-badge");
+  const metaEl = document.getElementById("currency-meta-text");
+  if (!fromEl || !toEl) return;
+
+  if (overrideToCode && Array.from(toEl.options).some((o) => o.value === overrideToCode)) {
+    toEl.value = overrideToCode;
+  }
+
+  const fromCode = fromEl.value || "ILS";
+  const toCode = toEl.value || "EUR";
+
+  if (fromCode === toCode) {
+    activeCurrencyRate = 1;
+    if (badgeEl) badgeEl.textContent = `1 ${fromCode} = 1.0000 ${toCode}`;
+    if (metaEl) metaEl.textContent = "نفس العملة المختارة";
+    convertDestinationCurrency();
+    return;
+  }
+
+  const cacheKey = `${fromCode}_${toCode}`;
+  const cached = currencyRateCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CURRENCY_CACHE_TTL_MS) {
+    activeCurrencyRate = cached.rate;
+    if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${activeCurrencyRate.toFixed(4)} ${toCode}`;
+    if (metaEl) metaEl.textContent = `تاريخ السعر: ${cached.date || "محدّث"}`;
+    convertDestinationCurrency();
+    return;
+  }
+
+  if (badgeEl) badgeEl.textContent = "جاري جلب السعر...";
+
+  try {
+    // Frankfurter لا يدعم ILS مباشرة كعملة أساسية، فنحوّل عبر USD كوسيط مجاني عند الحاجة
+    const frankfurterSupported = new Set(["AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR", "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "SEK", "SGD", "THB", "TRY", "USD", "ZAR"]);
+    const baseCode = frankfurterSupported.has(fromCode) ? fromCode : "USD";
+    const targetCodes = frankfurterSupported.has(toCode) ? [toCode] : ["USD"];
+    if (baseCode !== "USD" && !targetCodes.includes("USD")) {
+      targetCodes.push("USD");
+    }
+
+    const url = `https://api.frankfurter.app/latest?from=${encodeURIComponent(baseCode)}&to=${encodeURIComponent(targetCodes.join(","))}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok || !data?.rates) {
+      throw new Error("Currency fetch failed");
+    }
+
+    let rate = null;
+    if (fromCode === baseCode && typeof data.rates[toCode] === "number") {
+      rate = data.rates[toCode];
+    } else if (baseCode === "USD" && typeof data.rates[toCode] === "number") {
+      rate = data.rates[toCode];
+    } else if (typeof data.rates["USD"] === "number" && data.rates["USD"] > 0) {
+      // جلب سعر الهدف مقابل USD لإتمام التحويل
+      const usdRes = await fetch(`https://api.frankfurter.app/latest?from=USD&to=${encodeURIComponent(toCode)}`);
+      const usdData = await usdRes.json();
+      if (usdRes.ok && typeof usdData?.rates?.[toCode] === "number") {
+        rate = (1 / data.rates["USD"]) * usdData.rates[toCode];
+      }
+    }
+
+    if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
+      throw new Error("Invalid currency rate");
+    }
+
+    activeCurrencyRate = rate;
+    currencyRateCache.set(cacheKey, { rate, date: data.date || "", ts: Date.now() });
+    if (badgeEl) badgeEl.textContent = `1 ${fromCode} ≈ ${rate.toFixed(4)} ${toCode}`;
+    if (metaEl) metaEl.textContent = `تاريخ السعر: ${data.date || "محدّث"}`;
+    convertDestinationCurrency();
+  } catch (err) {
+    console.warn("Currency API fallback:", err);
+    activeCurrencyRate = null;
+    if (badgeEl) badgeEl.textContent = "تعذر جلب السعر حالياً";
+    if (metaEl) metaEl.textContent = "حاول مجدداً بعد قليل";
+    convertDestinationCurrency();
+  }
+}
+
+function swapCurrencyDirection() {
+  const fromEl = document.getElementById("currency-from-select");
+  const toEl = document.getElementById("currency-to-select");
+  if (!fromEl || !toEl) return;
+  const tmp = fromEl.value;
+  fromEl.value = toEl.value;
+  toEl.value = tmp;
+  fetchAndConvertCurrency();
+}
+
 async function fetchDestinationIntelligence(city) {
   const cleanCity = String(city || "").trim();
   if (!cleanCity) return;
@@ -2266,6 +2419,10 @@ async function fetchDestinationIntelligence(city) {
 
   // جلب الطقس الحقيقي مباشرة من /api/weather (Open-Meteo + كاش ساعتين)
   const liveWeather = await fetchWeatherFromApi(cleanCity);
+
+  // ضبط عملة الوجهة تلقائياً وجلب سعر الصرف مجاناً عبر Frankfurter
+  const suggestedCurrency = detectDestinationCurrencyCode(cleanCity);
+  fetchAndConvertCurrency(suggestedCurrency);
 
   const cacheKey = DEST_CACHE_PREFIX + cleanCity.toLowerCase();
   try {
