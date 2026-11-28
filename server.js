@@ -123,8 +123,106 @@ app.get("/api/weather", async (req, res) => {
   }
 });
 
+const ratesCache = new Map();
+const RATES_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ساعات
+
+app.get("/api/rates", async (req, res) => {
+  try {
+    const base = String(req.query.from || "EUR").trim().toUpperCase();
+    const toList = String(req.query.to || "USD,ILS")
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+
+    const cacheKey = `${base}__${toList.join(",")}`;
+    const cached = ratesCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < RATES_CACHE_TTL_MS) {
+      return res.json({ ok: true, cached: true, base, rates: cached.rates });
+    }
+
+    const apiRes = await fetch(`https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`);
+    const apiData = await apiRes.json().catch(() => ({}));
+    if (!apiRes.ok || apiData?.result !== "success" || !apiData?.rates) {
+      return res.status(502).json({ error: "تعذر جلب أسعار الصرف حالياً." });
+    }
+
+    const rates = {};
+    for (const code of toList) {
+      if (typeof apiData.rates[code] === "number") {
+        rates[code] = apiData.rates[code];
+      }
+    }
+
+    ratesCache.set(cacheKey, { ts: Date.now(), rates });
+    return res.json({ ok: true, cached: false, base, rates });
+  } catch (error) {
+    console.error("Rates API error:", error);
+    return res.status(500).json({ error: "حدث خطأ أثناء جلب أسعار الصرف." });
+  }
+});
+
 const halalCache = new Map();
 const HALAL_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ساعات
+
+async function fetchHalalRestaurantsFromAI(city, limit) {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!geminiKey && !groqKey) return null;
+
+  const prompt = `أعطني قائمة بأشهر ${limit} مطاعم حلال حقيقية وموثوقة للسياح في مدينة "${city}".
+أعد النتيجة بصيغة JSON فقط بدون أي شرح إضافي بالشكل التالي:
+{
+  "restaurants": [
+    { "name": "اسم المطعم", "rating": "4.7 ★", "cuisine": "نوع المطبخ أو الحي" }
+  ]
+}`;
+
+  const geminiBody = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
+  };
+
+  let rawText = "";
+
+  if (geminiKey) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+      const gRes = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiBody)
+      });
+      const gData = await gRes.json().catch(() => ({}));
+      if (gRes.ok) {
+        rawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      }
+    } catch (_) {}
+  }
+
+  if (!rawText && groqKey) {
+    const groqRes = await callGroqFallback(geminiBody, groqKey);
+    if (groqRes.ok) {
+      rawText = groqRes.geminiFormatted?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    }
+  }
+
+  if (!rawText) return null;
+
+  try {
+    const cleaned = rawText.replace(/```json|```/gi, "").trim();
+    const parsed = JSON.parse(cleaned);
+    const list = Array.isArray(parsed?.restaurants) ? parsed.restaurants : [];
+    if (!list.length) return null;
+
+    return list.slice(0, limit).map((item, idx) => ({
+      name: String(item?.name || `مطعم حلال ${idx + 1}`).trim(),
+      rating: String(item?.rating || "4.6 ★").trim(),
+      cuisine: String(item?.cuisine || city).trim()
+    }));
+  } catch (_) {
+    return null;
+  }
+}
 
 app.get("/api/halal-restaurants", async (req, res) => {
   try {
@@ -136,60 +234,80 @@ app.get("/api/halal-restaurants", async (req, res) => {
       return res.status(400).json({ error: "يرجى تحديد اسم المدينة (city)." });
     }
 
-    const fsqKey = process.env.FOURSQUARE_API_KEY;
-    if (!fsqKey) {
-      return res.status(503).json({ error: "FOURSQUARE_API_KEY غير مضبوط." });
-    }
-
     const cacheKey = `${city.toLowerCase()}__${query.toLowerCase()}__${limit}`;
     const cached = halalCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < HALAL_CACHE_TTL_MS) {
-      return res.json({ ok: true, cached: true, restaurants: cached.restaurants });
+      return res.json({ ok: true, cached: true, source: cached.source || "cache", restaurants: cached.restaurants });
     }
 
-    const url = new URL("https://places-api.foursquare.com/places/search");
-    url.searchParams.set("query", query);
-    url.searchParams.set("near", city);
-    url.searchParams.set("limit", String(limit));
-    url.searchParams.set("fields", "name,rating,categories,location");
+    const fsqKey = process.env.FOURSQUARE_API_KEY;
+    let fsqErrorStatus = null;
 
-    const authHeader = /^Bearer\s+/i.test(fsqKey.trim())
-      ? fsqKey.trim()
-      : `Bearer ${fsqKey.trim()}`;
+    if (fsqKey) {
+      try {
+        const url = new URL("https://places-api.foursquare.com/places/search");
+        url.searchParams.set("query", query);
+        url.searchParams.set("near", city);
+        url.searchParams.set("limit", String(limit));
+        url.searchParams.set("fields", "name,rating,categories,location");
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: authHeader,
-        "X-Places-Api-Version": "2025-06-17",
-        Accept: "application/json"
+        const authHeader = /^Bearer\s+/i.test(fsqKey.trim())
+          ? fsqKey.trim()
+          : `Bearer ${fsqKey.trim()}`;
+
+        const response = await fetch(url.toString(), {
+          headers: {
+            Authorization: authHeader,
+            "X-Places-Api-Version": "2025-06-17",
+            Accept: "application/json"
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const restaurants = (Array.isArray(data?.results) ? data.results : [])
+            .slice(0, limit)
+            .map((place, idx) => ({
+              name: String(place?.name || `مطعم حلال ${idx + 1}`).trim(),
+              rating:
+                typeof place?.rating === "number"
+                  ? `${(place.rating > 5 ? place.rating / 2 : place.rating).toFixed(1)} ★`
+                  : "4.6 ★",
+              cuisine:
+                place?.categories?.[0]?.name ||
+                place?.location?.neighborhood ||
+                place?.location?.locality ||
+                city
+            }));
+
+          if (restaurants.length > 0) {
+            halalCache.set(cacheKey, { ts: Date.now(), source: "foursquare", restaurants });
+            return res.json({ ok: true, cached: false, source: "foursquare", restaurants });
+          }
+        } else {
+          fsqErrorStatus = response.status;
+          console.warn(`Foursquare returned ${response.status} for ${city}, switching to AI fallback...`);
+        }
+      } catch (fsqErr) {
+        console.warn("Foursquare request failed, switching to AI fallback:", fsqErr.message);
       }
-    });
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: `Foursquare HTTP ${response.status}` });
     }
 
-    const data = await response.json().catch(() => ({}));
-    const restaurants = (Array.isArray(data?.results) ? data.results : [])
-      .slice(0, limit)
-      .map((place, idx) => ({
-        name: String(place?.name || `مطعم حلال ${idx + 1}`).trim(),
-        rating:
-          typeof place?.rating === "number"
-            ? `${(place.rating > 5 ? place.rating / 2 : place.rating).toFixed(1)} ★`
-            : "4.6 ★",
-        cuisine:
-          place?.categories?.[0]?.name ||
-          place?.location?.neighborhood ||
-          place?.location?.locality ||
-          city
-      }));
+    // Fallback تلقائي إلى Gemini / Groq عند تعذر Foursquare أو رجوع 429
+    const aiRestaurants = await fetchHalalRestaurantsFromAI(city, limit);
+    if (aiRestaurants && aiRestaurants.length > 0) {
+      halalCache.set(cacheKey, { ts: Date.now(), source: "ai", restaurants: aiRestaurants });
+      return res.json({ ok: true, cached: false, source: "ai", restaurants: aiRestaurants });
+    }
 
-    halalCache.set(cacheKey, { ts: Date.now(), restaurants });
-    return res.json({ ok: true, cached: false, restaurants });
+    return res.status(fsqErrorStatus || 503).json({
+      error: fsqErrorStatus
+        ? `Foursquare HTTP ${fsqErrorStatus} وتعذر التبديل إلى المزود الاحتياطي.`
+        : "تعذر جلب المطاعم الحلال حالياً."
+    });
   } catch (error) {
-    console.error("Foursquare halal route error:", error);
-    return res.status(500).json({ error: "حدث خطأ أثناء جلب المطاعم من Foursquare." });
+    console.error("Halal restaurants route error:", error);
+    return res.status(500).json({ error: "حدث خطأ أثناء جلب المطاعم الحلال." });
   }
 });
 
